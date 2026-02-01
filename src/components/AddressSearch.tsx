@@ -5,10 +5,11 @@ import type { NominatimResult, Location } from "@/types/sun";
 
 interface AddressSearchProps {
   onSelect: (location: Location) => void;
+  initialValue?: string;
 }
 
-export default function AddressSearch({ onSelect }: AddressSearchProps) {
-  const [query, setQuery] = useState("");
+export default function AddressSearch({ onSelect, initialValue }: AddressSearchProps) {
+  const [query, setQuery] = useState(initialValue ?? "");
   const [results, setResults] = useState<NominatimResult[]>([]);
   const [isOpen, setIsOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -55,6 +56,12 @@ export default function AddressSearch({ onSelect }: AddressSearchProps) {
       name: result.display_name,
     });
   };
+
+  // Sync initial value from persisted state
+  useEffect(() => {
+    if (initialValue && !query) setQuery(initialValue);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialValue]);
 
   // Close dropdown on outside click
   useEffect(() => {

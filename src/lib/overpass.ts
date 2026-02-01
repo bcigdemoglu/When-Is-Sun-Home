@@ -1,4 +1,7 @@
+import * as turf from "@turf/turf";
 import type { Feature, Polygon, FeatureCollection } from "geojson";
+
+// ─── Public types ───────────────────────────────────────────────────────
 
 export interface BuildingProperties {
   id: number;
@@ -11,131 +14,170 @@ export interface BuildingProperties {
 export type BuildingFeature = Feature<Polygon, BuildingProperties>;
 export type BuildingGeoJSON = FeatureCollection<Polygon, BuildingProperties>;
 
-interface OverpassNode {
-  type: "node";
-  id: number;
-  lat: number;
-  lon: number;
-}
+// ─── Overpass `out body geom` response types ────────────────────────────
 
-interface OverpassWay {
+interface OverpassGeomWay {
   type: "way";
   id: number;
-  nodes: number[];
   tags?: Record<string, string>;
+  geometry: { lat: number; lon: number }[];
 }
 
-interface OverpassResponse {
-  elements: (OverpassNode | OverpassWay)[];
+interface OverpassGeomResponse {
+  elements: OverpassGeomWay[];
 }
+
+// ─── Height parsing (pure functions) ────────────────────────────────────
+
+interface ParsedHeight {
+  height: number;
+  levels: number;
+  heightSource: BuildingProperties["heightSource"];
+}
+
+/** Parse an OSM `height` tag (e.g. "12", "12.5", "12 m") → meters or null */
+export function parseMetricHeight(raw: string | undefined): number | null {
+  if (!raw) return null;
+  const parsed = parseFloat(raw);
+  return isNaN(parsed) ? null : parsed;
+}
+
+/** Parse an OSM `building:levels` tag → integer or null */
+export function parseBuildingLevels(raw: string | undefined): number | null {
+  if (!raw) return null;
+  const parsed = parseInt(raw, 10);
+  return isNaN(parsed) || parsed <= 0 ? null : parsed;
+}
+
+/** Resolve height from measured + levels, with 3 m/level default */
+export function resolveHeight(
+  measured: number | null,
+  levels: number | null
+): ParsedHeight {
+  if (measured !== null && measured > 0) {
+    return {
+      height: measured,
+      levels: levels ?? Math.ceil(measured / 3),
+      heightSource: "measured",
+    };
+  }
+  if (levels !== null) {
+    return { height: levels * 3, levels, heightSource: "estimated" };
+  }
+  return { height: 3, levels: 1, heightSource: "unknown" };
+}
+
+/** Extract building height from an OSM tags dict */
+export function extractBuildingHeight(
+  tags: Record<string, string>
+): ParsedHeight {
+  return resolveHeight(
+    parseMetricHeight(tags.height),
+    parseBuildingLevels(tags["building:levels"])
+  );
+}
+
+// ─── Ring construction ──────────────────────────────────────────────────
+
+/** Convert Overpass inline geometry → GeoJSON ring. Returns null if < 4 points. */
+export function buildPolygonRing(
+  geometry: { lat: number; lon: number }[]
+): [number, number][] | null {
+  if (geometry.length < 4) return null;
+
+  const ring: [number, number][] = geometry.map((p) => [p.lon, p.lat]);
+
+  // Ensure closure
+  const first = ring[0];
+  const last = ring[ring.length - 1];
+  if (first[0] !== last[0] || first[1] !== last[1]) {
+    ring.push([first[0], first[1]]);
+  }
+
+  return ring.length >= 4 ? ring : null;
+}
+
+// ─── Geometry simplification ────────────────────────────────────────────
+
+/** Check that the outer ring has at least 4 coordinate positions */
+export function isValidPolygon(feature: BuildingFeature): boolean {
+  const ring = feature.geometry.coordinates[0];
+  return ring !== undefined && ring.length >= 4;
+}
+
+/** Simplify all building polygons, dropping degenerate results */
+export function simplifyBuildingGeometries(
+  buildings: BuildingGeoJSON,
+  tolerance = 0.00001
+): BuildingGeoJSON {
+  const simplified: BuildingFeature[] = [];
+
+  for (const feature of buildings.features) {
+    try {
+      const s = turf.simplify(feature, {
+        tolerance,
+        highQuality: false,
+      }) as BuildingFeature;
+      if (isValidPolygon(s)) {
+        simplified.push(s);
+      }
+    } catch {
+      // Keep original if simplification fails
+      if (isValidPolygon(feature)) {
+        simplified.push(feature);
+      }
+    }
+  }
+
+  return { type: "FeatureCollection", features: simplified };
+}
+
+// ─── Fetch + convert ────────────────────────────────────────────────────
 
 const OVERPASS_URL = "https://overpass-api.de/api/interpreter";
 
 export async function fetchBuildings(
   lat: number,
   lng: number,
-  radiusMeters = 300
+  radiusMeters = 300,
+  signal?: AbortSignal
 ): Promise<BuildingGeoJSON> {
   const query = `
     [out:json][timeout:10];
-    (
-      way["building"](around:${radiusMeters},${lat},${lng});
-    );
-    out body;
-    >;
-    out skel qt;
+    (way["building"](around:${radiusMeters},${lat},${lng}););
+    out body geom;
   `;
 
   const res = await fetch(OVERPASS_URL, {
     method: "POST",
     body: `data=${encodeURIComponent(query)}`,
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    signal,
   });
 
   if (!res.ok) {
     throw new Error(`Overpass API error: ${res.status}`);
   }
 
-  const data: OverpassResponse = await res.json();
+  const data: OverpassGeomResponse = await res.json();
   return overpassToGeoJSON(data);
 }
 
-function overpassToGeoJSON(data: OverpassResponse): BuildingGeoJSON {
-  // Build node lookup
-  const nodes = new Map<number, [number, number]>();
-  for (const el of data.elements) {
-    if (el.type === "node") {
-      nodes.set(el.id, [el.lon, el.lat]); // GeoJSON: [lng, lat]
-    }
-  }
-
+function overpassToGeoJSON(data: OverpassGeomResponse): BuildingGeoJSON {
   const features: BuildingFeature[] = [];
 
   for (const el of data.elements) {
-    if (el.type !== "way" || !el.tags?.building) continue;
+    if (!el.tags?.building) continue;
 
-    // Build polygon ring from node refs
-    const ring: [number, number][] = [];
-    let valid = true;
-    for (const nid of el.nodes) {
-      const coord = nodes.get(nid);
-      if (!coord) {
-        valid = false;
-        break;
-      }
-      ring.push(coord);
-    }
+    const ring = buildPolygonRing(el.geometry);
+    if (!ring) continue;
 
-    if (!valid || ring.length < 4) continue;
-
-    // Ensure ring is closed
-    const first = ring[0];
-    const last = ring[ring.length - 1];
-    if (first[0] !== last[0] || first[1] !== last[1]) {
-      ring.push([...first] as [number, number]);
-    }
-
-    // Parse height
-    let height = 0;
-    let heightSource: BuildingProperties["heightSource"] = "unknown";
-    let levels = 0;
-
-    if (el.tags.height) {
-      const parsed = parseFloat(el.tags.height);
-      if (!isNaN(parsed)) {
-        height = parsed;
-        heightSource = "measured";
-      }
-    }
-
-    if (el.tags["building:levels"]) {
-      levels = parseInt(el.tags["building:levels"], 10) || 0;
-      if (height === 0 && levels > 0) {
-        height = levels * 3;
-        heightSource = "estimated";
-      }
-    }
-
-    if (height === 0 && levels === 0) {
-      // Default: assume 1 story for unknown buildings
-      levels = 1;
-      height = 3;
-      heightSource = "unknown";
-    }
+    const { height, levels, heightSource } = extractBuildingHeight(el.tags);
 
     features.push({
       type: "Feature",
-      properties: {
-        id: el.id,
-        height,
-        levels: levels || Math.ceil(height / 3),
-        heightSource,
-        name: el.tags.name,
-      },
-      geometry: {
-        type: "Polygon",
-        coordinates: [ring],
-      },
+      properties: { id: el.id, height, levels, heightSource, name: el.tags.name },
+      geometry: { type: "Polygon", coordinates: [ring] },
     });
   }
 

@@ -1,11 +1,21 @@
 import { useState, useEffect, useRef } from "react";
-import { fetchBuildings, type BuildingGeoJSON, type BuildingFeature } from "@/lib/overpass";
-import * as turf from "@turf/turf";
+import {
+  fetchBuildings,
+  simplifyBuildingGeometries,
+  type BuildingGeoJSON,
+  type BuildingFeature,
+} from "@/lib/overpass";
+import {
+  makeBuildingCacheKey,
+  loadCachedBuildings,
+  saveBuildingsToCache,
+} from "@/lib/buildingCache";
+import { detectPinBuilding } from "@/lib/sunBlockage";
 import type { Location } from "@/types/sun";
 
-function roundCoord(val: number, decimals = 3): number {
-  const factor = Math.pow(10, decimals);
-  return Math.round(val * factor) / factor;
+/** Detect AbortController cancellation errors */
+function isAbortError(err: unknown): boolean {
+  return err instanceof DOMException && err.name === "AbortError";
 }
 
 interface BuildingDataResult {
@@ -23,6 +33,7 @@ export function useBuildingData(
   const [isLoading, setIsLoading] = useState(false);
   const cacheRef = useRef<Map<string, BuildingGeoJSON>>(new Map());
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
     if (!enabled || !location) {
@@ -31,30 +42,50 @@ export function useBuildingData(
       return;
     }
 
-    const roundedLat = roundCoord(location.lat);
-    const roundedLng = roundCoord(location.lng);
-    const cacheKey = `${roundedLat},${roundedLng}`;
+    const cacheKey = makeBuildingCacheKey(location.lat, location.lng);
 
-    // Check cache
-    const cached = cacheRef.current.get(cacheKey);
-    if (cached) {
-      setBuildingData(cached);
-      detectPinBuilding(cached, location);
+    // 1. In-memory cache hit
+    const memCached = cacheRef.current.get(cacheKey);
+    if (memCached) {
+      setBuildingData(memCached);
+      setPinBuilding(detectPinBuilding(memCached, location));
       return;
     }
 
-    // Debounce fetch
+    // 2. localStorage cache hit
+    const diskCached = loadCachedBuildings(cacheKey);
+    if (diskCached) {
+      cacheRef.current.set(cacheKey, diskCached);
+      setBuildingData(diskCached);
+      setPinBuilding(detectPinBuilding(diskCached, location));
+      return;
+    }
+
+    // 3. Fetch from Overpass (debounced)
     if (debounceRef.current) clearTimeout(debounceRef.current);
+    abortRef.current?.abort();
 
     debounceRef.current = setTimeout(async () => {
+      const controller = new AbortController();
+      abortRef.current = controller;
+
       setIsLoading(true);
       try {
-        const data = await fetchBuildings(location.lat, location.lng);
+        const raw = await fetchBuildings(
+          location.lat,
+          location.lng,
+          300,
+          controller.signal
+        );
+        const data = simplifyBuildingGeometries(raw);
         cacheRef.current.set(cacheKey, data);
+        saveBuildingsToCache(cacheKey, data);
         setBuildingData(data);
-        detectPinBuilding(data, location);
+        setPinBuilding(detectPinBuilding(data, location));
       } catch (err) {
-        console.error("Failed to fetch buildings:", err);
+        if (!isAbortError(err)) {
+          console.error("Failed to fetch buildings:", err);
+        }
       } finally {
         setIsLoading(false);
       }
@@ -62,19 +93,9 @@ export function useBuildingData(
 
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current);
+      abortRef.current?.abort();
     };
   }, [location, enabled]);
-
-  function detectPinBuilding(data: BuildingGeoJSON, loc: Location) {
-    const point = turf.point([loc.lng, loc.lat]);
-    for (const feature of data.features) {
-      if (turf.booleanPointInPolygon(point, feature)) {
-        setPinBuilding(feature);
-        return;
-      }
-    }
-    setPinBuilding(null);
-  }
 
   return { buildingData, pinBuilding, isLoading };
 }

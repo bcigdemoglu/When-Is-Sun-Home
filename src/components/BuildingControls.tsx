@@ -2,6 +2,19 @@
 
 import type { BuildingFeature } from "@/lib/overpass";
 
+const COMPASS_LABELS: Record<number, string> = {
+  0: "N", 10: "N", 20: "N", 30: "NE", 40: "NE", 50: "NE",
+  60: "NE", 70: "E", 80: "E", 90: "E", 100: "E", 110: "E",
+  120: "SE", 130: "SE", 140: "SE", 150: "SE", 160: "S", 170: "S",
+  180: "S", 190: "S", 200: "S", 210: "SW", 220: "SW", 230: "SW",
+  240: "SW", 250: "W", 260: "W", 270: "W", 280: "W", 290: "W",
+  300: "NW", 310: "NW", 320: "NW", 330: "NW", 340: "N", 350: "N",
+};
+
+function compassLabel(deg: number): string {
+  return COMPASS_LABELS[deg] ?? "";
+}
+
 interface BuildingControlsProps {
   enabled: boolean;
   onToggle: (enabled: boolean) => void;
@@ -9,6 +22,14 @@ interface BuildingControlsProps {
   onFloorChange: (floor: number) => void;
   pinBuilding: BuildingFeature | null;
   isLoading: boolean;
+  blockageEnabled: boolean;
+  onBlockageToggle: (enabled: boolean) => void;
+  shadowsEnabled: boolean;
+  onShadowsToggle: (enabled: boolean) => void;
+  pinDirection: number;
+  onDirectionChange: (direction: number) => void;
+  pinFov: number;
+  onFovChange: (fov: number) => void;
 }
 
 export default function BuildingControls({
@@ -18,6 +39,14 @@ export default function BuildingControls({
   onFloorChange,
   pinBuilding,
   isLoading,
+  blockageEnabled,
+  onBlockageToggle,
+  shadowsEnabled,
+  onShadowsToggle,
+  pinDirection,
+  onDirectionChange,
+  pinFov,
+  onFovChange,
 }: BuildingControlsProps) {
   const maxFloors = pinBuilding ? pinBuilding.properties.levels : 20;
 
@@ -59,6 +88,74 @@ export default function BuildingControls({
             <div className="mt-1 text-[10px] text-zinc-400 dark:text-zinc-500">
               Elevation: ~{((userFloor - 1) * 3).toFixed(0)}m above ground
             </div>
+          </div>
+
+          <div>
+            <div className="mb-1 flex items-center justify-between text-xs text-zinc-500 dark:text-zinc-400">
+              <span>Direction</span>
+              <span className="font-mono font-medium text-zinc-800 dark:text-zinc-200">
+                {pinDirection}° ({compassLabel(pinDirection)})
+              </span>
+            </div>
+            <input
+              type="range"
+              min={0}
+              max={350}
+              step={10}
+              value={pinDirection}
+              onChange={(e) => onDirectionChange(parseInt(e.target.value))}
+              className="sun-slider w-full"
+            />
+            <div className="mt-1 text-[10px] text-zinc-400 dark:text-zinc-500">
+              The direction you face from your window
+            </div>
+          </div>
+
+          <div>
+            <div className="mb-1 flex items-center justify-between text-xs text-zinc-500 dark:text-zinc-400">
+              <span>Field of View</span>
+              <span className="font-mono font-medium text-zinc-800 dark:text-zinc-200">
+                {pinFov}°
+              </span>
+            </div>
+            <input
+              type="range"
+              min={10}
+              max={360}
+              step={10}
+              value={pinFov}
+              onChange={(e) => onFovChange(parseInt(e.target.value))}
+              className="sun-slider w-full"
+            />
+            <div className="mt-1 text-[10px] text-zinc-400 dark:text-zinc-500">
+              How wide you can see from your window
+            </div>
+          </div>
+
+          <div className="flex items-center justify-between">
+            <span className="text-xs text-zinc-500 dark:text-zinc-400">Sun Blockage</span>
+            <label className="relative inline-flex cursor-pointer items-center">
+              <input
+                type="checkbox"
+                checked={blockageEnabled}
+                onChange={(e) => onBlockageToggle(e.target.checked)}
+                className="peer sr-only"
+              />
+              <div className="peer h-5 w-9 rounded-full bg-zinc-300 after:absolute after:left-[2px] after:top-[2px] after:h-4 after:w-4 after:rounded-full after:bg-white after:transition-all after:content-[''] peer-checked:bg-amber-500 peer-checked:after:translate-x-full dark:bg-zinc-600" />
+            </label>
+          </div>
+
+          <div className="flex items-center justify-between">
+            <span className="text-xs text-zinc-500 dark:text-zinc-400">Shadows</span>
+            <label className="relative inline-flex cursor-pointer items-center">
+              <input
+                type="checkbox"
+                checked={shadowsEnabled}
+                onChange={(e) => onShadowsToggle(e.target.checked)}
+                className="peer sr-only"
+              />
+              <div className="peer h-5 w-9 rounded-full bg-zinc-300 after:absolute after:left-[2px] after:top-[2px] after:h-4 after:w-4 after:rounded-full after:bg-white after:transition-all after:content-[''] peer-checked:bg-amber-500 peer-checked:after:translate-x-full dark:bg-zinc-600" />
+            </label>
           </div>
 
           {pinBuilding && (

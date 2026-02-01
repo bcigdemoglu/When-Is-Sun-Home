@@ -8,9 +8,12 @@ import { useSunCalculations } from "@/hooks/useSunCalculations";
 import { useAnimationTimer } from "@/hooks/useAnimationTimer";
 import { useBuildingData } from "@/hooks/useBuildingData";
 import { useSunBlockage } from "@/hooks/useSunBlockage";
+import { useDayBlockage } from "@/hooks/useDayBlockage";
 import {
   loadAppState,
   updateAppState,
+  resetAppState,
+  clearBuildingCache,
   dateToTimeMinutes,
   dateToDayOfYear,
   applyTimeAndDay,
@@ -20,6 +23,7 @@ import SunCompass from "./SunCompass";
 import TimeControls from "./TimeControls";
 import SunDataPanel from "./SunDataPanel";
 import BuildingControls from "./BuildingControls";
+import SunWindowsPanel from "./SunWindowsPanel";
 
 const Map = dynamic(() => import("./Map"), { ssr: false });
 
@@ -32,7 +36,11 @@ export default function SunApp() {
   const [animationMode, setAnimationMode] = useState<AnimationMode>("time");
   const [speed, setSpeed] = useState(1);
   const [buildingsEnabled, setBuildingsEnabled] = useState(false);
+  const [blockageEnabled, setBlockageEnabled] = useState(false);
+  const [shadowsEnabled, setShadowsEnabled] = useState(false);
   const [userFloor, setUserFloor] = useState(1);
+  const [pinDirection, setPinDirection] = useState(180);
+  const [pinFov, setPinFov] = useState(180);
   const hydrated = useRef(false);
 
   // ── Load persisted state after hydration ────────────────────────────
@@ -41,7 +49,11 @@ export default function SunApp() {
     if (s.location) setLocation(s.location);
     setZoom(s.zoom);
     setBuildingsEnabled(s.buildingsEnabled);
+    setBlockageEnabled(s.blockageEnabled);
+    setShadowsEnabled(s.shadowsEnabled);
     setUserFloor(s.userFloor);
+    setPinDirection(s.pinDirection);
+    setPinFov(s.pinFov);
 
     // Restore time/date or fall back to "now"
     const now = new Date();
@@ -58,9 +70,12 @@ export default function SunApp() {
     useBuildingData(location, buildingsEnabled);
   const userElevation = (userFloor - 1) * 3;
   const sunBlockage = useSunBlockage(
-    location, sunData, buildingData, buildingsEnabled, userElevation
+    location, sunData, buildingData, blockageEnabled && buildingsEnabled, userElevation, pinDirection, pinFov
   );
   const sunVisibility: SunVisibility = deriveSunVisibility(sunData, sunBlockage);
+  const { dayBlockageMap, sunWindows } = useDayBlockage(
+    location, sunData, buildingData, blockageEnabled && buildingsEnabled, userElevation, pinDirection, pinFov
+  );
 
   // ── Persisted setters (update React state + localStorage) ───────────
   const handleLocationChange = useCallback((loc: Location) => {
@@ -86,10 +101,47 @@ export default function SunApp() {
     updateAppState("buildingsEnabled", enabled);
   }, []);
 
+  const handleBlockageToggle = useCallback((enabled: boolean) => {
+    setBlockageEnabled(enabled);
+    updateAppState("blockageEnabled", enabled);
+  }, []);
+
+  const handleShadowsToggle = useCallback((enabled: boolean) => {
+    setShadowsEnabled(enabled);
+    updateAppState("shadowsEnabled", enabled);
+  }, []);
+
   const handleFloorChange = useCallback((floor: number) => {
     setUserFloor(floor);
     updateAppState("userFloor", floor);
   }, []);
+
+  const handleDirectionChange = useCallback((direction: number) => {
+    setPinDirection(direction);
+    updateAppState("pinDirection", direction);
+  }, []);
+
+  const handleFovChange = useCallback((fov: number) => {
+    setPinFov(fov);
+    updateAppState("pinFov", fov);
+  }, []);
+
+  const handleReset = useCallback(() => {
+    const s = resetAppState(location);
+    clearBuildingCache();
+    setZoom(s.zoom);
+    const now = new Date();
+    setDateTime(applyTimeAndDay(dateToTimeMinutes(now), dateToDayOfYear(now)));
+    setIsPlaying(false);
+    setAnimationMode("time");
+    setSpeed(1);
+    setBuildingsEnabled(s.buildingsEnabled);
+    setBlockageEnabled(s.blockageEnabled);
+    setShadowsEnabled(s.shadowsEnabled);
+    setUserFloor(s.userFloor);
+    setPinDirection(s.pinDirection);
+    setPinFov(s.pinFov);
+  }, [location]);
 
   // ── Animation ───────────────────────────────────────────────────────
   const handleTick = useCallback(() => {
@@ -124,7 +176,7 @@ export default function SunApp() {
       {/* Map area */}
       <div className="relative flex-1 lg:flex-[65]">
         <div className="absolute left-3 right-3 top-3 z-10">
-          <AddressSearch onSelect={handleLocationChange} />
+          <AddressSearch onSelect={handleLocationChange} initialValue={location?.name} />
         </div>
         <Map
           location={location}
@@ -135,32 +187,13 @@ export default function SunApp() {
           sunVisibility={sunVisibility}
           zoom={zoom}
           onZoomChange={handleZoomChange}
+          dayBlockageMap={dayBlockageMap}
+          shadowsEnabled={shadowsEnabled && buildingsEnabled}
+          pinDirection={pinDirection}
         />
         {/* Compass overlay */}
         <div className="absolute bottom-4 left-4 z-10">
           <SunCompass sunData={sunData} sunVisibility={sunVisibility} />
-        </div>
-        {/* Zoom slider overlay */}
-        <div className="absolute right-3 top-1/2 z-10 -translate-y-1/2">
-          <div className="flex flex-col items-center gap-1 rounded-lg bg-white/90 px-1.5 py-2 shadow-md backdrop-blur dark:bg-zinc-800/90">
-            <span className="text-[10px] font-medium text-zinc-500 dark:text-zinc-400">
-              {zoom.toFixed(1)}
-            </span>
-            <input
-              type="range"
-              min={1}
-              max={20}
-              step={0.1}
-              value={zoom}
-              onChange={(e) => handleZoomChange(parseFloat(e.target.value))}
-              className="sun-slider h-32"
-              style={{
-                writingMode: "vertical-lr" as const,
-                direction: "rtl" as const,
-                width: "6px",
-              }}
-            />
-          </div>
         </div>
       </div>
 
@@ -173,6 +206,12 @@ export default function SunApp() {
             </span>
           </div>
         )}
+        <button
+          onClick={handleReset}
+          className="w-full rounded-xl bg-red-500/90 px-4 py-2.5 text-xs font-medium text-white shadow-md backdrop-blur transition-colors hover:bg-red-600 dark:bg-red-600/90 dark:hover:bg-red-700"
+        >
+          Reset all settings and cache
+        </button>
         <TimeControls
           dateTime={dateTime}
           onDateTimeChange={handleDateTimeChange}
@@ -190,7 +229,38 @@ export default function SunApp() {
           onFloorChange={handleFloorChange}
           pinBuilding={pinBuilding}
           isLoading={buildingsLoading}
+          blockageEnabled={blockageEnabled}
+          onBlockageToggle={handleBlockageToggle}
+          shadowsEnabled={shadowsEnabled}
+          onShadowsToggle={handleShadowsToggle}
+          pinDirection={pinDirection}
+          onDirectionChange={handleDirectionChange}
+          pinFov={pinFov}
+          onFovChange={handleFovChange}
         />
+        <SunWindowsPanel
+          sunWindows={sunWindows}
+          blockageEnabled={blockageEnabled && buildingsEnabled}
+        />
+        <div className="flex flex-col gap-2 rounded-xl bg-white/90 p-4 shadow-md backdrop-blur dark:bg-zinc-800/90">
+          <div className="flex items-center justify-between text-xs text-zinc-500 dark:text-zinc-400">
+            <h3 className="font-semibold uppercase tracking-wider text-zinc-400 dark:text-zinc-500">
+              Zoom
+            </h3>
+            <span className="font-mono font-medium text-zinc-800 dark:text-zinc-200">
+              {zoom.toFixed(1)}
+            </span>
+          </div>
+          <input
+            type="range"
+            min={1}
+            max={20}
+            step={0.1}
+            value={zoom}
+            onChange={(e) => handleZoomChange(parseFloat(e.target.value))}
+            className="sun-slider w-full"
+          />
+        </div>
         <SunDataPanel
           sunData={sunData}
           sunVisibility={sunVisibility}

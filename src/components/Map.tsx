@@ -7,6 +7,7 @@ import { useSunArcOverlay } from "@/hooks/useSunArcOverlay";
 import { useBuildingLayer } from "@/hooks/useBuildingLayer";
 import { useShadowLayer } from "@/hooks/useShadowLayer";
 import type { BuildingGeoJSON } from "@/lib/overpass";
+import type { DayBlockageMap } from "@/lib/sunBlockage";
 
 interface MapProps {
   location: Location | null;
@@ -17,6 +18,9 @@ interface MapProps {
   sunVisibility: SunVisibility;
   zoom: number;
   onZoomChange: (zoom: number) => void;
+  dayBlockageMap: DayBlockageMap | null;
+  shadowsEnabled: boolean;
+  pinDirection?: number;
 }
 
 export default function Map({
@@ -28,6 +32,9 @@ export default function Map({
   sunVisibility,
   zoom,
   onZoomChange,
+  dayBlockageMap,
+  shadowsEnabled,
+  pinDirection,
 }: MapProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
@@ -120,15 +127,18 @@ export default function Map({
     ) {
       if (prevLocRef.current) {
         map.flyTo({ center: [location.lng, location.lat], duration: 1000 });
+      } else {
+        // First location (e.g. restored from localStorage) — jump immediately
+        map.jumpTo({ center: [location.lng, location.lat] });
       }
       prevLocRef.current = location;
     }
   }, [location, onLocationChange]);
 
   // Hook up overlays
-  useSunArcOverlay(mapRef, location, sunData, sunVisibility);
+  useSunArcOverlay(mapRef, location, sunData, sunVisibility, dayBlockageMap, pinDirection);
   useBuildingLayer(mapRef, buildingData, buildingsEnabled);
-  useShadowLayer(mapRef, buildingData, sunData, buildingsEnabled);
+  useShadowLayer(mapRef, buildingData, sunData, shadowsEnabled);
 
   return <div ref={containerRef} className="h-full w-full" />;
 }

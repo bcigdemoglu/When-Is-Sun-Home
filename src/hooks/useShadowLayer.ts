@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import maplibregl from "maplibre-gl";
 import type { BuildingGeoJSON } from "@/lib/overpass";
 import type { SunData } from "@/types/sun";
@@ -12,65 +12,101 @@ const EMPTY_FC: GeoJSON.FeatureCollection = {
   features: [],
 };
 
+const THROTTLE_MS = 200;
+
 export function useShadowLayer(
   mapRef: React.RefObject<maplibregl.Map | null>,
   buildingData: BuildingGeoJSON | null,
   sunData: SunData | null,
   enabled: boolean
 ) {
+  const dataRef = useRef({ buildingData, sunData, enabled });
+  dataRef.current = { buildingData, sunData, enabled };
+
+  const readyRef = useRef(false);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Push shadow data to the map
+  const pushRef = useRef(() => {});
+  pushRef.current = () => {
+    const map = mapRef.current;
+    if (!map || !readyRef.current) return;
+
+    const { buildingData: bd, sunData: sd, enabled: en } = dataRef.current;
+
+    let data: GeoJSON.FeatureCollection = EMPTY_FC;
+    if (en && bd && sd && sd.position.altitude > 0) {
+      data = computeShadows(bd, sd.position.azimuth, sd.position.altitude);
+    }
+
+    const src = map.getSource(SOURCE_ID) as maplibregl.GeoJSONSource | undefined;
+    if (src) {
+      src.setData(data);
+    }
+
+    if (map.getLayer(LAYER_ID)) {
+      map.setLayoutProperty(LAYER_ID, "visibility", en ? "visible" : "none");
+    }
+  };
+
+  // One-time setup
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
 
     const setup = () => {
-      if (!map.isStyleLoaded()) {
-        map.once("styledata", setup);
+      if (map.getSource(SOURCE_ID)) {
+        readyRef.current = true;
+        pushRef.current();
         return;
       }
 
-      let data: GeoJSON.FeatureCollection = EMPTY_FC;
+      map.addSource(SOURCE_ID, { type: "geojson", data: EMPTY_FC });
 
-      if (enabled && buildingData && sunData && sunData.position.altitude > 0) {
-        data = computeShadows(
-          buildingData,
-          sunData.position.azimuth,
-          sunData.position.altitude
-        );
-      }
-
-      const src = map.getSource(SOURCE_ID) as maplibregl.GeoJSONSource | undefined;
-      if (src) {
-        src.setData(data);
-      } else {
-        map.addSource(SOURCE_ID, { type: "geojson", data });
-      }
-
-      if (!map.getLayer(LAYER_ID)) {
-        // Add shadow layer below buildings layer
-        const beforeLayer = map.getLayer("buildings-3d-layer")
-          ? "buildings-3d-layer"
-          : undefined;
-        map.addLayer(
-          {
-            id: LAYER_ID,
-            type: "fill",
-            source: SOURCE_ID,
-            paint: {
-              "fill-color": "#000000",
-              "fill-opacity": 0.2,
-            },
+      const beforeLayer = map.getLayer("buildings-3d-layer")
+        ? "buildings-3d-layer"
+        : undefined;
+      map.addLayer(
+        {
+          id: LAYER_ID,
+          type: "fill",
+          source: SOURCE_ID,
+          paint: {
+            "fill-color": "#000000",
+            "fill-opacity": 0.2,
           },
-          beforeLayer
-        );
-      }
-
-      map.setLayoutProperty(
-        LAYER_ID,
-        "visibility",
-        enabled ? "visible" : "none"
+        },
+        beforeLayer
       );
+
+      readyRef.current = true;
+      pushRef.current();
     };
 
-    setup();
-  }, [mapRef, buildingData, sunData, enabled]);
+    if (map.isStyleLoaded()) {
+      setup();
+    } else {
+      map.once("load", setup);
+      return () => {
+        map.off("load", setup);
+      };
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mapRef]);
+
+  // Throttled data updates
+  useEffect(() => {
+    if (timerRef.current) return; // already scheduled
+    timerRef.current = setTimeout(() => {
+      timerRef.current = null;
+      pushRef.current();
+    }, THROTTLE_MS);
+
+    return () => {
+      if (timerRef.current) {
+        clearTimeout(timerRef.current);
+        timerRef.current = null;
+      }
+    };
+  }, [buildingData, sunData, enabled]);
 }

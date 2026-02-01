@@ -14,7 +14,13 @@ export interface AppState {
   /** 1-based day of year (Jan 1 = 1). */
   dayOfYear: number;
   buildingsEnabled: boolean;
+  blockageEnabled: boolean;
+  shadowsEnabled: boolean;
   userFloor: number;
+  /** Compass direction the observer faces (0=N, 90=E, 180=S, 270=W). */
+  pinDirection: number;
+  /** Field of view in degrees (how wide the observer can see). */
+  pinFov: number;
 }
 
 const STORAGE_KEY = "sun-home-state";
@@ -25,7 +31,11 @@ const DEFAULTS: AppState = {
   timeMinutes: 720, // noon
   dayOfYear: 1,
   buildingsEnabled: false,
+  blockageEnabled: false,
+  shadowsEnabled: false,
   userFloor: 1,
+  pinDirection: 180, // facing south
+  pinFov: 180,
 };
 
 // ─── Read ─────────────────────────────────────────────────────────────
@@ -58,6 +68,20 @@ export function updateAppState<K extends keyof AppState>(
   const current = loadAppState();
   current[key] = value;
   saveAppState(current);
+}
+
+// ─── Reset (preserves location only) ─────────────────────────────
+export function resetAppState(keepLocation: Location | null) {
+  const reset: AppState = { ...DEFAULTS, location: keepLocation };
+  saveAppState(reset);
+  return reset;
+}
+
+// ─── Clear building cache ────────────────────────────────────────
+export function clearBuildingCache() {
+  try {
+    localStorage.removeItem("sun-building-cache");
+  } catch {}
 }
 
 // ─── Date / time helpers ──────────────────────────────────────────────

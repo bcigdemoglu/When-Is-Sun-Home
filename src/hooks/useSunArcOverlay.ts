@@ -2,19 +2,19 @@ import { useEffect, useRef } from "react";
 import maplibregl from "maplibre-gl";
 import type { Location, SunData, SunVisibility } from "@/types/sun";
 import { getSunVisuals } from "@/types/sun";
+import type { DayBlockageMap } from "@/lib/sunBlockage";
 import type { Feature, FeatureCollection, LineString, Point } from "geojson";
 
 // ─── Layer / source IDs ───────────────────────────────────────────────
 const SRC = "sun-overlay-src";
 const ARC_LAYER = "sun-arc-line";
+const ARC_BLOCKED_LAYER = "sun-arc-blocked-line";
 const BELOW_LAYER = "sun-below-line";
 const SUNRISE_LAYER = "sun-rise-line";
 const SUNSET_LAYER = "sun-set-line";
 const SUN_DOT_LAYER = "sun-dot";
 const SUN_CROSS_LAYER = "sun-cross";
-
-// ─── State machine ────────────────────────────────────────────────────
-type Phase = "idle" | "waiting" | "ready";
+const DIRECTION_LAYER = "direction-arrow";
 
 // ─── Pure geometry computation ────────────────────────────────────────
 interface OverlayInput {
@@ -22,6 +22,8 @@ interface OverlayInput {
   sunData: SunData;
   scale: number;
   visibility: SunVisibility;
+  dayBlockageMap: DayBlockageMap | null;
+  pinDirection?: number;
 }
 
 function projectPoint(
@@ -39,14 +41,18 @@ function projectPoint(
   return [lng, lat];
 }
 
-function computeOverlayGeoJSON(input: OverlayInput): FeatureCollection {
-  const { center, sunData, scale, visibility } = input;
-  const visuals = getSunVisuals(visibility);
+/** Split above-horizon arc points into contiguous segments by blocked status. */
+function buildArcSegments(
+  input: OverlayInput
+): Feature[] {
+  const { center, sunData, scale, dayBlockageMap } = input;
   const features: Feature[] = [];
-
-  // ── 1. Above-horizon arc ──────────────────────────────────────────
   const abovePoints = sunData.arc.filter((p) => p.altitude > 0);
-  if (abovePoints.length > 1) {
+
+  if (abovePoints.length < 2) return features;
+
+  // No blockage data — single orange arc (original behavior)
+  if (!dayBlockageMap || dayBlockageMap.points.length === 0) {
     features.push({
       type: "Feature",
       properties: { layer: "arc" },
@@ -57,7 +63,58 @@ function computeOverlayGeoJSON(input: OverlayInput): FeatureCollection {
         ),
       } as LineString,
     });
+    return features;
   }
+
+  // Build a lookup: time (ms) → blocked
+  const blockedSet = new Set<number>();
+  for (const bp of dayBlockageMap.points) {
+    if (bp.blocked) blockedSet.add(bp.time.getTime());
+  }
+
+  // Walk arc points, grouping into contiguous segments by blocked status
+  interface Segment { blocked: boolean; coords: [number, number][] }
+  const segments: Segment[] = [];
+  let current: Segment | null = null;
+
+  for (const p of abovePoints) {
+    const blocked = blockedSet.has(p.time.getTime());
+    const coord = projectPoint(center, p.azimuth, p.altitude, scale);
+
+    if (!current || current.blocked !== blocked) {
+      // Overlap: duplicate the last coord of the previous segment as first of new
+      // so the segments connect visually without gaps
+      if (current && current.coords.length > 0) {
+        const lastCoord: [number, number] = current.coords[current.coords.length - 1];
+        current = { blocked, coords: [lastCoord, coord] };
+      } else {
+        current = { blocked, coords: [coord] };
+      }
+      segments.push(current);
+    } else {
+      current.coords.push(coord);
+    }
+  }
+
+  for (const seg of segments) {
+    if (seg.coords.length < 2) continue;
+    features.push({
+      type: "Feature",
+      properties: { layer: seg.blocked ? "arc-blocked" : "arc" },
+      geometry: { type: "LineString", coordinates: seg.coords } as LineString,
+    });
+  }
+
+  return features;
+}
+
+function computeOverlayGeoJSON(input: OverlayInput): FeatureCollection {
+  const { center, sunData, scale, visibility } = input;
+  const visuals = getSunVisuals(visibility);
+  const features: Feature[] = [];
+
+  // ── 1. Above-horizon arc (split by blockage) ───────────────────────
+  features.push(...buildArcSegments(input));
 
   // ── 2. Below-horizon arc ──────────────────────────────────────────
   const belowPoints = sunData.arc.filter(
@@ -125,6 +182,19 @@ function computeOverlayGeoJSON(input: OverlayInput): FeatureCollection {
     geometry: { type: "Point", coordinates: sunCoord } as Point,
   });
 
+  // ── 6. Direction arrow ─────────────────────────────────────────────
+  if (input.pinDirection !== undefined) {
+    const arrowEnd = projectPoint(center, input.pinDirection, 60, scale);
+    features.push({
+      type: "Feature",
+      properties: { layer: "direction" },
+      geometry: {
+        type: "LineString",
+        coordinates: [center, arrowEnd],
+      } as LineString,
+    });
+  }
+
   return { type: "FeatureCollection", features };
 }
 
@@ -157,7 +227,7 @@ function setupLayers(map: maplibregl.Map) {
     type: "line",
     source: SRC,
     filter: ["==", ["get", "layer"], "sunrise"],
-    paint: { "line-color": "#f59e0b", "line-width": 2, "line-opacity": 0.5 },
+    paint: { "line-color": "#f59e0b", "line-width": 3, "line-opacity": 0.8 },
   });
 
   // Sunset direction
@@ -166,10 +236,23 @@ function setupLayers(map: maplibregl.Map) {
     type: "line",
     source: SRC,
     filter: ["==", ["get", "layer"], "sunset"],
-    paint: { "line-color": "#ef4444", "line-width": 2, "line-opacity": 0.5 },
+    paint: { "line-color": "#ef4444", "line-width": 3, "line-opacity": 0.8 },
   });
 
-  // Above-horizon arc
+  // Direction arrow (blue)
+  map.addLayer({
+    id: DIRECTION_LAYER,
+    type: "line",
+    source: SRC,
+    filter: ["==", ["get", "layer"], "direction"],
+    paint: {
+      "line-color": "#3b82f6",
+      "line-width": 3,
+      "line-opacity": 0.9,
+    },
+  });
+
+  // Above-horizon arc (visible / orange)
   map.addLayer({
     id: ARC_LAYER,
     type: "line",
@@ -177,9 +260,21 @@ function setupLayers(map: maplibregl.Map) {
     filter: ["==", ["get", "layer"], "arc"],
     paint: {
       "line-color": "#f59e0b",
-      "line-width": 3,
-      "line-opacity": 0.7,
-      "line-dasharray": [6, 4],
+      "line-width": 4,
+      "line-opacity": 1,
+    },
+  });
+
+  // Above-horizon arc (blocked / red)
+  map.addLayer({
+    id: ARC_BLOCKED_LAYER,
+    type: "line",
+    source: SRC,
+    filter: ["==", ["get", "layer"], "arc-blocked"],
+    paint: {
+      "line-color": "#ef4444",
+      "line-width": 12,
+      "line-opacity": 1,
     },
   });
 
@@ -235,69 +330,67 @@ export function useSunArcOverlay(
   mapRef: React.RefObject<maplibregl.Map | null>,
   location: Location | null,
   sunData: SunData | null,
-  sunVisibility: SunVisibility
+  sunVisibility: SunVisibility,
+  dayBlockageMap: DayBlockageMap | null,
+  pinDirection?: number
 ) {
-  // Latest props in refs — read at render time, never stale
-  const dataRef = useRef({ location, sunData, sunVisibility });
-  dataRef.current = { location, sunData, sunVisibility };
+  // Latest props in refs — always current, never stale
+  const dataRef = useRef({ location, sunData, sunVisibility, dayBlockageMap, pinDirection });
+  dataRef.current = { location, sunData, sunVisibility, dayBlockageMap, pinDirection };
 
-  const phaseRef = useRef<Phase>("idle");
+  const readyRef = useRef(false);
 
-  useEffect(() => {
+  // Render helper reads from refs — safe to call from any callback
+  const renderRef = useRef(() => {});
+  renderRef.current = () => {
     const map = mapRef.current;
-    if (!map) {
-      phaseRef.current = "idle";
+    if (!map || !readyRef.current) return;
+    const { location: loc, sunData: sd, sunVisibility: sv, dayBlockageMap: dbm, pinDirection: pd } = dataRef.current;
+    if (!loc || !sd) {
+      pushData(map, { type: "FeatureCollection", features: [] });
       return;
     }
+    const fc = computeOverlayGeoJSON({
+      center: [loc.lng, loc.lat],
+      sunData: sd,
+      scale: getScale(map.getZoom()),
+      visibility: sv,
+      dayBlockageMap: dbm,
+      pinDirection: pd,
+    });
+    pushData(map, fc);
+  };
 
-    // Render using latest data from refs (not closure)
-    const render = () => {
-      const { location: loc, sunData: sd, sunVisibility: sv } = dataRef.current;
-      if (!loc || !sd) {
-        pushData(map, { type: "FeatureCollection", features: [] });
-        return;
-      }
-      const fc = computeOverlayGeoJSON({
-        center: [loc.lng, loc.lat],
-        sunData: sd,
-        scale: getScale(map.getZoom()),
-        visibility: sv,
-      });
-      pushData(map, fc);
-    };
+  // One-time setup: wait for style, add layers, attach zoomend listener
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
 
-    // State transitions
-    const enterReady = () => {
-      phaseRef.current = "ready";
+    const onReady = () => {
       setupLayers(map);
-      render();
+      readyRef.current = true;
+      renderRef.current();
     };
 
-    if (phaseRef.current === "idle" || phaseRef.current === "waiting") {
-      if (map.isStyleLoaded()) {
-        enterReady();
-      } else {
-        phaseRef.current = "waiting";
-        map.once("load", enterReady);
-        return () => {
-          map.off("load", enterReady);
-        };
-      }
+    if (map.isStyleLoaded()) {
+      onReady();
+    } else {
+      map.once("load", onReady);
     }
 
-    // Already ready — just push new data
-    if (phaseRef.current === "ready") {
-      render();
-    }
-
-    // Re-render on zoom (scale changes)
-    const onZoom = () => {
-      if (phaseRef.current === "ready") render();
-    };
+    const onZoom = () => renderRef.current();
     map.on("zoomend", onZoom);
 
     return () => {
       map.off("zoomend", onZoom);
+      map.off("load", onReady);
     };
-  }, [mapRef, location, sunData, sunVisibility]);
+    // Only run once when mapRef is available
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mapRef]);
+
+  // Data updates — just re-render (no listener churn)
+  useEffect(() => {
+    renderRef.current();
+  }, [location, sunData, sunVisibility, dayBlockageMap, pinDirection]);
 }
