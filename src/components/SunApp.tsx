@@ -35,8 +35,8 @@ export default function SunApp() {
   const [isPlaying, setIsPlaying] = useState(false);
   const [animationMode, setAnimationMode] = useState<AnimationMode>("time");
   const [speed, setSpeed] = useState(1);
-  const [buildingsEnabled, setBuildingsEnabled] = useState(false);
-  const [blockageEnabled, setBlockageEnabled] = useState(false);
+  const [buildingsEnabled, setBuildingsEnabled] = useState(true);
+  const [blockageEnabled, setBlockageEnabled] = useState(true);
   const [shadowsEnabled, setShadowsEnabled] = useState(false);
   const [userFloor, setUserFloor] = useState(1);
   const [pinDirection, setPinDirection] = useState(180);

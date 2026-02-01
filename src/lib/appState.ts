@@ -30,8 +30,8 @@ const DEFAULTS: AppState = {
   zoom: 13,
   timeMinutes: 720, // noon
   dayOfYear: 1,
-  buildingsEnabled: false,
-  blockageEnabled: false,
+  buildingsEnabled: true,
+  blockageEnabled: true,
   shadowsEnabled: false,
   userFloor: 1,
   pinDirection: 180, // facing south
