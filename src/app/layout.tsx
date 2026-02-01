@@ -14,7 +14,19 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "When is Sun Home?",
-  description: "See the sun's position on an interactive map for any location and time",
+  description: "Track the sun's position on an interactive map for any location and time",
+  metadataBase: new URL("https://when-is-sun-home.vercel.app"),
+  openGraph: {
+    title: "When is Sun Home?",
+    description: "Track the sun's position on an interactive map for any location and time",
+    siteName: "When is Sun Home?",
+    type: "website",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "When is Sun Home?",
+    description: "Track the sun's position on an interactive map for any location and time",
+  },
 };
 
 export default function RootLayout({
