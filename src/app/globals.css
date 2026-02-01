@@ -26,6 +26,17 @@ body {
   font-family: Arial, Helvetica, sans-serif;
 }
 
+/* Prevent iOS auto-zoom on input focus (requires >=16px) */
+@media (max-width: 1023px) {
+  select,
+  input[type="text"],
+  input[type="search"],
+  input[type="number"],
+  textarea {
+    font-size: 16px !important;
+  }
+}
+
 /* MapLibre container */
 .maplibregl-map {
   width: 100%;
