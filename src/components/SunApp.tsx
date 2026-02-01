@@ -17,6 +17,8 @@ import {
   dateToTimeMinutes,
   dateToDayOfYear,
   applyTimeAndDay,
+  searchParamsToState,
+  syncUrlParams,
 } from "@/lib/appState";
 import AddressSearch from "./AddressSearch";
 import SunCompass from "./SunCompass";
@@ -46,7 +48,14 @@ export default function SunApp() {
 
   // ── Load persisted state after hydration ────────────────────────────
   useEffect(() => {
-    const s = loadAppState();
+    // URL params take priority over localStorage
+    const urlState = searchParamsToState(
+      new URLSearchParams(window.location.search)
+    );
+    const hasUrlParams = Object.keys(urlState).length > 0;
+    const stored = loadAppState();
+    const s = hasUrlParams ? { ...stored, ...urlState } : stored;
+
     if (s.location) setLocation(s.location);
     setZoom(s.zoom);
     setBuildingsEnabled(s.buildingsEnabled);
@@ -64,6 +73,26 @@ export default function SunApp() {
 
     hydrated.current = true;
   }, []);
+
+  // ── Sync state → URL query params ──────────────────────────────────
+  useEffect(() => {
+    if (!hydrated.current) return;
+    syncUrlParams({
+      location,
+      zoom,
+      timeMinutes: dateToTimeMinutes(dateTime),
+      dayOfYear: dateToDayOfYear(dateTime),
+      buildingsEnabled,
+      blockageEnabled,
+      shadowsEnabled,
+      userFloor,
+      pinDirection,
+      pinFov,
+    });
+  }, [
+    location, zoom, dateTime, buildingsEnabled, blockageEnabled,
+    shadowsEnabled, userFloor, pinDirection, pinFov,
+  ]);
 
   // ── Derived data ────────────────────────────────────────────────────
   const sunData = useSunCalculations(location, dateTime);
