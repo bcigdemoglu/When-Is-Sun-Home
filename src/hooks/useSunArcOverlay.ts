@@ -321,8 +321,21 @@ function pushData(map: maplibregl.Map, fc: FeatureCollection) {
   if (src) src.setData(fc);
 }
 
-function getScale(zoom: number): number {
-  return 0.01 * Math.pow(2, 15 - zoom);
+function getScale(zoom: number, map: maplibregl.Map): number {
+  const base = 0.01 * Math.pow(2, 15 - zoom);
+  // Shrink the arc on small viewports so it fits within the map area.
+  // Convert the pixel size of the container to a geographic fraction:
+  // at the current zoom, how many degrees does half the smallest viewport
+  // dimension correspond to?  We want the arc radius (which equals `base`
+  // at altitude=0) to be at most ~40% of that half-dimension.
+  const container = map.getContainer();
+  const minDim = Math.min(container.clientWidth, container.clientHeight);
+  // degreesPerPixel approximation at current zoom & latitude
+  const bounds = map.getBounds();
+  const lngSpan = bounds.getEast() - bounds.getWest();
+  const degreesPerPx = lngSpan / container.clientWidth;
+  const maxRadius = (minDim / 2) * degreesPerPx * 0.8;
+  return Math.min(base, maxRadius);
 }
 
 // ─── Hook ─────────────────────────────────────────────────────────────
@@ -353,7 +366,7 @@ export function useSunArcOverlay(
     const fc = computeOverlayGeoJSON({
       center: [loc.lng, loc.lat],
       sunData: sd,
-      scale: getScale(map.getZoom()),
+      scale: getScale(map.getZoom(), map),
       visibility: sv,
       dayBlockageMap: dbm,
       pinDirection: pd,
@@ -379,10 +392,13 @@ export function useSunArcOverlay(
     }
 
     const onZoom = () => renderRef.current();
+    const onResize = () => renderRef.current();
     map.on("zoomend", onZoom);
+    map.on("resize", onResize);
 
     return () => {
       map.off("zoomend", onZoom);
+      map.off("resize", onResize);
       map.off("load", onReady);
     };
     // Only run once when mapRef is available

@@ -11,6 +11,8 @@ interface TimeControlsProps {
   onAnimationModeChange: (mode: AnimationMode) => void;
   speed: number;
   onSpeedChange: (speed: number) => void;
+  /** Compact layout for mobile map overlay */
+  compact?: boolean;
 }
 
 function formatTime(minutes: number): string {
@@ -45,6 +47,7 @@ export default function TimeControls({
   onAnimationModeChange,
   speed,
   onSpeedChange,
+  compact = false,
 }: TimeControlsProps) {
   const totalMinutes = dateTime.getHours() * 60 + dateTime.getMinutes();
   const dayOfYear = getDayOfYear(dateTime);
@@ -58,6 +61,96 @@ export default function TimeControls({
   const handleDateChange = (day: number) => {
     onDateTimeChange(setDayOfYear(dateTime, day));
   };
+
+  if (compact) {
+    return (
+      <div className="flex flex-col gap-1.5 rounded-xl bg-white/90 px-3 py-2 shadow-md backdrop-blur dark:bg-zinc-800/90">
+        {/* Time row */}
+        <div className="flex items-center gap-2">
+          <span className="w-12 shrink-0 text-[10px] text-zinc-400">Time</span>
+          <input
+            type="range"
+            min={0}
+            max={1439}
+            value={totalMinutes}
+            onChange={(e) => handleTimeChange(parseInt(e.target.value))}
+            className="sun-slider min-w-0 flex-1"
+          />
+          <span className="w-10 shrink-0 text-right font-mono text-[10px] font-medium text-zinc-700 dark:text-zinc-200">
+            {formatTime(totalMinutes)}
+          </span>
+        </div>
+        {/* Date row */}
+        <div className="flex items-center gap-2">
+          <span className="w-12 shrink-0 text-[10px] text-zinc-400">Date</span>
+          <input
+            type="range"
+            min={1}
+            max={365}
+            value={dayOfYear}
+            onChange={(e) => handleDateChange(parseInt(e.target.value))}
+            className="sun-slider min-w-0 flex-1"
+          />
+          <span className="w-10 shrink-0 text-right font-mono text-[10px] font-medium text-zinc-700 dark:text-zinc-200">
+            {formatDate(dateTime)}
+          </span>
+        </div>
+        {/* Controls row */}
+        <div className="flex items-center gap-2">
+          <button
+            onClick={onPlayPause}
+            className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-amber-500 text-white shadow transition-colors hover:bg-amber-600"
+            aria-label={isPlaying ? "Pause" : "Play"}
+          >
+            {isPlaying ? (
+              <svg width="8" height="8" viewBox="0 0 14 14" fill="currentColor">
+                <rect x="2" y="1" width="3.5" height="12" rx="1" />
+                <rect x="8.5" y="1" width="3.5" height="12" rx="1" />
+              </svg>
+            ) : (
+              <svg width="8" height="8" viewBox="0 0 14 14" fill="currentColor">
+                <path d="M3 1.5v11l9-5.5z" />
+              </svg>
+            )}
+          </button>
+          <div className="flex rounded border border-zinc-200 text-[10px] dark:border-zinc-600">
+            <button
+              onClick={() => onAnimationModeChange("time")}
+              className={`px-2 py-0.5 transition-colors ${
+                animationMode === "time"
+                  ? "bg-amber-500 text-white"
+                  : "text-zinc-500 dark:text-zinc-400"
+              }`}
+            >
+              T
+            </button>
+            <button
+              onClick={() => onAnimationModeChange("date")}
+              className={`px-2 py-0.5 transition-colors ${
+                animationMode === "date"
+                  ? "bg-amber-500 text-white"
+                  : "text-zinc-500 dark:text-zinc-400"
+              }`}
+            >
+              D
+            </button>
+          </div>
+          <select
+            value={speed}
+            onChange={(e) => onSpeedChange(parseFloat(e.target.value))}
+            className="rounded border border-zinc-200 bg-white px-1 py-0.5 text-[10px] dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-200"
+          >
+            <option value={0.5}>½x</option>
+            <option value={1}>1x</option>
+            <option value={2}>2x</option>
+            <option value={5}>5x</option>
+            <option value={10}>10x</option>
+            <option value={20}>20x</option>
+          </select>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col gap-3 rounded-xl bg-white/90 p-4 shadow-md backdrop-blur dark:bg-zinc-800/90">
@@ -153,6 +246,7 @@ export default function TimeControls({
             <option value={2}>2x</option>
             <option value={5}>5x</option>
             <option value={10}>10x</option>
+            <option value={20}>20x</option>
           </select>
         </div>
       </div>

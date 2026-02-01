@@ -66,7 +66,7 @@ export default function Map({
       attributionControl: {},
     });
 
-    map.addControl(new maplibregl.NavigationControl(), "top-right");
+    map.addControl(new maplibregl.NavigationControl(), "bottom-right");
 
     map.on("click", (e) => {
       handleLocationChange(e.lngLat.lat, e.lngLat.lng);
