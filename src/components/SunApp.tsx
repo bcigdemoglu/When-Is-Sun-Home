@@ -181,6 +181,10 @@ export default function SunApp() {
           </span>
         </div>
       )}
+      <SunWindowsPanel
+        sunWindows={sunWindows}
+        blockageEnabled={blockageEnabled && buildingsEnabled}
+      />
       <button
         onClick={handleReset}
         className="w-full rounded-xl bg-red-500/90 px-4 py-2.5 text-xs font-medium text-white shadow-md backdrop-blur transition-colors hover:bg-red-600 dark:bg-red-600/90 dark:hover:bg-red-700"
@@ -212,10 +216,6 @@ export default function SunApp() {
         onDirectionChange={handleDirectionChange}
         pinFov={pinFov}
         onFovChange={handleFovChange}
-      />
-      <SunWindowsPanel
-        sunWindows={sunWindows}
-        blockageEnabled={blockageEnabled && buildingsEnabled}
       />
       <div className="flex flex-col gap-2 rounded-xl bg-white/90 p-4 shadow-md backdrop-blur dark:bg-zinc-800/90">
         <div className="flex items-center justify-between text-xs text-zinc-500 dark:text-zinc-400">
