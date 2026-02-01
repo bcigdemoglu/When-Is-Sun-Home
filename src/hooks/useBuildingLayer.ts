@@ -50,7 +50,7 @@ export function useBuildingLayer(
             ],
             "fill-extrusion-height": ["get", "height"],
             "fill-extrusion-base": 0,
-            "fill-extrusion-opacity": 0.6,
+            "fill-extrusion-opacity": 0.12,
           },
         });
       }
