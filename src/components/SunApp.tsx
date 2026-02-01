@@ -246,7 +246,7 @@ export default function SunApp() {
 
   // ── Render ──────────────────────────────────────────────────────────
   return (
-    <div className="flex h-screen flex-col lg:flex-row">
+    <div className="flex h-dvh flex-col lg:flex-row overflow-hidden">
       {/* Map area — full screen on mobile, 65% on desktop */}
       <div className="relative h-full flex-1 lg:flex-[65]">
         <div className="absolute left-3 right-3 top-3 z-10">
