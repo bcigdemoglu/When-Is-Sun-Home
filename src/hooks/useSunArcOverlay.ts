@@ -405,8 +405,20 @@ export function useSunArcOverlay(
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mapRef]);
 
-  // Data updates — just re-render (no listener churn)
+  // Throttled data updates — render at most once per animation frame
+  // to avoid overwhelming mobile GPUs with rapid GeoJSON pushes.
+  const rafIdRef = useRef(0);
   useEffect(() => {
-    renderRef.current();
+    if (rafIdRef.current) cancelAnimationFrame(rafIdRef.current);
+    rafIdRef.current = requestAnimationFrame(() => {
+      rafIdRef.current = 0;
+      renderRef.current();
+    });
+    return () => {
+      if (rafIdRef.current) {
+        cancelAnimationFrame(rafIdRef.current);
+        rafIdRef.current = 0;
+      }
+    };
   }, [location, sunData, sunVisibility, dayBlockageMap, pinDirection]);
 }
