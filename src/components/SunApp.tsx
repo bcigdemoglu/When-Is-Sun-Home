@@ -66,12 +66,9 @@ export default function SunApp() {
     setPinFov(s.pinFov);
 
     // Restore time/date or fall back to "now"
-    // On mobile (< lg breakpoint), always use current time so returning
-    // users aren't stuck on a stale cached date.
     const now = new Date();
-    const isMobile = window.innerWidth < 1024;
-    const timeMin = isMobile ? dateToTimeMinutes(now) : (s.timeMinutes ?? dateToTimeMinutes(now));
-    const day = isMobile ? dateToDayOfYear(now) : (s.dayOfYear ?? dateToDayOfYear(now));
+    const timeMin = s.timeMinutes ?? dateToTimeMinutes(now);
+    const day = s.dayOfYear ?? dateToDayOfYear(now);
     setDateTime(applyTimeAndDay(timeMin, day));
 
     hydrated.current = true;
@@ -123,7 +120,7 @@ export default function SunApp() {
 
   const handleDateTimeChange = useCallback((dt: Date) => {
     setDateTime(dt);
-    if (hydrated.current && window.innerWidth >= 1024) {
+    if (hydrated.current) {
       updateAppState("timeMinutes", dateToTimeMinutes(dt));
       updateAppState("dayOfYear", dateToDayOfYear(dt));
     }
@@ -193,9 +190,9 @@ export default function SunApp() {
     });
   }, [animationMode]);
 
-  // Persist time when animation stops (desktop only — mobile always starts fresh)
+  // Persist time when animation stops
   useEffect(() => {
-    if (!isPlaying && hydrated.current && window.innerWidth >= 1024) {
+    if (!isPlaying && hydrated.current) {
       updateAppState("timeMinutes", dateToTimeMinutes(dateTime));
       updateAppState("dayOfYear", dateToDayOfYear(dateTime));
     }
