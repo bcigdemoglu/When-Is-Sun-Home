@@ -349,12 +349,14 @@ export function useSunArcOverlay(
 ) {
   // Latest props in refs — always current, never stale
   const dataRef = useRef({ location, sunData, sunVisibility, dayBlockageMap, pinDirection });
+  // eslint-disable-next-line
   dataRef.current = { location, sunData, sunVisibility, dayBlockageMap, pinDirection };
 
   const readyRef = useRef(false);
 
   // Render helper reads from refs — safe to call from any callback
   const renderRef = useRef(() => {});
+  // eslint-disable-next-line
   renderRef.current = () => {
     const map = mapRef.current;
     if (!map || !readyRef.current) return;
@@ -402,7 +404,6 @@ export function useSunArcOverlay(
       map.off("load", onReady);
     };
     // Only run once when mapRef is available
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mapRef]);
 
   // Data updates — just re-render (no listener churn)

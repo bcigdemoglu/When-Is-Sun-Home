@@ -21,6 +21,7 @@ export function useShadowLayer(
   enabled: boolean
 ) {
   const dataRef = useRef({ buildingData, sunData, enabled });
+  // eslint-disable-next-line
   dataRef.current = { buildingData, sunData, enabled };
 
   const readyRef = useRef(false);
@@ -28,6 +29,7 @@ export function useShadowLayer(
 
   // Push shadow data to the map
   const pushRef = useRef(() => {});
+  // eslint-disable-next-line
   pushRef.current = () => {
     const map = mapRef.current;
     if (!map || !readyRef.current) return;
@@ -91,7 +93,6 @@ export function useShadowLayer(
         map.off("load", setup);
       };
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mapRef]);
 
   // Throttled data updates

@@ -56,6 +56,7 @@ export default function SunApp() {
     const stored = loadAppState();
     const s = hasUrlParams ? { ...stored, ...urlState } : stored;
 
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- hydration: runs once to restore persisted state
     if (s.location) setLocation(s.location);
     setZoom(s.zoom);
     setBuildingsEnabled(s.buildingsEnabled);
