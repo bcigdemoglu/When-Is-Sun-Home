@@ -1,6 +1,5 @@
 "use client";
 
-import { useRef, useCallback } from "react";
 import type { AnimationMode } from "@/types/sun";
 
 interface TimeControlsProps {
@@ -53,34 +52,14 @@ export default function TimeControls({
   const totalMinutes = dateTime.getHours() * 60 + dateTime.getMinutes();
   const dayOfYear = getDayOfYear(dateTime);
 
-  // Batch rapid slider changes into a single rAF callback so the expensive
-  // downstream computations (arc, blockage, shadows) run at most once per frame
-  // instead of 60-120× per second on mobile touch input.
-  const rafRef = useRef(0);
-  const pendingRef = useRef<Date | null>(null);
-  const flush = useCallback(() => {
-    rafRef.current = 0;
-    if (pendingRef.current) {
-      onDateTimeChange(pendingRef.current);
-      pendingRef.current = null;
-    }
-  }, [onDateTimeChange]);
-
-  const scheduleUpdate = useCallback((dt: Date) => {
-    pendingRef.current = dt;
-    if (!rafRef.current) {
-      rafRef.current = requestAnimationFrame(flush);
-    }
-  }, [flush]);
-
   const handleTimeChange = (minutes: number) => {
     const next = new Date(dateTime);
     next.setHours(Math.floor(minutes / 60), minutes % 60, 0, 0);
-    scheduleUpdate(next);
+    onDateTimeChange(next);
   };
 
   const handleDateChange = (day: number) => {
-    scheduleUpdate(setDayOfYear(dateTime, day));
+    onDateTimeChange(setDayOfYear(dateTime, day));
   };
 
   if (compact) {
