@@ -1,0 +1,245 @@
+{
+  "version": 0.6,
+  "generator": "HAND-WRITTEN test fixture in the shape of an Overpass `out body geom` response. Ids and geometry are invented.",
+  "osm3s": {
+    "copyright": "Invented data; not from OpenStreetMap."
+  },
+  "elements": [
+    {
+      "type": "node",
+      "id": 9300001,
+      "lat": 37.7905,
+      "lon": -122.4285,
+      "tags": { "amenity": "bench" }
+    },
+    {
+      "type": "way",
+      "id": 9200001,
+      "nodes": [1, 2, 3, 4, 1],
+      "geometry": [
+        { "lat": 37.79, "lon": -122.43 },
+        { "lat": 37.7908, "lon": -122.43 },
+        { "lat": 37.7908, "lon": -122.429 },
+        { "lat": 37.79, "lon": -122.429 },
+        { "lat": 37.79, "lon": -122.43 }
+      ],
+      "tags": { "building": "yes" }
+    },
+    {
+      "type": "way",
+      "id": 9200002,
+      "nodes": [5, 6, 7, 8, 5],
+      "geometry": [
+        { "lat": 37.7902, "lon": -122.4297 },
+        { "lat": 37.7902, "lon": -122.4293 },
+        { "lat": 37.7906, "lon": -122.4293 },
+        { "lat": 37.7906, "lon": -122.4297 },
+        { "lat": 37.7902, "lon": -122.4297 }
+      ],
+      "tags": { "building": "shed" }
+    },
+    {
+      "type": "way",
+      "id": 9200013,
+      "nodes": [15, 11],
+      "geometry": [
+        { "lat": 37.791, "lon": -122.428 },
+        { "lat": 37.79, "lon": -122.428 }
+      ]
+    },
+    {
+      "type": "way",
+      "id": 9200041,
+      "nodes": [41, 42, 43, 44, 41],
+      "geometry": [
+        { "lat": 37.7915, "lon": -122.43 },
+        { "lat": 37.7915, "lon": -122.4298 },
+        { "lat": 37.7917, "lon": -122.4298 },
+        { "lat": 37.7917, "lon": -122.43 },
+        { "lat": 37.7915, "lon": -122.43 }
+      ],
+      "tags": { "building": "house", "addr:housenumber": "12" }
+    },
+    {
+      "type": "way",
+      "id": 9200041,
+      "nodes": [41, 42, 43, 44, 41],
+      "geometry": [
+        { "lat": 37.7915, "lon": -122.43 },
+        { "lat": 37.7915, "lon": -122.4298 },
+        { "lat": 37.7917, "lon": -122.4298 },
+        { "lat": 37.7917, "lon": -122.43 },
+        { "lat": 37.7915, "lon": -122.43 }
+      ],
+      "tags": { "building": "house", "addr:housenumber": "12" }
+    },
+    {
+      "type": "way",
+      "id": 9200042,
+      "nodes": [45, 46, 47, 45],
+      "geometry": [
+        { "lat": 37.792, "lon": -122.43 },
+        { "lat": 37.792, "lon": -122.4298 },
+        { "lat": 37.7922, "lon": -122.4298 },
+        { "lat": 37.792, "lon": -122.43 }
+      ],
+      "tags": { "building": "no" }
+    },
+    {
+      "type": "way",
+      "id": 9200043,
+      "nodes": [48, 49, 50, 48],
+      "geometry": [
+        { "lat": 37.7925, "lon": -122.43 },
+        { "lat": 37.7925, "lon": -122.4298 },
+        { "lat": 37.7927, "lon": -122.4298 },
+        { "lat": 37.7925, "lon": -122.43 }
+      ],
+      "tags": { "building": "yes", "location": "underground" }
+    },
+    {
+      "type": "way",
+      "id": 9200044,
+      "nodes": [51, 52, 51],
+      "geometry": [
+        { "lat": 37.793, "lon": -122.43 },
+        { "lat": 37.793, "lon": -122.4298 },
+        { "lat": 37.793, "lon": -122.43 }
+      ],
+      "tags": { "building": "yes" }
+    },
+    {
+      "type": "relation",
+      "id": 9100001,
+      "members": [
+        {
+          "type": "way",
+          "ref": 9200001,
+          "role": "outer",
+          "geometry": [
+            { "lat": 37.79, "lon": -122.43 },
+            { "lat": 37.7908, "lon": -122.43 },
+            { "lat": 37.7908, "lon": -122.429 },
+            { "lat": 37.79, "lon": -122.429 },
+            { "lat": 37.79, "lon": -122.43 }
+          ]
+        },
+        {
+          "type": "way",
+          "ref": 9200002,
+          "role": "inner",
+          "geometry": [
+            { "lat": 37.7902, "lon": -122.4297 },
+            { "lat": 37.7902, "lon": -122.4293 },
+            { "lat": 37.7906, "lon": -122.4293 },
+            { "lat": 37.7906, "lon": -122.4297 },
+            { "lat": 37.7902, "lon": -122.4297 }
+          ]
+        }
+      ],
+      "tags": {
+        "building": "apartments",
+        "building:levels": "5",
+        "name": "Courtyard Block",
+        "type": "multipolygon"
+      }
+    },
+    {
+      "type": "relation",
+      "id": 9100002,
+      "members": [
+        {
+          "type": "way",
+          "ref": 9200011,
+          "role": "outer",
+          "geometry": [
+            { "lat": 37.791, "lon": -122.4268 },
+            { "lat": 37.7912, "lon": -122.4274 },
+            { "lat": 37.791, "lon": -122.428 }
+          ]
+        },
+        {
+          "type": "way",
+          "ref": 9200021,
+          "role": "inner",
+          "geometry": [
+            { "lat": 37.7903, "lon": -122.4277 },
+            { "lat": 37.7903, "lon": -122.4271 },
+            { "lat": 37.7907, "lon": -122.4271 }
+          ]
+        },
+        {
+          "type": "way",
+          "ref": 9200013,
+          "role": "outer",
+          "geometry": [
+            { "lat": 37.791, "lon": -122.428 },
+            { "lat": 37.79, "lon": -122.428 }
+          ]
+        },
+        {
+          "type": "node",
+          "ref": 9300002,
+          "role": "label",
+          "lat": 37.7905,
+          "lon": -122.4266
+        },
+        {
+          "type": "way",
+          "ref": 9200031,
+          "role": "",
+          "geometry": [
+            { "lat": 37.7902, "lon": -122.4264 },
+            { "lat": 37.7902, "lon": -122.426 },
+            { "lat": 37.7906, "lon": -122.426 },
+            { "lat": 37.7906, "lon": -122.4264 },
+            { "lat": 37.7902, "lon": -122.4264 }
+          ]
+        },
+        {
+          "type": "way",
+          "ref": 9200012,
+          "role": "outer",
+          "geometry": [
+            { "lat": 37.791, "lon": -122.4268 },
+            { "lat": 37.79, "lon": -122.4268 },
+            { "lat": 37.79, "lon": -122.428 }
+          ]
+        },
+        {
+          "type": "way",
+          "ref": 9200022,
+          "role": "inner",
+          "geometry": [
+            { "lat": 37.7903, "lon": -122.4277 },
+            { "lat": 37.7907, "lon": -122.4277 },
+            { "lat": 37.7907, "lon": -122.4271 }
+          ]
+        }
+      ],
+      "tags": {
+        "building": "university",
+        "height": "60 ft",
+        "name": "Science Hall",
+        "type": "multipolygon"
+      }
+    },
+    {
+      "type": "relation",
+      "id": 9100003,
+      "members": [
+        {
+          "type": "way",
+          "ref": 9200051,
+          "role": "outer",
+          "geometry": [
+            { "lat": 37.7935, "lon": -122.43 },
+            { "lat": 37.7935, "lon": -122.4298 },
+            { "lat": 37.7937, "lon": -122.4298 }
+          ]
+        }
+      ],
+      "tags": { "building": "yes", "type": "multipolygon" }
+    }
+  ]
+}
