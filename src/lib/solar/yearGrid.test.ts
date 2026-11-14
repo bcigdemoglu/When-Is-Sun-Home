@@ -99,6 +99,9 @@ describe("computeSunYearGrid", () => {
       [{ lat: -0.1807, lng: -78.4678 }, "America/Guayaquil", 2026, 30, 0],
       [{ lat: -31.55, lng: 159.08 }, "Australia/Lord_Howe", 2026, 10, 3],
       [{ lat: 30.0444, lng: 31.2357 }, "Africa/Cairo", 2026, 20, 3],
+      // Havana falls back from 01:00 to 00:00, so the FIRST hour of that day
+      // happens twice while the rest of the day is in the later offset.
+      [{ lat: 23.1136, lng: -82.3666 }, "America/Havana", 2026, 20, 3],
       [{ lat: 27.7172, lng: 85.324 }, "Asia/Kathmandu", 2026, 60, 0],
       [{ lat: 1.87, lng: -157.43 }, "Pacific/Kiritimati", 2026, 60, 0],
       [{ lat: -77.85, lng: 166.67 }, "Antarctica/McMurdo", 2026, 60, 1],
@@ -108,6 +111,41 @@ describe("computeSunYearGrid", () => {
       const g = computeSunYearGrid(place, { year, timeZone, stepMinutes });
       const { gaps } = expectGridMatchesSuncalc(g);
       expect(gaps, timeZone).toBe(expectedGaps);
+    }
+  });
+
+  test("equals suncalc cell for cell in zones with unusual transitions", () => {
+    // Transitions at local midnight, at 24:00, by 30 minutes or 2 hours,
+    // "negative" DST, a Ramadan pause… all compared against the public
+    // zonedToUtc (first-occurrence) conversion.
+    const zones = [
+      "America/Havana",
+      "America/Santiago",
+      "America/Asuncion",
+      "America/Nuuk",
+      "America/Scoresbysund",
+      "America/St_Johns",
+      "America/Sao_Paulo",
+      "Asia/Beirut",
+      "Asia/Gaza",
+      "Asia/Tehran",
+      "Africa/Casablanca",
+      "Africa/Cairo",
+      "Antarctica/Troll",
+      "Australia/Lord_Howe",
+      "Australia/Adelaide",
+      "Europe/Chisinau",
+      "Europe/Dublin",
+      "Pacific/Chatham",
+      "Pacific/Norfolk",
+      "Pacific/Easter",
+      "Pacific/Apia",
+    ];
+    for (const timeZone of zones) {
+      for (const year of [2019, 2026]) {
+        const g = computeSunYearGrid({ lat: 20, lng: 10 }, { year, timeZone, stepMinutes: 30 });
+        expectGridMatchesSuncalc(g);
+      }
     }
   });
 

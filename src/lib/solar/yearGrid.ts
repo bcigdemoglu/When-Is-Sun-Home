@@ -70,17 +70,24 @@ export function computeSunYearGrid(place: LatLng, spec: YearGridSpec): SunYearGr
     const lastLocalMs = dayStartLocalMs + (slotsPerDay - 0.5) * stepMs;
 
     // Almost every day lies inside a single offset segment: find it once.
-    // Days containing a transition fall back to resolving each sample.
+    // Days touched by a transition fall back to resolving each sample.
+    //
+    // The day is uniform when the FIRST segment that accepts its first sample
+    // (the same "first occurrence" rule as localMsToUtcMs) also accepts its
+    // last sample, and every earlier segment is already over on its own wall
+    // clock — otherwise part of the day could belong to an earlier pass
+    // through the same wall-clock times (e.g. Havana's 01:00 → 00:00 fall-back).
     let dayOffsetMs = NaN;
     for (let i = 0; i <= lastSegment; i++) {
       const offsetMs = offsetsMin[i] * MS_PER_MINUTE;
-      if (
-        firstLocalMs - offsetMs >= startsMs[i] &&
-        (i === lastSegment || lastLocalMs - offsetMs < startsMs[i + 1])
-      ) {
-        dayOffsetMs = offsetMs;
+      const endMs = i === lastSegment ? Infinity : startsMs[i + 1];
+      if (firstLocalMs - offsetMs >= startsMs[i] && firstLocalMs - offsetMs < endMs) {
+        if (lastLocalMs - offsetMs < endMs) dayOffsetMs = offsetMs;
         break;
       }
+      // Segment i does not hold the first sample. If its wall clock still
+      // reaches into this day, the day is not uniform.
+      if (endMs + offsetMs > firstLocalMs) break;
     }
     const uniform = !Number.isNaN(dayOffsetMs);
 

@@ -1,6 +1,8 @@
 import fc from "fast-check";
 import { describe, expect, test } from "vitest";
 
+import { real } from "./testing";
+
 import {
   angularDistanceDeg,
   bearingDeg,
@@ -22,7 +24,8 @@ function haversineM(a: { lat: number; lng: number }, b: { lat: number; lng: numb
   const dLat = (b.lat - a.lat) * DEG;
   const dLng = (b.lng - a.lng) * DEG;
   const h =
-    Math.sin(dLat / 2) ** 2 + Math.cos(a.lat * DEG) * Math.cos(b.lat * DEG) * Math.sin(dLng / 2) ** 2;
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(a.lat * DEG) * Math.cos(b.lat * DEG) * Math.sin(dLng / 2) ** 2;
   return 2 * 6371008.8 * Math.asin(Math.sqrt(h));
 }
 
@@ -78,10 +81,10 @@ describe("toLocalMeters / fromLocalMeters", () => {
   test("round-trips", () => {
     fc.assert(
       fc.property(
-        fc.double({ min: -80, max: 80, noNaN: true }),
-        fc.double({ min: -179, max: 179, noNaN: true }),
-        fc.double({ min: -2000, max: 2000, noNaN: true }),
-        fc.double({ min: -2000, max: 2000, noNaN: true }),
+        real(-80, 80),
+        real(-179, 179),
+        real(-2000, 2000),
+        real(-2000, 2000),
         (lat, lng, x, y) => {
           const o = { lat, lng };
           const back = toLocalMeters(o, fromLocalMeters(o, x, y));
@@ -96,10 +99,10 @@ describe("toLocalMeters / fromLocalMeters", () => {
     // 0.6% covers the sphere-vs-ellipsoid difference of the reference itself.
     fc.assert(
       fc.property(
-        fc.double({ min: -70, max: 70, noNaN: true }),
-        fc.double({ min: -179, max: 179, noNaN: true }),
-        fc.double({ min: 50, max: 2000, noNaN: true }),
-        fc.double({ min: 0, max: 360, noNaN: true }),
+        real(-70, 70),
+        real(-179, 179),
+        real(50, 2000),
+        real(0, 360),
         (lat, lng, distance, bearing) => {
           const o = { lat, lng };
           const p = fromLocalMeters(
@@ -132,15 +135,18 @@ describe("normalizeDeg", () => {
 
   test("leaves in-range values bit-for-bit unchanged", () => {
     fc.assert(
-      fc.property(fc.double({ min: 0, max: 360, maxExcluded: true, noNaN: true }), (d) => {
-        expect(normalizeDeg(d)).toBe(d === 0 ? 0 : d);
-      }),
+      fc.property(
+        real(0, 360).filter((d) => d < 360),
+        (d) => {
+          expect(normalizeDeg(d)).toBe(d === 0 ? 0 : d);
+        },
+      ),
     );
   });
 
   test("is in [0, 360) and congruent to the input", () => {
     fc.assert(
-      fc.property(fc.double({ min: -1e6, max: 1e6, noNaN: true }), (d) => {
+      fc.property(real(-1e6, 1e6), (d) => {
         const n = normalizeDeg(d);
         expect(n).toBeGreaterThanOrEqual(0);
         expect(n).toBeLessThan(360);
@@ -163,16 +169,12 @@ describe("angularDistanceDeg", () => {
 
   test("is symmetric and in [0, 180]", () => {
     fc.assert(
-      fc.property(
-        fc.double({ min: -720, max: 720, noNaN: true }),
-        fc.double({ min: -720, max: 720, noNaN: true }),
-        (a, b) => {
-          const d = angularDistanceDeg(a, b);
-          expect(d).toBeGreaterThanOrEqual(0);
-          expect(d).toBeLessThanOrEqual(180);
-          expect(angularDistanceDeg(b, a)).toBeCloseTo(d, 9);
-        },
-      ),
+      fc.property(real(-720, 720), real(-720, 720), (a, b) => {
+        const d = angularDistanceDeg(a, b);
+        expect(d).toBeGreaterThanOrEqual(0);
+        expect(d).toBeLessThanOrEqual(180);
+        expect(angularDistanceDeg(b, a)).toBeCloseTo(d, 9);
+      }),
     );
   });
 });
@@ -190,14 +192,10 @@ describe("bearingDeg", () => {
 
   test("inverts sin/cos", () => {
     fc.assert(
-      fc.property(
-        fc.double({ min: 0, max: 359.999, noNaN: true }),
-        fc.double({ min: 0.1, max: 1000, noNaN: true }),
-        (bearing, r) => {
-          const got = bearingDeg(r * Math.sin(bearing * DEG), r * Math.cos(bearing * DEG));
-          expect(angularDistanceDeg(got, bearing)).toBeLessThan(1e-9);
-        },
-      ),
+      fc.property(real(0, 359.999), real(0.1, 1000), (bearing, r) => {
+        const got = bearingDeg(r * Math.sin(bearing * DEG), r * Math.cos(bearing * DEG));
+        expect(angularDistanceDeg(got, bearing)).toBeLessThan(1e-9);
+      }),
     );
   });
 });
@@ -307,13 +305,13 @@ describe("point in polygon", () => {
   test("agrees with a half-plane test on random rotated rectangles", () => {
     fc.assert(
       fc.property(
-        fc.double({ min: -50, max: 50, noNaN: true }),
-        fc.double({ min: -50, max: 50, noNaN: true }),
-        fc.double({ min: 1, max: 30, noNaN: true }),
-        fc.double({ min: 1, max: 30, noNaN: true }),
-        fc.double({ min: 0, max: 360, noNaN: true }),
-        fc.double({ min: -80, max: 80, noNaN: true }),
-        fc.double({ min: -80, max: 80, noNaN: true }),
+        real(-50, 50),
+        real(-50, 50),
+        real(1, 30),
+        real(1, 30),
+        real(0, 360),
+        real(-80, 80),
+        real(-80, 80),
         (cx, cy, halfW, halfH, rotation, px, py) => {
           const cos = Math.cos(rotation * DEG);
           const sin = Math.sin(rotation * DEG);

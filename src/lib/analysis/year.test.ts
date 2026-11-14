@@ -1,6 +1,8 @@
 import fc from "fast-check";
 import { describe, expect, test } from "vitest";
 
+import { real } from "@/lib/geo/testing";
+
 import { computeHorizonProfile } from "@/lib/horizon/profile";
 import { buildingFromLocal, collectionOf, rect, rotatedRect } from "@/lib/horizon/testing";
 import { dateFromDayIndex, daysInYear } from "@/lib/solar/timezone";
@@ -37,19 +39,31 @@ function check(condition: boolean, message: string): void {
 }
 
 // Real sun grids, computed once. 15-minute steps keep the property tests quick.
-const sfGrid = computeSunYearGrid(SF, { year: 2026, timeZone: "America/Los_Angeles", stepMinutes: 15 });
+const sfGrid = computeSunYearGrid(SF, {
+  year: 2026,
+  timeZone: "America/Los_Angeles",
+  stepMinutes: 15,
+});
 const sydneyGrid = computeSunYearGrid(SYDNEY, {
   year: 2026,
   timeZone: "Australia/Sydney",
   stepMinutes: 15,
 });
-const tromsoGrid = computeSunYearGrid(TROMSO, { year: 2026, timeZone: "Europe/Oslo", stepMinutes: 15 });
+const tromsoGrid = computeSunYearGrid(TROMSO, {
+  year: 2026,
+  timeZone: "Europe/Oslo",
+  stepMinutes: 15,
+});
 const quitoGrid = computeSunYearGrid(QUITO, {
   year: 2026,
   timeZone: "America/Guayaquil",
   stepMinutes: 15,
 });
-const sfGrid5 = computeSunYearGrid(SF, { year: 2026, timeZone: "America/Los_Angeles", stepMinutes: 5 });
+const sfGrid5 = computeSunYearGrid(SF, {
+  year: 2026,
+  timeZone: "America/Los_Angeles",
+  stepMinutes: 5,
+});
 
 /**
  * A hand-made grid: every cell is night unless listed.
@@ -183,14 +197,17 @@ function expectNeverSunnier(less: YearAnalysis, more: YearAnalysis): void {
   }
   for (let d = 0; d < less.days.length; d++) {
     check(less.days[d].sunMinutes <= more.days[d].sunMinutes, `day ${d} has more sun`);
-    check(less.days[d].daylightMinutes === more.days[d].daylightMinutes, `day ${d} daylight differs`);
+    check(
+      less.days[d].daylightMinutes === more.days[d].daylightMinutes,
+      `day ${d} daylight differs`,
+    );
   }
   check(less.annual.totalSunHours <= more.annual.totalSunHours, "annual total has more sun");
 }
 
 // ─── Generators ────────────────────────────────────────────────────────────
 
-const span = (min: number, max: number) => fc.double({ min, max, noNaN: true });
+const span = (min: number, max: number) => real(min, max);
 
 const localBuilding = fc.record({
   cx: span(-120, 120),
@@ -286,7 +303,11 @@ describe("analyzeYear: hand-made grid", () => {
       firstSunMinute: 360,
       lastSunMinute: 720,
     });
-    expect(analysis.days[3]).toMatchObject({ sunMinutes: 360, firstSunMinute: 1080, lastSunMinute: 1440 });
+    expect(analysis.days[3]).toMatchObject({
+      sunMinutes: 360,
+      firstSunMinute: 1080,
+      lastSunMinute: 1440,
+    });
     expect(analysis.days[31]).toMatchObject({
       date: "2026-02-01",
       sunMinutes: 360,
@@ -348,7 +369,11 @@ describe("analyzeYear: hand-made grid", () => {
 
   test("without a horizon nothing is blocked", () => {
     const analysis = analyzeYear(grid, null, yard());
-    expect(analysis.days[2]).toMatchObject({ sunMinutes: 720, blockedMinutes: 0, lastSunMinute: 1080 });
+    expect(analysis.days[2]).toMatchObject({
+      sunMinutes: 720,
+      blockedMinutes: 0,
+      lastSunMinute: 1080,
+    });
     expect(analysis.annual.sunFraction).toBe(1);
     expect(analysis.annual.totalSunHours).toBe(60);
   });
@@ -365,8 +390,16 @@ describe("analyzeYear: hand-made grid", () => {
       firstSunMinute: null,
       lastSunMinute: null,
     });
-    expect(analysis.days[2]).toMatchObject({ sunMinutes: 0, outOfViewMinutes: 360, blockedMinutes: 360 });
-    expect(analysis.days[3]).toMatchObject({ sunMinutes: 360, outOfViewMinutes: 0, blockedMinutes: 0 });
+    expect(analysis.days[2]).toMatchObject({
+      sunMinutes: 0,
+      outOfViewMinutes: 360,
+      blockedMinutes: 360,
+    });
+    expect(analysis.days[3]).toMatchObject({
+      sunMinutes: 360,
+      outOfViewMinutes: 0,
+      blockedMinutes: 0,
+    });
     expect(analysis.annual.totalSunHours).toBe(6);
     expect(analysis.annual.totalDaylightHours).toBe(60);
     expect(analysis.annual.sunFraction).toBe(0.1);
@@ -425,7 +458,12 @@ describe("analyzeYear: real sun grids", () => {
         for (const observer of observers) {
           const analysis = analyzeYear(grid, horizon, observer);
           for (let i = 0; i < analysis.state.length; i++) {
-            const expected = classifySun(grid.azimuthDeg[i], grid.altitudeDeg[i], horizon, observer);
+            const expected = classifySun(
+              grid.azimuthDeg[i],
+              grid.altitudeDeg[i],
+              horizon,
+              observer,
+            );
             if (analysis.state[i] !== expected) {
               throw new Error(`cell ${i}: got ${analysis.state[i]}, classifySun says ${expected}`);
             }
@@ -467,7 +505,9 @@ describe("analyzeYear: real sun grids", () => {
     expect(south.days[south.annual.bestDayIndex].sunMinutes).toBe(
       Math.max(...south.days.map((day) => day.sunMinutes)),
     );
-    expect(["2026-05", "2026-06"]).toContain(south.days[south.annual.worstDayIndex].date.slice(0, 7));
+    expect(["2026-05", "2026-06"]).toContain(
+      south.days[south.annual.worstDayIndex].date.slice(0, 7),
+    );
   });
 
   test("at 37.79°N the year averages ≈ 12.1 h of daylight per day", () => {
@@ -510,12 +550,18 @@ describe("analyzeYear: real sun grids", () => {
     for (const day of [66, 304]) {
       const before = analysis.days[day - 1].daylightMinutes;
       const after = analysis.days[day + 1].daylightMinutes;
-      expect(analysis.days[day].daylightMinutes).toBeGreaterThanOrEqual(Math.min(before, after) - 5);
+      expect(analysis.days[day].daylightMinutes).toBeGreaterThanOrEqual(
+        Math.min(before, after) - 5,
+      );
       expect(analysis.days[day].daylightMinutes).toBeLessThanOrEqual(Math.max(before, after) + 5);
     }
     // …but first sun moves an hour later on the clock.
-    expect(analysis.days[66].firstSunMinute! - analysis.days[65].firstSunMinute!).toBeGreaterThanOrEqual(55);
-    expect(analysis.days[304].firstSunMinute! - analysis.days[303].firstSunMinute!).toBeLessThanOrEqual(-55);
+    expect(
+      analysis.days[66].firstSunMinute! - analysis.days[65].firstSunMinute!,
+    ).toBeGreaterThanOrEqual(55);
+    expect(
+      analysis.days[304].firstSunMinute! - analysis.days[303].firstSunMinute!,
+    ).toBeLessThanOrEqual(-55);
   });
 
   test("a tall wall to the south costs winter sun but not summer-noon sun (northern hemisphere)", () => {
@@ -548,7 +594,8 @@ describe("analyzeYear: real sun grids", () => {
     const minutes = (a: YearAnalysis) => a.days.reduce((sum, day) => sum + day.sunMinutes, 0);
     expect(minutes(east) + minutes(west)).toBeGreaterThanOrEqual(minutes(all));
     expect(minutes(east) + minutes(west)).toBeLessThan(minutes(all) + 60);
-    for (const analysis of [north, south, east, west]) expectInternallyConsistent(analysis, sfGrid5);
+    for (const analysis of [north, south, east, west])
+      expectInternallyConsistent(analysis, sfGrid5);
   });
 });
 
@@ -595,22 +642,28 @@ describe("analyzeYear: invariants (property tests)", () => {
 
   test("raising the observer never decreases sun", () => {
     fc.assert(
-      fc.property(scene, span(0, 30), span(0, 30), fc.boolean(), ({ site, buildings }, a, b, win) => {
-        const lowHeight = Math.min(a, b);
-        const highHeight = Math.max(a, b);
-        const observerAt = (h: number) => (win ? windowFacing(170, 150, h) : yard(h));
-        const low = analyzeYear(
-          site.grid,
-          horizonFor(site.place, buildings, lowHeight),
-          observerAt(lowHeight),
-        );
-        const high = analyzeYear(
-          site.grid,
-          horizonFor(site.place, buildings, highHeight),
-          observerAt(highHeight),
-        );
-        expectNeverSunnier(low, high);
-      }),
+      fc.property(
+        scene,
+        span(0, 30),
+        span(0, 30),
+        fc.boolean(),
+        ({ site, buildings }, a, b, win) => {
+          const lowHeight = Math.min(a, b);
+          const highHeight = Math.max(a, b);
+          const observerAt = (h: number) => (win ? windowFacing(170, 150, h) : yard(h));
+          const low = analyzeYear(
+            site.grid,
+            horizonFor(site.place, buildings, lowHeight),
+            observerAt(lowHeight),
+          );
+          const high = analyzeYear(
+            site.grid,
+            horizonFor(site.place, buildings, highHeight),
+            observerAt(highHeight),
+          );
+          expectNeverSunnier(low, high);
+        },
+      ),
       { numRuns: 60 },
     );
   });
@@ -625,8 +678,16 @@ describe("analyzeYear: invariants (property tests)", () => {
         span(0, 20),
         ({ site, buildings }, facing, a, b, heightM) => {
           const horizon = horizonFor(site.place, buildings, heightM);
-          const narrow = analyzeYear(site.grid, horizon, windowFacing(facing, Math.min(a, b), heightM));
-          const wide = analyzeYear(site.grid, horizon, windowFacing(facing, Math.max(a, b), heightM));
+          const narrow = analyzeYear(
+            site.grid,
+            horizon,
+            windowFacing(facing, Math.min(a, b), heightM),
+          );
+          const wide = analyzeYear(
+            site.grid,
+            horizon,
+            windowFacing(facing, Math.max(a, b), heightM),
+          );
           expectNeverSunnier(narrow, wide);
           // And a yard is at least as sunny as any window at the same spot.
           expectNeverSunnier(wide, analyzeYear(site.grid, horizon, yard(heightM)));

@@ -1,6 +1,8 @@
 import fc from "fast-check";
 import { describe, expect, test } from "vitest";
 
+import { real } from "@/lib/geo/testing";
+
 import { toLocalMeters } from "@/lib/geo/local";
 import { HORIZON_BINS, type BuildingFeature, type HorizonProfile, type LatLng } from "@/lib/types";
 
@@ -18,6 +20,8 @@ import {
 
 const DEG = Math.PI / 180;
 const PLACE: LatLng = { lat: 37.7906, lng: -122.4294 };
+/** Multiply the property-test run counts, e.g. `FC_SCALE=50` for a deep soak. */
+const SCALE = Number(process.env.FC_SCALE ?? 1);
 const atanDeg = (rise: number, run: number) => Math.atan2(rise, run) / DEG;
 
 // ─── Independent brute-force reference ─────────────────────────────────────
@@ -82,7 +86,11 @@ function refRayHitDistance(polygon: LocalPolygon, azimuthDeg: number): number | 
 }
 
 /** Nearest point of a polygon's boundary to the origin. */
-function refNearestBoundaryPoint(polygon: LocalPolygon): { x: number; y: number; distance: number } {
+function refNearestBoundaryPoint(polygon: LocalPolygon): {
+  x: number;
+  y: number;
+  distance: number;
+} {
   let best = { x: 0, y: 0, distance: Infinity };
   for (const ring of polygon) {
     for (const [p, q] of edgesOf(ring)) {
@@ -126,7 +134,7 @@ function toFeatures(place: LatLng, buildings: RefBuilding[]): BuildingFeature[] 
 }
 
 function binOfBearing(x: number, y: number, binCount: number): number {
-  const bearing = ((Math.atan2(x, y) / DEG) % 360 + 360) % 360;
+  const bearing = (((Math.atan2(x, y) / DEG) % 360) + 360) % 360;
   return Math.min(binCount - 1, Math.floor(bearing / (360 / binCount)));
 }
 
@@ -153,9 +161,7 @@ function expectMatchesReference(
   const binWidth = 360 / binCount;
 
   // Which parts does the reference hit with at least one bin-centre ray?
-  const obstructing = buildings.map(
-    (b) => b.heightM > observerHeightM && !refContainsOrigin(b),
-  );
+  const obstructing = buildings.map((b) => b.heightM > observerHeightM && !refContainsOrigin(b));
   // expectedFallback[bin] = steepest sub-bin part registered on that bin.
   const fallback = new Map<number, { elevationDeg: number; buildingIndex: number }[]>();
   let subBinParts = 0;
@@ -170,6 +176,15 @@ function expectMatchesReference(
       subBinParts++;
       const nearest = refNearestBoundaryPoint(polygon);
       const bin = binOfBearing(nearest.x, nearest.y, binCount);
+      // If that nearest point sits (almost) exactly on the boundary between two
+      // bins, which of them gets the part is a rounding coin-flip the reference
+      // cannot predict: discard such knife-edge scenes (fast-check shrinks
+      // towards them, e.g. a speck centred exactly due east). The margin allows
+      // for the lat/lng round trip: ~1e-9 m of noise on the ends of a 0.1 m
+      // wall seen face-on moves its nearest point by ~1e-6° of bearing.
+      const bearing = (Math.atan2(nearest.x, nearest.y) / DEG + 360) % 360;
+      const intoBin = (bearing / binWidth) % 1;
+      fc.pre(Math.min(intoBin, 1 - intoBin) * binWidth > 1e-4);
       const elevationDeg = atanDeg(
         building.heightM - observerHeightM,
         Math.max(nearest.distance, 0.5),
@@ -250,8 +265,8 @@ function minBoundaryDistance(buildings: RefBuilding[]): number {
 
 // ─── Generators ────────────────────────────────────────────────────────────
 
-const coordinate = (limit: number) => fc.double({ min: -limit, max: limit, noNaN: true });
-const span = (min: number, max: number) => fc.double({ min, max, noNaN: true });
+const coordinate = (limit: number) => real(-limit, limit);
+const span = (min: number, max: number) => real(min, max);
 
 /** A rotated rectangle wide enough (≥ 3 m) to span at least one bin within ~250 m. */
 const rectBuilding = (limit: number, minHalf: number, maxHalf: number) =>
@@ -264,12 +279,10 @@ const rectBuilding = (limit: number, minHalf: number, maxHalf: number) =>
       rotation: span(0, 180),
       heightM: span(1, 80),
     })
-    .map(
-      (r): RefBuilding => ({
-        polygons: [[rotatedRect(r.cx, r.cy, r.halfWidth, r.halfHeight, r.rotation)]],
-        heightM: r.heightM,
-      }),
-    );
+    .map((r): RefBuilding => ({
+      polygons: [[rotatedRect(r.cx, r.cy, r.halfWidth, r.halfHeight, r.rotation)]],
+      heightM: r.heightM,
+    }));
 
 /** A star-shaped (possibly concave) polygon that contains a disc of radius ≥ 2.3 m. */
 const starBuilding = fc
@@ -302,24 +315,22 @@ const courtyardBuilding = fc
     rotation: span(0, 180),
     heightM: span(1, 80),
   })
-  .map(
-    (c): RefBuilding => ({
-      polygons: [
-        [
-          rotatedRect(c.cx, c.cy, c.halfWidth, c.halfHeight, c.rotation),
-          // Holes wind the other way in GeoJSON; winding must not matter.
-          rotatedRect(
-            c.cx,
-            c.cy,
-            c.halfWidth * c.holeFraction,
-            c.halfHeight * c.holeFraction,
-            c.rotation,
-          ).reverse() as LocalRing,
-        ],
+  .map((c): RefBuilding => ({
+    polygons: [
+      [
+        rotatedRect(c.cx, c.cy, c.halfWidth, c.halfHeight, c.rotation),
+        // Holes wind the other way in GeoJSON; winding must not matter.
+        rotatedRect(
+          c.cx,
+          c.cy,
+          c.halfWidth * c.holeFraction,
+          c.halfHeight * c.holeFraction,
+          c.rotation,
+        ).reverse() as LocalRing,
       ],
-      heightM: c.heightM,
-    }),
-  );
+    ],
+    heightM: c.heightM,
+  }));
 
 /** Two separate rectangles forming one MultiPolygon building. */
 const multiPartBuilding = fc
@@ -556,8 +567,9 @@ describe("computeHorizonProfile: hand-computed cases", () => {
   });
 
   test("a thin tower does not hide a steeper obstruction on the same bin", () => {
+    // Just east of due south, between the bin centres at 179.75° and 180.25°.
     const tower: RefBuilding = {
-      polygons: [[rotatedRect(0, -500, 0.5, 0.5, 0)]],
+      polygons: [[rotatedRect(1.5, -500, 0.5, 0.5, 0)]],
       heightM: 100,
     };
     const profile = profileOf([tower, southWall]);
@@ -694,7 +706,7 @@ describe("horizonBinFor / horizonElevationAt", () => {
 
   test("always lands in range", () => {
     fc.assert(
-      fc.property(fc.double({ min: -1e5, max: 1e5, noNaN: true }), (azimuth) => {
+      fc.property(real(-1e5, 1e5), (azimuth) => {
         const bin = horizonBinFor(profile, azimuth);
         expect(Number.isInteger(bin)).toBe(true);
         expect(bin).toBeGreaterThanOrEqual(0);
@@ -725,7 +737,7 @@ describe("computeHorizonProfile: agreement with the brute-force reference", () =
           expect(profile.containingBuildingIndex).toBe(expectedContaining);
         },
       ),
-      { numRuns: 300 },
+      { numRuns: 300 * SCALE },
     );
   });
 
@@ -745,7 +757,7 @@ describe("computeHorizonProfile: agreement with the brute-force reference", () =
           expect(profile.containingBuildingIndex).toBe(buildings.findIndex(refContainsOrigin));
         },
       ),
-      { numRuns: 300 },
+      { numRuns: 300 * SCALE },
     );
   });
 
@@ -771,7 +783,7 @@ describe("computeHorizonProfile: agreement with the brute-force reference", () =
           sawSubBin += expectMatchesReference(profile, buildings, observerHeightM).subBinParts;
         },
       ),
-      { numRuns: 300 },
+      { numRuns: 300 * SCALE },
     );
     expect(sawSubBin).toBeGreaterThan(20); // the generator really exercises that path
   });
@@ -792,7 +804,7 @@ describe("computeHorizonProfile: agreement with the brute-force reference", () =
           expectMatchesReference(profile, buildings, 0);
         },
       ),
-      { numRuns: 100 },
+      { numRuns: 100 * SCALE },
     );
   });
 
@@ -809,11 +821,15 @@ describe("computeHorizonProfile: agreement with the brute-force reference", () =
         fc.array(solidBuilding, { minLength: 1, maxLength: 6 }),
         (place, buildings) => {
           fc.pre(minBoundaryDistance(buildings) > 1e-6);
-          const profile = computeHorizonProfile(place, collectionOf(toFeatures(place, buildings)), 0);
+          const profile = computeHorizonProfile(
+            place,
+            collectionOf(toFeatures(place, buildings)),
+            0,
+          );
           expectMatchesReference(profile, buildings, 0);
         },
       ),
-      { numRuns: 100 },
+      { numRuns: 100 * SCALE },
     );
   });
 });
@@ -835,7 +851,7 @@ describe("computeHorizonProfile: monotonicity", () => {
           expect(high.containingBuildingIndex).toBe(low.containingBuildingIndex);
         },
       ),
-      { numRuns: 200 },
+      { numRuns: 200 * SCALE },
     );
   });
 
@@ -861,7 +877,7 @@ describe("computeHorizonProfile: monotonicity", () => {
           }
         },
       ),
-      { numRuns: 200 },
+      { numRuns: 200 * SCALE },
     );
   });
 
@@ -876,7 +892,7 @@ describe("computeHorizonProfile: monotonicity", () => {
         );
         expect(backward.elevationDeg).toEqual(forward.elevationDeg);
       }),
-      { numRuns: 100 },
+      { numRuns: 100 * SCALE },
     );
   });
 });

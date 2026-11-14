@@ -149,6 +149,60 @@ describe("zoneOffsetTable", () => {
     ]);
   });
 
+  test("reproduces the zone's real offset at every probed instant of the year", () => {
+    // Direct check of the table against Intl, every 2 hours (off the hour, so
+    // the probes never coincide with the table's own 12-hourly probes).
+    const zones = [
+      ...ZONES,
+      "America/Havana",
+      "America/Santiago",
+      "America/Nuuk",
+      "Asia/Beirut",
+      "Asia/Gaza",
+      "Africa/Casablanca",
+      "Antarctica/Troll",
+      "Europe/Dublin",
+      "Pacific/Norfolk",
+      "Pacific/Easter",
+    ];
+    for (const zone of zones) {
+      for (const year of [2011, 2026]) {
+        const table = zoneOffsetTable(zone, year);
+        const start = Date.UTC(year, 0, 1) - 12 * 3_600_000 + 17 * 60_000;
+        const end = Date.UTC(year + 1, 0, 1) + 12 * 3_600_000;
+        for (let ms = start; ms < end; ms += 2 * 3_600_000) {
+          let segment = 0;
+          while (segment + 1 < table.startsMs.length && table.startsMs[segment + 1] <= ms)
+            segment++;
+          const actual = utcOffsetMinutes(zone, ms);
+          if (table.offsetsMin[segment] !== actual) {
+            throw new Error(
+              `${zone} at ${new Date(ms).toISOString()}: table says ${table.offsetsMin[segment]}, Intl says ${actual}`,
+            );
+          }
+        }
+      }
+    }
+  });
+
+  test("transition instants are exact to the second", () => {
+    for (const zone of [
+      "America/Los_Angeles",
+      "Africa/Casablanca",
+      "Antarctica/Troll",
+      "Pacific/Apia",
+    ]) {
+      for (const year of [2011, 2026]) {
+        const table = zoneOffsetTable(zone, year);
+        for (let i = 1; i < table.startsMs.length; i++) {
+          expect(table.offsetsMin[i]).not.toBe(table.offsetsMin[i - 1]);
+          expect(utcOffsetMinutes(zone, table.startsMs[i])).toBe(table.offsetsMin[i]);
+          expect(utcOffsetMinutes(zone, table.startsMs[i] - 1000)).toBe(table.offsetsMin[i - 1]);
+        }
+      }
+    }
+  });
+
   test("is cached", () => {
     expect(zoneOffsetTable("Europe/Oslo", 2026)).toBe(zoneOffsetTable("Europe/Oslo", 2026));
   });
@@ -372,7 +426,10 @@ describe("utcToZoned / nowInZone", () => {
 
   test("nowInZone floors to the whole minute and uses the place's date", () => {
     const now = new Date("2026-07-15T06:59:59.999Z");
-    expect(nowInZone("America/Los_Angeles", now)).toEqual({ date: "2026-07-14", minuteOfDay: 1439 });
+    expect(nowInZone("America/Los_Angeles", now)).toEqual({
+      date: "2026-07-14",
+      minuteOfDay: 1439,
+    });
     expect(nowInZone("Asia/Tokyo", now)).toEqual({ date: "2026-07-15", minuteOfDay: 959 });
     const live = nowInZone("Europe/London");
     expect(live.date).toMatch(/^\d{4}-\d{2}-\d{2}$/);

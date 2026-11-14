@@ -155,9 +155,11 @@ export function computeHorizonProfile(
   const maxDistanceM = options.maxDistanceM ?? 1000;
   const maxDistanceSq = maxDistanceM * maxDistanceM;
 
-  // Maxima are tracked in float64 so that ties are broken exactly (first
-  // building wins); they are narrowed to float32 once at the end.
-  const best = new Float64Array(binCount);
+  // Per bin we track the largest SLOPE (rise / distance = tan of the elevation
+  // angle): it orders obstructions exactly like the angle does, without an
+  // arctangent per edge-ray hit. Float64, so ties are broken exactly (the
+  // first building wins); converted to float32 degrees once at the end.
+  const bestSlope = new Float64Array(binCount);
   const bestDistance = new Float64Array(binCount);
   const blockerIndex = new Int32Array(binCount).fill(-1);
 
@@ -252,9 +254,9 @@ export function computeHorizonProfile(
                 if (!(distance > 0) || distance === Infinity) continue;
                 hits++;
                 const clamped = distance < MIN_DISTANCE_M ? MIN_DISTANCE_M : distance;
-                const elevation = Math.atan2(rise, clamped) * RAD_TO_DEG;
-                if (elevation > best[bin]) {
-                  best[bin] = elevation;
+                const slope = rise / clamped;
+                if (slope > bestSlope[bin]) {
+                  bestSlope[bin] = slope;
                   bestDistance[bin] = clamped;
                   blockerIndex[bin] = b;
                 }
@@ -273,9 +275,9 @@ export function computeHorizonProfile(
         const azimuth = normalizeDeg(Math.atan2(nearestX, nearestY) * RAD_TO_DEG);
         const bin = Math.min(binCount - 1, Math.floor(azimuth / binWidthDeg));
         const clamped = Math.max(Math.sqrt(nearestSq), MIN_DISTANCE_M);
-        const elevation = Math.atan2(rise, clamped) * RAD_TO_DEG;
-        if (elevation > best[bin]) {
-          best[bin] = elevation;
+        const slope = rise / clamped;
+        if (slope > bestSlope[bin]) {
+          bestSlope[bin] = slope;
           bestDistance[bin] = clamped;
           blockerIndex[bin] = b;
         }
@@ -283,9 +285,14 @@ export function computeHorizonProfile(
     }
   }
 
+  const elevationDeg = new Float32Array(binCount);
+  for (let bin = 0; bin < binCount; bin++) {
+    elevationDeg[bin] = Math.atan(bestSlope[bin]) * RAD_TO_DEG;
+  }
+
   return {
     binCount,
-    elevationDeg: Float32Array.from(best),
+    elevationDeg,
     blockerIndex,
     blockerDistanceM: Float32Array.from(bestDistance),
     containingBuildingIndex,

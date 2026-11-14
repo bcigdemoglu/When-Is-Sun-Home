@@ -2,12 +2,7 @@
  * Single-day analysis at fine (default 1-minute) resolution, for the day view.
  */
 import { sunPositionAt, sunTimesFor } from "@/lib/solar/position";
-import {
-  localMidnightMs,
-  localMsToUtcMs,
-  yearOfDate,
-  zoneOffsetTable,
-} from "@/lib/solar/timezone";
+import { localMidnightMs, localMsToUtcMs, yearOfDate, zoneOffsetTable } from "@/lib/solar/timezone";
 import {
   SunState,
   type DayAnalysis,

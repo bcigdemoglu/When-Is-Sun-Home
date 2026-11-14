@@ -257,10 +257,7 @@ export function zonedToUtc(date: string, minuteOfDay: number, timeZone: string):
  * Wall-clock date and time in `timeZone` at a UTC instant. `minuteOfDay` is
  * exact (fractional when the instant is not on a whole minute), in [0, 1440).
  */
-export function utcToZoned(
-  instant: Date,
-  timeZone: string,
-): { date: string; minuteOfDay: number } {
+export function utcToZoned(instant: Date, timeZone: string): { date: string; minuteOfDay: number } {
   const utcMs = instant.getTime();
   if (Number.isNaN(utcMs)) throw new RangeError("Invalid instant");
   const localMs = utcMs + utcOffsetMinutes(timeZone, utcMs) * MS_PER_MINUTE;

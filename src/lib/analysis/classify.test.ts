@@ -1,6 +1,8 @@
 import fc from "fast-check";
 import { describe, expect, test } from "vitest";
 
+import { real } from "@/lib/geo/testing";
+
 import { computeHorizonProfile, horizonElevationAt } from "@/lib/horizon/profile";
 import { buildingFromLocal, collectionOf, rect } from "@/lib/horizon/testing";
 import { sunPositionAt } from "@/lib/solar/position";
@@ -64,17 +66,12 @@ describe("isInViewCone", () => {
 
   test("the cone is symmetric about the facing direction", () => {
     fc.assert(
-      fc.property(
-        fc.double({ min: 0, max: 360, noNaN: true }),
-        fc.double({ min: 1, max: 360, noNaN: true }),
-        fc.double({ min: 0, max: 180, noNaN: true }),
-        (facing, fov, offset) => {
-          const observer = windowFacing(facing, fov);
-          fc.pre(Math.abs(offset - fov / 2) > 1e-6);
-          expect(isInViewCone(facing + offset, observer)).toBe(offset < fov / 2 || fov >= 360);
-          expect(isInViewCone(facing - offset, observer)).toBe(offset < fov / 2 || fov >= 360);
-        },
-      ),
+      fc.property(real(0, 360), real(1, 360), real(0, 180), (facing, fov, offset) => {
+        const observer = windowFacing(facing, fov);
+        fc.pre(Math.abs(offset - fov / 2) > 1e-6);
+        expect(isInViewCone(facing + offset, observer)).toBe(offset < fov / 2 || fov >= 360);
+        expect(isInViewCone(facing - offset, observer)).toBe(offset < fov / 2 || fov >= 360);
+      }),
     );
   });
 });
@@ -119,25 +116,21 @@ describe("classifySun", () => {
 
   test("an empty horizon behaves like no horizon", () => {
     fc.assert(
-      fc.property(
-        fc.double({ min: -360, max: 720, noNaN: true }),
-        fc.double({ min: -90, max: 90, noNaN: true }),
-        (azimuth, altitude) => {
-          expect(classifySun(azimuth, altitude, openHorizon, yard())).toBe(
-            classifySun(azimuth, altitude, null, yard()),
-          );
-        },
-      ),
+      fc.property(real(-360, 720), real(-90, 90), (azimuth, altitude) => {
+        expect(classifySun(azimuth, altitude, openHorizon, yard())).toBe(
+          classifySun(azimuth, altitude, null, yard()),
+        );
+      }),
     );
   });
 
   test("precedence holds for arbitrary inputs", () => {
     fc.assert(
       fc.property(
-        fc.double({ min: 0, max: 360, noNaN: true }),
-        fc.double({ min: -90, max: 90, noNaN: true }),
-        fc.double({ min: 0, max: 360, noNaN: true }),
-        fc.double({ min: 1, max: 360, noNaN: true }),
+        real(0, 360),
+        real(-90, 90),
+        real(0, 360),
+        real(1, 360),
         fc.boolean(),
         (azimuth, altitude, facing, fov, isWindow) => {
           const observer = isWindow ? windowFacing(facing, fov) : yard();
@@ -196,11 +189,20 @@ describe("sunInstantAt", () => {
     expect(instant.blocker!.elevationDeg).toBeGreaterThan(instant.altitudeDeg);
 
     // Without building data the same moment is sunny.
-    expect(sunInstantAt(SF, "2026-12-21", 12 * 60 + 8, ZONE, null, yard()).state).toBe(SunState.Sun);
+    expect(sunInstantAt(SF, "2026-12-21", 12 * 60 + 8, ZONE, null, yard()).state).toBe(
+      SunState.Sun,
+    );
   });
 
   test("out of view for a window facing away", () => {
-    const instant = sunInstantAt(SF, "2026-12-21", 12 * 60 + 8, ZONE, wallHorizon, windowFacing(0, 120));
+    const instant = sunInstantAt(
+      SF,
+      "2026-12-21",
+      12 * 60 + 8,
+      ZONE,
+      wallHorizon,
+      windowFacing(0, 120),
+    );
     expect(instant.state).toBe(SunState.OutOfView);
     expect(instant.blocker).toBeUndefined();
   });

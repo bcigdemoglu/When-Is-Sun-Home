@@ -1,6 +1,8 @@
 import fc from "fast-check";
 import { describe, expect, test } from "vitest";
 
+import { real } from "@/lib/geo/testing";
+
 import { angularDistanceDeg } from "@/lib/geo/local";
 
 import { sunPositionAt, sunTimesFor } from "./position";
@@ -118,8 +120,16 @@ describe("sunPositionAt", () => {
   test("sunrise is in the east, sunset in the west", () => {
     // At an equinox the sun rises due east and sets due west everywhere.
     const times = sunTimesFor(SF.lat, SF.lng, "2026-03-20", SF.zone);
-    const rise = sunPositionAt(SF.lat, SF.lng, zonedToUtc("2026-03-20", times.sunriseMinute!, SF.zone)!);
-    const set = sunPositionAt(SF.lat, SF.lng, zonedToUtc("2026-03-20", times.sunsetMinute!, SF.zone)!);
+    const rise = sunPositionAt(
+      SF.lat,
+      SF.lng,
+      zonedToUtc("2026-03-20", times.sunriseMinute!, SF.zone)!,
+    );
+    const set = sunPositionAt(
+      SF.lat,
+      SF.lng,
+      zonedToUtc("2026-03-20", times.sunsetMinute!, SF.zone)!,
+    );
     expect(Math.abs(rise.azimuthDeg - 90)).toBeLessThan(1.5);
     expect(Math.abs(set.azimuthDeg - 270)).toBeLessThan(1.5);
   });
@@ -146,9 +156,9 @@ describe("sunPositionAt", () => {
   });
 
   test("the sun is below the horizon at local midnight", () => {
-    expect(sunPositionAt(SF.lat, SF.lng, new Date("2026-06-21T08:00:00Z")).altitudeDeg).toBeLessThan(
-      -20,
-    );
+    expect(
+      sunPositionAt(SF.lat, SF.lng, new Date("2026-06-21T08:00:00Z")).altitudeDeg,
+    ).toBeLessThan(-20);
     expect(
       sunPositionAt(SYDNEY.lat, SYDNEY.lng, new Date("2026-06-21T14:00:00Z")).altitudeDeg,
     ).toBeLessThan(-40);
@@ -170,8 +180,8 @@ describe("sunPositionAt", () => {
   test("always returns a compass azimuth in [0, 360) and an altitude in [-90, 90]", () => {
     fc.assert(
       fc.property(
-        fc.double({ min: -90, max: 90, noNaN: true }),
-        fc.double({ min: -180, max: 180, noNaN: true }),
+        real(-90, 90),
+        real(-180, 180),
         fc.integer({ min: Date.UTC(2000, 0, 1), max: Date.UTC(2050, 0, 1) }),
         (lat, lng, ms) => {
           const p = sunPositionAt(lat, lng, new Date(ms));
@@ -219,8 +229,13 @@ describe("sunTimesFor", () => {
     ];
     for (const [place, date, sunrise, sunset] of cases) {
       const times = sunTimesFor(place.lat, place.lng, date, place.zone);
-      expect(Math.abs(times.sunriseMinute! - sunrise), `${place.zone} ${date} sunrise`).toBeLessThan(3);
-      expect(Math.abs(times.sunsetMinute! - sunset), `${place.zone} ${date} sunset`).toBeLessThan(3);
+      expect(
+        Math.abs(times.sunriseMinute! - sunrise),
+        `${place.zone} ${date} sunrise`,
+      ).toBeLessThan(3);
+      expect(Math.abs(times.sunsetMinute! - sunset), `${place.zone} ${date} sunset`).toBeLessThan(
+        3,
+      );
     }
   });
 
@@ -279,8 +294,8 @@ describe("sunTimesFor", () => {
   test("events are real: the sun is on the horizon at sunrise/sunset and highest at solar noon", () => {
     fc.assert(
       fc.property(
-        fc.double({ min: -58, max: 58, noNaN: true }),
-        fc.double({ min: -179.9, max: 179.9, noNaN: true }),
+        real(-58, 58),
+        real(-179.9, 179.9),
         fc.integer({ min: 2020, max: 2030 }),
         fc.integer({ min: 0, max: 364 }),
         (lat, lng, year, day) => {
