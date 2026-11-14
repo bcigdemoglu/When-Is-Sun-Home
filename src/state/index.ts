@@ -73,7 +73,9 @@ export type { HydrateSettingsOptions, SettingsActions, SettingsStore } from "./s
 
 export {
   URL_SYNC_DEBOUNCE_MS,
+  URL_SYNC_FAILURE_BACKOFF_MS,
   URL_SYNC_MAX_CALLS_PER_WINDOW,
+  URL_SYNC_MAX_RETRIES,
   URL_SYNC_MIN_INTERVAL_MS,
   URL_SYNC_WINDOW_MS,
   startUrlSync,

@@ -69,7 +69,7 @@ export interface Observer {
   heightM: number;
   /** Centre of the view cone, compass degrees. Only used in "window" mode. */
   facingDeg: number;
-  /** Full width of the view cone, degrees (1..360). Only used in "window" mode. */
+  /** Full width of the view cone, degrees (10..360). Only used in "window" mode. */
   fovDeg: number;
 }
 
