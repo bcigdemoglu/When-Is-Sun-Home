@@ -7,6 +7,7 @@ import { sunPositionAt } from "@/lib/solar/position";
 import { addDays, zonedToUtcMs } from "@/lib/solar/timezone";
 import {
   SunState,
+  TERRAIN_BLOCKER,
   type HorizonProfile,
   type LatLng,
   type Observer,
@@ -83,8 +84,10 @@ export function sunInstantAt(
   const instant: SunInstant = { azimuthDeg, altitudeDeg, state };
   if (state === SunState.Blocked && horizon !== null) {
     const bin = horizonBinFor(horizon, azimuthDeg);
+    const buildingIndex = horizon.blockerIndex[bin];
     instant.blocker = {
-      buildingIndex: horizon.blockerIndex[bin],
+      kind: buildingIndex === TERRAIN_BLOCKER ? "terrain" : "building",
+      buildingIndex,
       distanceM: horizon.blockerDistanceM[bin],
       elevationDeg: horizon.elevationDeg[bin],
     };

@@ -12,10 +12,11 @@ const RAD = Math.PI / 180;
 const SF: LatLng = { lat: 37.7906, lng: -122.4294 };
 
 /**
- * Check every cell of a grid against suncalc (via `sunPositionAt`) at the
- * instant the public `zonedToUtc` gives for that wall-clock sample.
+ * Check every cell of a grid against the exact per-instant calculation
+ * (`sunPositionAt`) at the instant the public `zonedToUtc` gives for that
+ * wall-clock sample.
  */
-function expectGridMatchesSuncalc(grid: SunYearGrid): { cells: number; gaps: number } {
+function expectGridMatchesSunPosition(grid: SunYearGrid): { cells: number; gaps: number } {
   let gaps = 0;
   let worstAltitude = 0;
   let worstAzimuth = 0;
@@ -46,9 +47,10 @@ function expectGridMatchesSuncalc(grid: SunYearGrid): { cells: number; gaps: num
     }
   }
   expect(mismatchedGaps).toBe(0);
-  // Float32 storage: one ulp is ≈ 8e-6° at 90° and ≈ 3e-5° at 360°.
-  expect(worstAltitude).toBeLessThan(1e-5);
-  expect(worstAzimuth).toBeLessThan(5e-5);
+  // The grid interpolates the sun's slow orbital motion between UTC midnights
+  // (measured error: 0.001°) and stores float32 (≤ 3e-5°).
+  expect(worstAltitude).toBeLessThan(0.002);
+  expect(worstAzimuth).toBeLessThan(0.002);
   return { cells: grid.dayCount * grid.slotsPerDay, gaps };
 }
 
@@ -84,13 +86,13 @@ describe("computeSunYearGrid", () => {
     expect(leap.azimuthDeg.length).toBe(366 * 24);
   });
 
-  test("equals suncalc in every cell (San Francisco, 5-minute steps, DST zone)", () => {
-    const { cells, gaps } = expectGridMatchesSuncalc(grid);
+  test("agrees with sunPositionAt in every cell (San Francisco, 5-minute steps, DST zone)", () => {
+    const { cells, gaps } = expectGridMatchesSunPosition(grid);
     expect(cells).toBe(105_120);
     expect(gaps).toBe(12); // the one skipped hour on 8 March
   });
 
-  test("equals suncalc in every cell for very different places and zones", () => {
+  test("agrees with sunPositionAt in every cell for very different places and zones", () => {
     const cases: [LatLng, string, number, number, number][] = [
       // place, zone, year, step, expected gap cells
       [{ lat: -33.8688, lng: 151.2093 }, "Australia/Sydney", 2026, 15, 4],
@@ -109,12 +111,12 @@ describe("computeSunYearGrid", () => {
     ];
     for (const [place, timeZone, year, stepMinutes, expectedGaps] of cases) {
       const g = computeSunYearGrid(place, { year, timeZone, stepMinutes });
-      const { gaps } = expectGridMatchesSuncalc(g);
+      const { gaps } = expectGridMatchesSunPosition(g);
       expect(gaps, timeZone).toBe(expectedGaps);
     }
   });
 
-  test("equals suncalc cell for cell in zones with unusual transitions", () => {
+  test("agrees with sunPositionAt cell for cell in zones with unusual transitions", () => {
     // Transitions at local midnight, at 24:00, by 30 minutes or 2 hours,
     // "negative" DST, a Ramadan pause… all compared against the public
     // zonedToUtc (first-occurrence) conversion.
@@ -144,7 +146,7 @@ describe("computeSunYearGrid", () => {
     for (const timeZone of zones) {
       for (const year of [2019, 2026]) {
         const g = computeSunYearGrid({ lat: 20, lng: 10 }, { year, timeZone, stepMinutes: 30 });
-        expectGridMatchesSuncalc(g);
+        expectGridMatchesSunPosition(g);
       }
     }
   });
@@ -154,7 +156,7 @@ describe("computeSunYearGrid", () => {
       { lat: -13.83, lng: -171.77 },
       { year: 2011, timeZone: "Pacific/Apia", stepMinutes: 30 },
     );
-    const { gaps } = expectGridMatchesSuncalc(g);
+    const { gaps } = expectGridMatchesSunPosition(g);
     // The whole of 30 December (48 slots) plus the two ordinary DST gaps that year.
     expect(gaps).toBeGreaterThanOrEqual(48);
     const row = 363 * g.slotsPerDay;
@@ -186,11 +188,14 @@ describe("computeSunYearGrid", () => {
     expect(dateFromDayIndex(2026, day)).toBe("2026-06-21");
     const expected = sunPositionAt(SF.lat, SF.lng, new Date("2026-06-21T19:32:30Z"));
     const index = day * grid.slotsPerDay + 150;
-    expect(grid.altitudeDeg[index]).toBeCloseTo(expected.altitudeDeg, 4);
-    expect(grid.azimuthDeg[index]).toBeCloseTo(expected.azimuthDeg, 3);
+    expect(Math.abs(grid.altitudeDeg[index] - expected.altitudeDeg)).toBeLessThan(0.002);
+    // (The sun is 73° up here, where azimuth moves ~3.5× faster than the sun.)
+    expect(Math.abs(grid.azimuthDeg[index] - expected.azimuthDeg)).toBeLessThan(0.007);
     // 15 January (standard time), slot 0 → 00:02:30 PST → 08:02:30 UTC.
     const winter = sunPositionAt(SF.lat, SF.lng, new Date("2026-01-15T08:02:30Z"));
-    expect(grid.altitudeDeg[14 * grid.slotsPerDay]).toBeCloseTo(winter.altitudeDeg, 4);
+    expect(Math.abs(grid.altitudeDeg[14 * grid.slotsPerDay] - winter.altitudeDeg)).toBeLessThan(
+      0.002,
+    );
   });
 
   test("azimuths are compass bearings in [0, 360) and altitudes in [-90, 90]", () => {

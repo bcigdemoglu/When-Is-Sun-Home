@@ -6,16 +6,31 @@
  * reaches above the horizontal. After that "is the sun hidden?" is a single
  * array lookup: `sunAltitude < profile.elevationDeg[bin]`.
  *
- * Model: every building is a solid prism standing on flat ground, from 0 up to
- * `heightM`; the observer is a point `observerHeightM` above that same ground.
- * Each bin stores the skyline along the ray through its CENTRE azimuth.
+ * Model: every building is a solid prism from the ground up to `heightM`; the
+ * observer is a point `observerHeightM` above the ground. Each bin stores the
+ * skyline along the ray through its CENTRE azimuth.
+ *
+ * Without terrain data everything stands on one flat plane. With it
+ * (`options.terrain`), the observer and every building stand on the real
+ * ground, and the ground itself — the slope behind the house, a hill across
+ * the valley — is part of the skyline too.
  */
-import { metersPerDegree, normalizeDeg, pointInFlatRing, wrapLngDelta } from "@/lib/geo/local";
+import {
+  metersPerDegree,
+  normalizeDeg,
+  pointInFlatRing,
+  toLocalMeters,
+  wrapLngDelta,
+} from "@/lib/geo/local";
+import { terrainElevationAt } from "@/lib/terrain/elevation";
+import { computeTerrainSkyline } from "@/lib/terrain/skyline";
 import {
   HORIZON_BINS,
+  TERRAIN_BLOCKER,
   type BuildingCollection,
   type HorizonProfile,
   type LatLng,
+  type Terrain,
 } from "@/lib/types";
 
 const RAD_TO_DEG = 180 / Math.PI;
@@ -31,6 +46,13 @@ export interface HorizonOptions {
   binCount?: number;
   /** Building edges entirely farther away than this are ignored. Default 1000 m. */
   maxDistanceM?: number;
+  /**
+   * Ground elevations around the place. When given, the observer and the
+   * buildings are placed on the real ground and hills join the skyline;
+   * when omitted, the ground is a flat plane (results are exactly those of a
+   * terrain of any constant elevation).
+   */
+  terrain?: Terrain;
 }
 
 /**
@@ -134,7 +156,13 @@ function containsOrigin(geometry: ProjectedBuildings, building: number): boolean
  *   is taken to be on its roof or facade); the first such building is reported
  *   as `containingBuildingIndex`. A point in a courtyard HOLE is not inside the
  *   building, so the surrounding walls do block.
- * - Buildings no taller than the observer contribute nothing.
+ * - Buildings whose roof is no higher than the observer contribute nothing.
+ * - With `options.terrain`: the observer stands at ground(place) +
+ *   `observerHeightM`. A building's base is the MEAN ground elevation under
+ *   the vertices of its outline and its roof is `heightM` above that, so a
+ *   building uphill blocks more and one downhill less (or not at all). The
+ *   terrain's own skyline (see `computeTerrainSkyline`) is merged in; where
+ *   the ground is the highest obstruction `blockerIndex` is `TERRAIN_BLOCKER`.
  * - Each bin holds the highest elevation angle found along the ray through the
  *   bin's centre azimuth, with the index of and distance to that obstruction.
  *   Ties keep the building that comes first in the collection.
@@ -177,6 +205,26 @@ export function computeHorizonProfile(
     rayY[bin] = Math.cos(azimuth);
   }
 
+  // Terrain lives in its own local frame (around its own origin); buildings
+  // are in the frame around `place`. Both are east/north tangent planes, so a
+  // point (x, y) of ours is at (offsetX + x·scaleX, offsetY + y·scaleY) there.
+  const terrain = options.terrain;
+  let offsetX = 0;
+  let offsetY = 0;
+  let scaleX = 1;
+  let scaleY = 1;
+  let observerGround = 0;
+  if (terrain) {
+    const offset = toLocalMeters(terrain.near.origin, place);
+    const here = metersPerDegree(place.lat);
+    const there = metersPerDegree(terrain.near.origin.lat);
+    offsetX = offset.x;
+    offsetY = offset.y;
+    scaleX = there.lng / here.lng;
+    scaleY = there.lat / here.lat;
+    observerGround = terrainElevationAt(terrain, offsetX, offsetY);
+  }
+
   let containingBuildingIndex = -1;
 
   for (let b = 0; b < features.length; b++) {
@@ -185,7 +233,39 @@ export function computeHorizonProfile(
       continue;
     }
 
-    const rise = features[b].properties.heightM - observerHeightM;
+    // How far the roof rises above the observer's eye. On flat ground that is
+    // just the difference of the two heights; with terrain, add how much
+    // higher (or lower) the building's base is than the ground under the
+    // observer. (Kept as a sum of two differences so that flat terrain of any
+    // elevation reproduces the no-terrain result bit for bit.)
+    let rise = features[b].properties.heightM - observerHeightM;
+    if (terrain) {
+      let sum = 0;
+      let count = 0;
+      for (let p = buildingPartStart[b]; p < buildingPartStart[b + 1]; p++) {
+        const outer = partRingStart[p];
+        if (outer === partRingStart[p + 1]) continue;
+        const first = ringStart[outer];
+        let end = ringStart[outer + 1];
+        // Do not count a closed ring's repeated first vertex twice.
+        if (
+          end - first > 1 &&
+          xy[2 * first] === xy[2 * (end - 1)] &&
+          xy[2 * first + 1] === xy[2 * (end - 1) + 1]
+        ) {
+          end--;
+        }
+        for (let v = first; v < end; v++) {
+          sum += terrainElevationAt(
+            terrain,
+            offsetX + xy[2 * v] * scaleX,
+            offsetY + xy[2 * v + 1] * scaleY,
+          );
+          count++;
+        }
+      }
+      if (count > 0) rise = sum / count - observerGround + rise;
+    }
     if (!(rise > 0) || !Number.isFinite(rise)) continue;
 
     for (let p = buildingPartStart[b]; p < buildingPartStart[b + 1]; p++) {
@@ -285,6 +365,19 @@ export function computeHorizonProfile(
     }
   }
 
+  // The ground itself. It wins a bin only where it is strictly steeper than
+  // every building there.
+  if (terrain) {
+    const ground = computeTerrainSkyline(terrain, offsetX, offsetY, observerHeightM, binCount);
+    for (let bin = 0; bin < binCount; bin++) {
+      if (ground.slope[bin] > bestSlope[bin]) {
+        bestSlope[bin] = ground.slope[bin];
+        bestDistance[bin] = ground.distanceM[bin];
+        blockerIndex[bin] = TERRAIN_BLOCKER;
+      }
+    }
+  }
+
   const elevationDeg = new Float32Array(binCount);
   for (let bin = 0; bin < binCount; bin++) {
     elevationDeg[bin] = Math.atan(bestSlope[bin]) * RAD_TO_DEG;
@@ -296,6 +389,7 @@ export function computeHorizonProfile(
     blockerIndex,
     blockerDistanceM: Float32Array.from(bestDistance),
     containingBuildingIndex,
+    observerHeightM,
   };
 }
 

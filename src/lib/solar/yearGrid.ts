@@ -5,27 +5,25 @@
  * steps), and it depends on nothing but the place and the year, so it is
  * computed once and re-used for every observer / building change.
  *
- * The position maths is suncalc's (https://github.com/mourner/suncalc, formulas
- * from https://aa.quae.nl/en/reken/zonpositie.html) written out inline so the
- * hot loop allocates nothing: no Date and no result object per sample. A test
- * proves it matches `SunCalc.getPosition` cell for cell.
+ * The sun's own motion is slow, so the orbital part of the calculation is
+ * hoisted out of the hot loop: the declination and the "equation of time"
+ * (see {@link sunEphemerisAt}) are evaluated once per UTC midnight and
+ * interpolated linearly in between. Over one day their curvature is below
+ * 0.001°, so every cell agrees with `sunPositionAt` to better than 0.002° —
+ * a test checks all of them — while the loop itself is four trig calls.
  */
 import type { LatLng, SunYearGrid, YearGridSpec } from "@/lib/types";
 
+import { sunEphemerisAt } from "./position";
 import { daysInYear, localMidnightMs, localMsToUtcMs, zoneOffsetTable } from "./timezone";
 
 const RAD = Math.PI / 180;
 const MS_PER_MINUTE = 60_000;
 const MS_PER_DAY = 86_400_000;
-
-/** Julian day of the Unix epoch, minus that of J2000.0, minus suncalc's half-day shift. */
-const EPOCH_TO_J2000_DAYS = 2440588 - 2451545 - 0.5;
-/** Obliquity of the ecliptic. */
-const OBLIQUITY = RAD * 23.4397;
-const SIN_OBLIQUITY = Math.sin(OBLIQUITY);
-const COS_OBLIQUITY = Math.cos(OBLIQUITY);
-/** Ecliptic longitude of the Earth's perihelion, plus 180°. */
-const PERIHELION_PLUS_PI = RAD * 102.9372 + Math.PI;
+/** Equatorial horizontal parallax of the sun at 1 au (8.794″), degrees. */
+const SOLAR_PARALLAX_DEG = 8.794 / 3600;
+/** Ephemeris nodes kept before / after the calendar year (zones reach ±14 h). */
+const NODE_MARGIN_DAYS = 2;
 
 function assertSpec(spec: YearGridSpec): void {
   const { year, stepMinutes } = spec;
@@ -59,10 +57,26 @@ export function computeSunYearGrid(place: LatLng, spec: YearGridSpec): SunYearGr
   const phi = RAD * place.lat;
   const sinPhi = Math.sin(phi);
   const cosPhi = Math.cos(phi);
-  const lw = RAD * -place.lng;
 
   const stepMs = stepMinutes * MS_PER_MINUTE;
   const yearStartLocalMs = localMidnightMs(`${String(year).padStart(4, "0")}-01-01`);
+
+  // Ephemeris at every UTC midnight around the year. Between two nodes the
+  // sun's hour angle at Greenwich is `180° + 360°·(fraction of the day) + e`,
+  // where e (the equation of time, in degrees) drifts by at most 0.13° a day.
+  const firstNodeMs = yearStartLocalMs - NODE_MARGIN_DAYS * MS_PER_DAY;
+  const nodeCount = dayCount + 2 * NODE_MARGIN_DAYS + 1;
+  const nodeSinDec = new Float64Array(nodeCount);
+  const nodeCosDec = new Float64Array(nodeCount);
+  const nodeEquationDeg = new Float64Array(nodeCount);
+  for (let n = 0; n < nodeCount; n++) {
+    const ephemeris = sunEphemerisAt(firstNodeMs + n * MS_PER_DAY);
+    nodeSinDec[n] = ephemeris.sinDec;
+    nodeCosDec[n] = ephemeris.cosDec;
+    // At UTC midnight the hour angle is within a few degrees of ±180°.
+    const e = ephemeris.ghaDeg - 180;
+    nodeEquationDeg[n] = e <= -180 ? e + 360 : e;
+  }
 
   for (let day = 0; day < dayCount; day++) {
     const dayStartLocalMs = yearStartLocalMs + day * MS_PER_DAY;
@@ -102,27 +116,38 @@ export function computeSunYearGrid(place: LatLng, spec: YearGridSpec): SunYearGr
         continue;
       }
 
-      // Days since J2000.0.
-      const d = utcMs / MS_PER_DAY + EPOCH_TO_J2000_DAYS;
-      // Solar mean anomaly, equation of centre, ecliptic longitude.
-      const m = RAD * (357.5291 + 0.98560028 * d);
-      const c = RAD * (1.9148 * Math.sin(m) + 0.02 * Math.sin(2 * m) + 0.0003 * Math.sin(3 * m));
-      const l = m + c + PERIHELION_PLUS_PI;
-      const sinL = Math.sin(l);
-      // Equatorial coordinates (the sun's ecliptic latitude is taken as 0).
-      const dec = Math.asin(SIN_OBLIQUITY * sinL);
-      const ra = Math.atan2(sinL * COS_OBLIQUITY, Math.cos(l));
-      // Local hour angle.
-      const h = RAD * (280.16 + 360.9856235 * d) - lw - ra;
-      const cosH = Math.cos(h);
-      const azimuthFromSouth = Math.atan2(Math.sin(h), cosH * sinPhi - Math.tan(dec) * cosPhi);
-      const altitude = Math.asin(sinPhi * Math.sin(dec) + cosPhi * Math.cos(dec) * cosH);
+      // Interpolate the slow terms between the two surrounding UTC midnights.
+      const sinceFirstNode = (utcMs - firstNodeMs) / MS_PER_DAY;
+      const node = Math.floor(sinceFirstNode);
+      const f = sinceFirstNode - node;
+      // (sin δ, cos δ) interpolated along the chord is slightly shorter than a
+      // unit vector; rescale it, or the error is magnified near the zenith.
+      const chordSin = nodeSinDec[node] + f * (nodeSinDec[node + 1] - nodeSinDec[node]);
+      const chordCos = nodeCosDec[node] + f * (nodeCosDec[node + 1] - nodeCosDec[node]);
+      const norm = 1 / Math.sqrt(chordSin * chordSin + chordCos * chordCos);
+      const sinDec = chordSin * norm;
+      const cosDec = chordCos * norm;
+      const equationDeg =
+        nodeEquationDeg[node] + f * (nodeEquationDeg[node + 1] - nodeEquationDeg[node]);
 
-      // atan2 ∈ [-π, π] → compass [0, 360]; fold the top edge (and any value
-      // that rounds up to 360 in float32) back to 0.
-      const azimuth = Math.fround(azimuthFromSouth / RAD + 180);
+      // Local hour angle, then the same horizontal coordinates as sunPositionAt.
+      const hourAngle = RAD * (180 + 360 * f + equationDeg + place.lng);
+      const cosH = Math.cos(hourAngle);
+      const sinAltitude = sinPhi * sinDec + cosPhi * cosDec * cosH;
+      const geocentric = Math.asin(sinAltitude > 1 ? 1 : sinAltitude < -1 ? -1 : sinAltitude);
+      const east = -cosDec * Math.sin(hourAngle);
+      const north = sinDec * cosPhi - cosDec * cosH * sinPhi;
+
+      // atan2 ∈ [-180°, 180°] → compass [0, 360); a value that rounds up to
+      // 360 in float32 is folded back to 0.
+      const azimuthSigned = Math.atan2(east, north) / RAD;
+      const azimuth = Math.fround(azimuthSigned < 0 ? azimuthSigned + 360 : azimuthSigned);
       azimuthDeg[index] = azimuth >= 360 ? azimuth - 360 : azimuth;
-      altitudeDeg[index] = altitude / RAD;
+      // cos(altitude) = √(1 − sin²): the parallax term without another trig call.
+      altitudeDeg[index] =
+        geocentric / RAD -
+        SOLAR_PARALLAX_DEG *
+          Math.sqrt(sinAltitude >= 1 || sinAltitude <= -1 ? 0 : 1 - sinAltitude * sinAltitude);
     }
   }
 

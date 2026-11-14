@@ -9,6 +9,7 @@ import { angularDistanceDeg, normalizeDeg } from "@/lib/geo/local";
 import { dateFromDayIndex, isLeapYear } from "@/lib/solar/timezone";
 import {
   SunState,
+  TERRAIN_BLOCKER,
   type AnnualSummary,
   type DaySummary,
   type HorizonProfile,
@@ -25,6 +26,8 @@ import {
  * minute counts are multiples of the step. `firstSunMinute` is the START of
  * the first sunny slot of a day and `lastSunMinute` the END of the last one.
  * Wall-clock slots lost to DST (NaN in the grid) count as Night.
+ * `terrainBlockedMinutes` is the share of `blockedMinutes` in which the ground
+ * (a hill), not a building, is the highest obstruction in the sun's direction.
  *
  * `horizon` must have been computed for `observer.heightM`; `null` means there
  * is no building data and nothing is ever Blocked.
@@ -48,6 +51,7 @@ export function analyzeYear(
   const halfFovDeg = observer.fovDeg / 2;
 
   const skyline = horizon === null ? null : horizon.elevationDeg;
+  const blockers = horizon === null ? null : horizon.blockerIndex;
   const binCount = horizon === null ? 0 : horizon.binCount;
   const lastBin = binCount - 1;
 
@@ -55,6 +59,7 @@ export function analyzeYear(
     const row = day * slotsPerDay;
     let sunSlots = 0;
     let blockedSlots = 0;
+    let terrainBlockedSlots = 0;
     let outOfViewSlots = 0;
     let firstSunSlot = -1;
     let lastSunSlot = -1;
@@ -79,6 +84,7 @@ export function analyzeYear(
         if (altitude < skyline[bin]) {
           state[index] = SunState.Blocked;
           blockedSlots++;
+          if (blockers![bin] === TERRAIN_BLOCKER) terrainBlockedSlots++;
           continue;
         }
       }
@@ -95,6 +101,7 @@ export function analyzeYear(
       sunMinutes: sunSlots * stepMinutes,
       daylightMinutes: (sunSlots + blockedSlots + outOfViewSlots) * stepMinutes,
       blockedMinutes: blockedSlots * stepMinutes,
+      terrainBlockedMinutes: terrainBlockedSlots * stepMinutes,
       outOfViewMinutes: outOfViewSlots * stepMinutes,
       firstSunMinute: firstSunSlot < 0 ? null : firstSunSlot * stepMinutes,
       lastSunMinute: lastSunSlot < 0 ? null : (lastSunSlot + 1) * stepMinutes,

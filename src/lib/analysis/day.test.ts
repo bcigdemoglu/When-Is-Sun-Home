@@ -123,16 +123,18 @@ describe("analyzeDay", () => {
     expect(day.daylightMinutes).toBeGreaterThan(14 * 60 + 30);
     expect(day.daylightMinutes).toBeLessThan(14 * 60 + 45);
 
-    // The almanac sunrise / sunset (upper limb, refracted) bracket the window
-    // by a few minutes on each side.
+    // Sunrise / sunset use the same definition as the samples (geometric
+    // altitude 0°), so the markers line up with the window: each 1-minute step
+    // is classified at its midpoint, hence within half a minute.
     const times = sunTimesFor(SF.lat, SF.lng, "2026-06-21", ZONE);
     expect(day.sunriseMinute).toBe(times.sunriseMinute);
     expect(day.sunsetMinute).toBe(times.sunsetMinute);
     expect(day.solarNoonMinute).toBe(times.solarNoonMinute);
-    expect(window.startMinute - day.sunriseMinute!).toBeGreaterThan(0);
-    expect(window.startMinute - day.sunriseMinute!).toBeLessThan(8);
-    expect(day.sunsetMinute! - window.endMinute).toBeGreaterThan(0);
-    expect(day.sunsetMinute! - window.endMinute).toBeLessThan(8);
+    expect(Math.abs(window.startMinute - day.sunriseMinute!)).toBeLessThanOrEqual(0.5);
+    expect(Math.abs(window.endMinute - day.sunsetMinute!)).toBeLessThanOrEqual(0.5);
+    expect(
+      Math.abs(day.daylightMinutes - (day.sunsetMinute! - day.sunriseMinute!)),
+    ).toBeLessThanOrEqual(1);
     expect(day.solarNoonMinute!).toBeGreaterThan(window.startMinute);
     expect(day.solarNoonMinute!).toBeLessThan(window.endMinute);
   });

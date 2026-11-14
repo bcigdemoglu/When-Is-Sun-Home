@@ -73,10 +73,56 @@ export interface Observer {
   fovDeg: number;
 }
 
+// ─── Terrain ───────────────────────────────────────────────────────────────
+
+/**
+ * Ground elevations on a regular grid in a local-metre frame.
+ *
+ * The frame is the flat east/north plane around `origin` (x = metres east,
+ * y = metres north; see `lib/geo/local.ts`). Elevations are stored at the grid
+ * NODES: node (col, row) is at x = minX + col·cellSizeM, y = minY + row·cellSizeM.
+ * `data` is row-major with row 0 the SOUTHERNMOST row:
+ * index = row · width + col. Between nodes the surface is bilinear.
+ */
+export interface ElevationGrid {
+  /** Origin of the local-metre frame the grid is laid out in. */
+  origin: LatLng;
+  /** Spacing of the nodes, metres (same in x and y). */
+  cellSizeM: number;
+  /** Number of columns (west → east) and rows (south → north). */
+  width: number;
+  height: number;
+  /** Local x of column 0 and local y of row 0, metres. */
+  minX: number;
+  minY: number;
+  /** Ground elevation above sea level, metres. Length = width · height. */
+  data: Float32Array;
+}
+
+/**
+ * The ground around a place at two scales, both in the same local frame
+ * (`near.origin` equals `far.origin`):
+ *  - `near`: fine cells (5–10 m) out to about a kilometre — the slopes the
+ *    observer and the surrounding buildings stand on;
+ *  - `far`: coarse cells (30–60 m) out to roughly 7–25 km — hills and
+ *    mountains on the horizon. Optional.
+ */
+export interface Terrain {
+  near: ElevationGrid;
+  far?: ElevationGrid;
+}
+
 // ─── Horizon (skyline) ─────────────────────────────────────────────────────
 
 /** Number of azimuth bins in a horizon profile (0.5° resolution). */
 export const HORIZON_BINS = 720;
+
+/**
+ * Value of `HorizonProfile.blockerIndex` (and `SunInstant.blocker.buildingIndex`)
+ * when the obstruction is the ground itself — a slope, hill or mountain —
+ * rather than a building.
+ */
+export const TERRAIN_BLOCKER = -2;
 
 /**
  * The skyline seen from the observer: for every compass direction, how high
@@ -88,10 +134,19 @@ export interface HorizonProfile {
   binCount: number;
   /** Highest obstruction elevation angle per bin, degrees, >= 0 (0 = clear). */
   elevationDeg: Float32Array;
-  /** Index into the source `BuildingCollection.features` of that obstruction, or -1. */
+  /**
+   * What that obstruction is: >= 0 is an index into the source
+   * `BuildingCollection.features`, -1 means none (open sky), and
+   * `TERRAIN_BLOCKER` (-2) means the ground / a hill.
+   */
   blockerIndex: Int32Array;
   /** Horizontal distance to that obstruction, metres (0 where there is none). */
   blockerDistanceM: Float32Array;
+  /**
+   * Height above local ground of the observer this profile was computed for,
+   * metres. A profile is only valid for an `Observer` with the same `heightM`.
+   */
+  observerHeightM: number;
   /**
    * Index of the building whose footprint contains the observer, or -1.
    * That building is EXCLUDED from the profile (the observer is assumed to be
@@ -162,8 +217,13 @@ export interface DaySummary {
   sunMinutes: number;
   /** Minutes with the sun above the horizon (the unobstructed maximum). */
   daylightMinutes: number;
-  /** Daylight minutes lost to buildings. */
+  /** Daylight minutes lost to buildings or terrain. */
   blockedMinutes: number;
+  /**
+   * The part of `blockedMinutes` during which the ground / a hill was the
+   * highest obstruction in the sun's direction. 0 without terrain data.
+   */
+  terrainBlockedMinutes?: number;
   /** Daylight minutes lost because the sun was outside the view cone. */
   outOfViewMinutes: number;
   /** Wall-clock minute of the first / last direct sun, or null if none. */
@@ -241,6 +301,9 @@ export interface SunInstant extends SunPosition {
   state: SunStateCode;
   /** Present when state is Blocked. */
   blocker?: {
+    /** "terrain" when the sun is behind the ground / a hill, else "building". */
+    kind: "building" | "terrain";
+    /** Index of the building, or `TERRAIN_BLOCKER` (-2) for terrain. */
     buildingIndex: number;
     distanceM: number;
     /** Elevation angle of the obstruction in the sun's direction, degrees. */
