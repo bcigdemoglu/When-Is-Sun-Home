@@ -54,18 +54,33 @@ function instantFor(date: string, minuteOfDay: number, timeZone: string): Date |
   }
 }
 
+const zoneNameFormats = new Map<string, Intl.DateTimeFormat | null>();
+
+/** Building an `Intl.DateTimeFormat` is slow; keep one per zone (null = unknown zone). */
+function zoneNameFormat(timeZone: string): Intl.DateTimeFormat | null {
+  let format = zoneNameFormats.get(timeZone);
+  if (format === undefined) {
+    try {
+      format = new Intl.DateTimeFormat("en-US", { timeZone, timeZoneName: "short" });
+    } catch {
+      format = null;
+    }
+    if (zoneNameFormats.size > 50) zoneNameFormats.clear();
+    zoneNameFormats.set(timeZone, format);
+  }
+  return format;
+}
+
 /**
  * Short name of the zone at that wall-clock time: "PST" / "PDT", or "GMT+3"
  * where the zone has no English abbreviation. Empty string if unknown.
  */
 export function zoneAbbreviation(timeZone: string, date: string, minuteOfDay: number): string {
-  const instant = instantFor(date, minuteOfDay, timeZone);
-  if (!instant) return "";
+  const format = zoneNameFormat(timeZone);
+  const instant = format ? instantFor(date, minuteOfDay, timeZone) : null;
+  if (!format || !instant) return "";
   try {
-    const parts = new Intl.DateTimeFormat("en-US", {
-      timeZone,
-      timeZoneName: "short",
-    }).formatToParts(instant);
+    const parts = format.formatToParts(instant);
     return parts.find((part) => part.type === "timeZoneName")?.value ?? "";
   } catch {
     return "";
@@ -173,6 +188,18 @@ export function formatCoordinates(lat: number, lng: number): string {
   const ns = lat >= 0 ? "N" : "S";
   const ew = lng >= 0 ? "E" : "W";
   return `${Math.abs(lat).toFixed(4)}° ${ns}, ${Math.abs(lng).toFixed(4)}° ${ew}`;
+}
+
+/**
+ * One line naming the place's zone at a wall-clock time:
+ * "Los Angeles time (PDT, UTC−7)".
+ */
+export function zoneLabel(timeZone: string, date: string, minuteOfDay: number): string {
+  const details = [zoneAbbreviation(timeZone, date, minuteOfDay)];
+  const offset = utcOffsetLabel(timeZone, date, minuteOfDay);
+  if (!details.includes(offset)) details.push(offset);
+  const shown = details.filter((detail) => detail !== "");
+  return `${zoneCity(timeZone)} time${shown.length > 0 ? ` (${shown.join(", ")})` : ""}`;
 }
 
 /** "America/Los_Angeles" → "Los Angeles"; "Etc/GMT+8" stays as is. */

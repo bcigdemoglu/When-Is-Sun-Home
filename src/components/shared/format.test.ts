@@ -11,6 +11,7 @@ import {
   utcOffsetLabel,
   zoneAbbreviation,
   zoneCity,
+  zoneLabel,
 } from "./format";
 
 describe("formatClock", () => {
@@ -108,6 +109,14 @@ describe("places", () => {
   it("formats coordinates with hemispheres", () => {
     expect(formatCoordinates(37.7906, -122.4294)).toBe("37.7906° N, 122.4294° W");
     expect(formatCoordinates(-33.8568, 151.2153)).toBe("33.8568° S, 151.2153° E");
+  });
+
+  it("names a zone in one line", () => {
+    expect(zoneLabel("America/Los_Angeles", "2026-07-01", 720)).toBe(
+      "Los Angeles time (PDT, UTC−7)",
+    );
+    expect(zoneLabel("Asia/Tokyo", "2026-07-01", 720)).toBe("Tokyo time (GMT+9, UTC+9)");
+    expect(zoneLabel("Etc/GMT", "2026-07-01", 720)).toBe("GMT time (UTC)");
   });
 
   it("shortens zone names", () => {

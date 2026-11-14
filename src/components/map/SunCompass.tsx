@@ -1,17 +1,17 @@
-import { useMemo } from "react";
 import { formatClockCompact } from "@/components/shared/format";
-import { SunState, type DayAnalysis, type Observer, type SunInstant } from "@/lib/types";
+import { SunState, type Observer, type SunInstant } from "@/lib/types";
 import {
-  daylightEnds,
+  COMPASS_RADIUS,
   pointString,
   polarPoint,
   rimPoint,
-  sunPathRuns,
   wedgePath,
+  type RimMark,
+  type SunPathModel,
 } from "./compassGeometry";
 
 /** Radius of the horizon circle in SVG units; the viewBox leaves room for labels. */
-const R = 100;
+const R = COMPASS_RADIUS;
 
 const PATH_COLOR: Record<number, string> = {
   [SunState.Sun]: "var(--state-sun)",
@@ -34,45 +34,40 @@ const HALO = {
   strokeLinejoin: "round" as const,
 };
 
-function SunPath({ day }: { day: DayAnalysis }) {
-  const { runs, first, last } = useMemo(() => {
-    const ends = daylightEnds(day.samples);
-    return { runs: sunPathRuns(day.samples, R), first: ends.first, last: ends.last };
-  }, [day]);
+function RimLabel({ mark }: { mark: RimMark }) {
+  const tickFrom = rimPoint(mark.azimuthDeg, R - 5);
+  const tickTo = rimPoint(mark.azimuthDeg, R + 5);
+  const text = rimPoint(mark.azimuthDeg, R + 9);
+  const anchor = text.x > 12 ? "start" : text.x < -12 ? "end" : "middle";
+  return (
+    <g>
+      <line
+        x1={tickFrom.x}
+        y1={tickFrom.y}
+        x2={tickTo.x}
+        y2={tickTo.y}
+        stroke="var(--ink)"
+        strokeWidth={2}
+        strokeLinecap="round"
+      />
+      <text
+        x={text.x}
+        y={text.y}
+        dy={text.y > 12 ? 9 : text.y < -12 ? -2 : 3.5}
+        textAnchor={anchor}
+        fontSize={11}
+        fontWeight={600}
+        fill="var(--ink)"
+        {...HALO}
+      >
+        {formatClockCompact(mark.minute)}
+      </text>
+    </g>
+  );
+}
 
-  const rimLabel = (azimuthDeg: number, minute: number | null, key: string) => {
-    if (minute === null) return null;
-    const tickFrom = rimPoint(azimuthDeg, R - 5);
-    const tickTo = rimPoint(azimuthDeg, R + 5);
-    const text = rimPoint(azimuthDeg, R + 9);
-    const anchor = text.x > 12 ? "start" : text.x < -12 ? "end" : "middle";
-    return (
-      <g key={key}>
-        <line
-          x1={tickFrom.x}
-          y1={tickFrom.y}
-          x2={tickTo.x}
-          y2={tickTo.y}
-          stroke="var(--ink)"
-          strokeWidth={2}
-          strokeLinecap="round"
-        />
-        <text
-          x={text.x}
-          y={text.y}
-          dy={text.y > 12 ? 9 : text.y < -12 ? -2 : 3.5}
-          textAnchor={anchor}
-          fontSize={11}
-          fontWeight={600}
-          fill="var(--ink)"
-          {...HALO}
-        >
-          {formatClockCompact(minute)}
-        </text>
-      </g>
-    );
-  };
-
+function SunPath({ path }: { path: SunPathModel }) {
+  const { runs, rise, set } = path;
   return (
     <g>
       {runs.map((run, index) => (
@@ -98,8 +93,8 @@ function SunPath({ day }: { day: DayAnalysis }) {
           strokeLinejoin="round"
         />
       ))}
-      {first && rimLabel(first.azimuthDeg, day.sunriseMinute ?? first.minute, "rise")}
-      {last && last !== first && rimLabel(last.azimuthDeg, day.sunsetMinute ?? last.minute, "set")}
+      {rise && <RimLabel mark={rise} />}
+      {set && <RimLabel mark={set} />}
     </g>
   );
 }
@@ -213,7 +208,8 @@ function SunMarker({ instant }: { instant: SunInstant }) {
 }
 
 interface SunCompassProps {
-  day: DayAnalysis | null;
+  /** Today's sun path (see `sunPathModel`). */
+  path: SunPathModel | null;
   instant: SunInstant | null;
   observer: Observer;
   /** Fade the diagram, e.g. while the pin is being dragged somewhere else. */
@@ -229,7 +225,7 @@ interface SunCompassProps {
  * Purely decorative for assistive tech (the report says the same in words)
  * and never takes pointer input.
  */
-export function SunCompass({ day, instant, observer, dimmed = false }: SunCompassProps) {
+export function SunCompass({ path, instant, observer, dimmed = false }: SunCompassProps) {
   const cone =
     observer.mode === "window" && observer.fovDeg < 360
       ? wedgePath(observer.facingDeg, observer.fovDeg, R)
@@ -266,7 +262,7 @@ export function SunCompass({ day, instant, observer, dimmed = false }: SunCompas
             strokeWidth={1}
           />
         )}
-        {day && <SunPath day={day} />}
+        {path && <SunPath path={path} />}
         {instant && <SunMarker instant={instant} />}
       </svg>
     </div>

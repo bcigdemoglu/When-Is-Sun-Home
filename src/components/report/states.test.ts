@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { SunState, type Observer, type SunInstant } from "@/lib/types";
 
 import {
+  blockedLabel,
   describeInstant,
   isTerrainBlocker,
   legendStates,
@@ -10,6 +11,7 @@ import {
   resolveStateColors,
   STATE_META,
   stateMeta,
+  statePhrase,
 } from "./states";
 
 const yard: Observer = { mode: "yard", heightM: 1.5, facingDeg: 180, fovDeg: 360 };
@@ -29,6 +31,21 @@ describe("state metadata", () => {
 
   it("treats an unknown code as night", () => {
     expect(stateMeta(9).code).toBe(SunState.Night);
+  });
+});
+
+describe("naming what blocks the sun", () => {
+  it("mentions hills only when the skyline has terrain", () => {
+    expect(blockedLabel(false)).toBe("Shaded by buildings");
+    expect(blockedLabel(true)).toBe("Shaded by buildings or hills");
+  });
+
+  it("tells a hill from a building in tooltips when the blocker is known", () => {
+    expect(statePhrase(SunState.Blocked)).toBe("Shaded by a building");
+    expect(statePhrase(SunState.Blocked, 12)).toBe("Shaded by a building");
+    expect(statePhrase(SunState.Blocked, -2)).toBe("Shaded by a hill");
+    expect(statePhrase(SunState.Sun, -2)).toBe("In direct sun");
+    expect(statePhrase(SunState.Night)).toMatch(/^Night/);
   });
 });
 

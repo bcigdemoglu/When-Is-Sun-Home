@@ -1,12 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import {
-  formatClock,
-  formatMonthDay,
-  formatShortDate,
-  zoneAbbreviation,
-} from "@/components/shared/format";
+import { useState } from "react";
+import { formatClock, formatMonthDay, formatShortDate } from "@/components/shared/format";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { ChevronLeftIcon, ChevronRightIcon, PauseIcon, PlayIcon } from "@/components/ui/icons";
@@ -21,9 +16,7 @@ import {
   daysInYear,
   yearOfDate,
 } from "@/lib/analysis";
-import type { DayAnalysis } from "@/lib/types";
 import { SETTINGS_LIMITS, isValidIsoDate, useSettings } from "@/state";
-import { dayTrackBackground } from "./dayTrack";
 
 const PLAY_MODES: readonly { value: PlayMode; label: string }[] = [
   { value: "day", label: "Day" },
@@ -36,34 +29,37 @@ const HOUR_TICKS = ["12 AM", "6 AM", "12 PM", "6 PM", "12 AM"];
 interface TimeScrubberProps {
   /** IANA zone of the place: everything here is wall-clock time there. */
   timeZone: string;
+  /** Its short name at the selected time, e.g. "PDT". */
+  zone: string;
   date: string;
   minuteOfDay: number;
   /** True while date and time follow the clock. */
   isLive: boolean;
-  /** Analysis of `date`, for the sun strip on the time slider. */
-  day: DayAnalysis | null;
+  /** CSS background for the time slider: the day's sun / shade strip (see `dayTrack.ts`). */
+  track: string | undefined;
+  /** Sunrise / sunset of `date`, which bound the "day" animation. */
+  sunriseMinute: number | null;
+  sunsetMinute: number | null;
   className?: string;
 }
 
 /** Pick the date and the time of day, jump back to "now", or let them play. */
 export function TimeScrubber({
   timeZone,
+  zone,
   date,
   minuteOfDay,
   isLive,
-  day,
+  track,
+  sunriseMinute,
+  sunsetMinute,
   className = "",
 }: TimeScrubberProps) {
   const setDate = useSettings((s) => s.setDate);
   const setMinuteOfDay = useSettings((s) => s.setMinuteOfDay);
   const resetToNow = useSettings((s) => s.resetToNow);
 
-  const playback = usePlayback({
-    date,
-    minuteOfDay,
-    sunriseMinute: day ? day.sunriseMinute : null,
-    sunsetMinute: day ? day.sunsetMinute : null,
-  });
+  const playback = usePlayback({ date, minuteOfDay, sunriseMinute, sunsetMinute });
   const pause = playback.pause;
 
   // What is being typed into the date field; null = show the selected date.
@@ -72,8 +68,6 @@ export function TimeScrubber({
   const year = yearOfDate(date);
   const dayIndex = dayIndexFromDate(date);
   const lastDayIndex = daysInYear(year) - 1;
-  const zone = zoneAbbreviation(timeZone, date, minuteOfDay);
-  const track = useMemo(() => dayTrackBackground(day), [day]);
   const speed = PLAY_SPEEDS[playback.speedIndex] ?? PLAY_SPEEDS[0];
 
   const shiftDay = (days: number) => {

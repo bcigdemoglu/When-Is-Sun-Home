@@ -87,9 +87,10 @@ interface ChartTooltipProps {
 }
 
 /**
- * The one tooltip used by every chart. It sits above the pointer (so a finger
- * does not cover it), flips below near the top edge, and never takes pointer
- * events. Everything it shows is also available without hovering.
+ * The one tooltip used by every chart. It always sits above the anchor — so
+ * neither a finger nor the tooltip itself covers the mark being read — and may
+ * overhang the top of the chart. It never takes pointer events, and everything
+ * it shows is also available without hovering.
  */
 export function ChartTooltip({
   x,
@@ -100,10 +101,7 @@ export function ChartTooltip({
 }: ChartTooltipProps) {
   const width = Math.min(TOOLTIP_WIDTH, Math.max(120, containerWidth));
   const left = Math.min(Math.max(0, x - width / 2), Math.max(0, containerWidth - width));
-  const above = y > 92;
-  const style: CSSProperties = above
-    ? { left, width, bottom: containerHeight - y + 14 }
-    : { left, width, top: y + 20 };
+  const style: CSSProperties = { left, width, bottom: containerHeight - y + 14 };
   return (
     <div
       role="presentation"

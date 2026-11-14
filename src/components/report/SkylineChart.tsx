@@ -149,7 +149,8 @@ export function SkylineChart({ grid, horizon, observer, date, instant }: Skyline
       distanceM: horizon && bin >= 0 ? horizon.blockerDistanceM[bin] : 0,
       kind:
         horizon && bin >= 0 && elevationDeg > 0 ? obstructionKind(horizon.blockerIndex[bin]) : null,
-      passage: selected ? sunPassageAt(selected.points, azimuthDeg) : null,
+      passage:
+        selected && grid ? sunPassageAt(selected.points, azimuthDeg, grid.stepMinutes) : null,
     };
   })();
 
@@ -311,10 +312,9 @@ export function SkylineChart({ grid, horizon, observer, date, instant }: Skyline
 
       <p className="mt-1 min-h-8 text-xs text-ink-3 @lg:min-h-4">
         {horizon
-          ? "Dotted stretches of a path are hidden behind the skyline."
-          : "Building data is not available, so the horizon is drawn open."}
-        {model?.scale.compressed && " Heights above 40° are compressed."}
-        {horizon && horizon.containingBuildingIndex >= 0 && " The pin’s own building is left out."}
+          ? "Dotted: the path is hidden behind the skyline."
+          : "No building data: the horizon is drawn open."}
+        {model?.scale.stretched && " Heights are stretched near the horizon."}
       </p>
 
       {horizon && <SectorTable horizon={horizon} />}

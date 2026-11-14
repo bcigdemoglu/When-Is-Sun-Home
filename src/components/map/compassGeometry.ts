@@ -5,7 +5,7 @@
  * `90° − altitude`: the zenith is at the pin and the horizon on the rim.
  * SVG coordinates: x to the right, y DOWN.
  */
-import { SunState, type DaySample, type SunStateCode } from "@/lib/types";
+import { SunState, type DayAnalysis, type DaySample, type SunStateCode } from "@/lib/types";
 
 const DEG = Math.PI / 180;
 
@@ -136,3 +136,37 @@ export function wedgePath(facingDeg: number, fovDeg: number, radius: number): st
   const largeArc = fovDeg > 180 ? 1 : 0;
   return `M0,0L${pointString(start)}A${r},${r} 0 ${largeArc} 1 ${pointString(end)}Z`;
 }
+
+/** A time label on the rim of the compass. */
+export interface RimMark {
+  azimuthDeg: number;
+  /** Wall-clock minute to print. */
+  minute: number;
+}
+
+/** Everything the compass draws for one day — small, so it is cheap to pass around. */
+export interface SunPathModel {
+  runs: SunPathRun[];
+  /** Where and when the sun comes up / goes down; null when it does neither. */
+  rise: RimMark | null;
+  set: RimMark | null;
+}
+
+/** Boil a day's analysis down to what the compass draws. */
+export function sunPathModel(
+  day: Pick<DayAnalysis, "samples" | "sunriseMinute" | "sunsetMinute">,
+  radius: number,
+): SunPathModel {
+  const { first, last } = daylightEnds(day.samples);
+  return {
+    runs: sunPathRuns(day.samples, radius),
+    rise: first ? { azimuthDeg: first.azimuthDeg, minute: day.sunriseMinute ?? first.minute } : null,
+    set:
+      last && last !== first
+        ? { azimuthDeg: last.azimuthDeg, minute: day.sunsetMinute ?? last.minute }
+        : null,
+  };
+}
+
+/** Radius of the compass's horizon circle, in its SVG units. */
+export const COMPASS_RADIUS = 100;

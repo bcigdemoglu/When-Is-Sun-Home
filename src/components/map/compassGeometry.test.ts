@@ -5,6 +5,7 @@ import {
   pointString,
   polarPoint,
   rimPoint,
+  sunPathModel,
   sunPathRuns,
   wedgePath,
 } from "./compassGeometry";
@@ -110,5 +111,34 @@ describe("wedgePath", () => {
   it("uses the large arc beyond 180° and a full circle at 360°", () => {
     expect(wedgePath(0, 270, 100)).toContain(" 0 1 1 ");
     expect(wedgePath(0, 360, 100)).toMatch(/^M0,-100A/);
+  });
+});
+
+describe("sunPathModel", () => {
+  it("bundles the path with the sunrise and sunset marks", () => {
+    const samples = [
+      sample(0, SunState.Night, -3),
+      sample(1, SunState.Blocked, 1, 80),
+      sample(2, SunState.Sun, 2, 81),
+      sample(3, SunState.Sun, 1, 82),
+      sample(4, SunState.Night, -1),
+    ];
+    const model = sunPathModel({ samples, sunriseMinute: 0.6, sunsetMinute: 3.4 }, 100);
+    expect(model.runs.map((run) => run.state)).toEqual([SunState.Blocked, SunState.Sun]);
+    expect(model.rise).toEqual({ azimuthDeg: 80, minute: 0.6 });
+    expect(model.set).toEqual({ azimuthDeg: 82, minute: 3.4 });
+  });
+
+  it("falls back to the first and last daylight samples, and to nothing in the dark", () => {
+    const up = [sample(10, SunState.Sun, 5, 90), sample(11, SunState.Sun, 5, 91)];
+    const model = sunPathModel({ samples: up, sunriseMinute: null, sunsetMinute: null }, 100);
+    expect(model.rise?.minute).toBe(10);
+    expect(model.set?.minute).toBe(11);
+    expect(
+      sunPathModel(
+        { samples: [sample(0, SunState.Night, -5)], sunriseMinute: null, sunsetMinute: null },
+        100,
+      ),
+    ).toEqual({ runs: [], rise: null, set: null });
   });
 });

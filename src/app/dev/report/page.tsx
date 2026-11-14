@@ -11,6 +11,8 @@
  *   date, t         selected date (YYYY-MM-DD) and minute of day
  *   buildings       "fixture" (default) | "none"
  *   state           "ready" (default) | "loading" | "error" | "skeleton"
+ *   terrain         "demo" adds a made-up ridge to the south, marked as terrain
+ *                   (blockerIndex -2), to preview how hills are drawn
  */
 import Link from "next/link";
 import { use, useEffect, useMemo, useState } from "react";
@@ -26,7 +28,7 @@ import {
   yearOfDate,
 } from "@/lib/analysis";
 import { parseOverpassResponse } from "@/lib/buildings/overpass";
-import type { BuildingCollection, Observer, ObserverMode } from "@/lib/types";
+import type { BuildingCollection, HorizonProfile, Observer, ObserverMode } from "@/lib/types";
 
 type Query = Record<string, string | string[] | undefined>;
 
@@ -38,6 +40,7 @@ interface HarnessParams {
   minute: number;
   buildings: "fixture" | "none";
   state: "ready" | "loading" | "error" | "skeleton";
+  terrainDemo: boolean;
 }
 
 const DEFAULTS = { lat: 37.79, lng: -122.429, date: "2026-11-14", minute: 13 * 60 };
@@ -56,6 +59,7 @@ const PRESETS: { label: string; query: string }[] = [
     label: "Tromsø (no buildings)",
     query: "lat=69.65&lng=18.96&buildings=none&date=2026-06-21&t=720",
   },
+  { label: "With a made-up hill", query: "terrain=demo&date=2026-12-21&t=720" },
   { label: "Buildings loading", query: "state=loading" },
   { label: "Buildings failed", query: "state=error" },
   { label: "All skeletons", query: "state=skeleton" },
@@ -88,10 +92,29 @@ function parseQuery(query: Query): HarnessParams {
     minute: Math.min(1439, Math.max(0, Math.round(numberParam(query.t, DEFAULTS.minute)))),
     buildings: first(query.buildings) === "none" ? "none" : "fixture",
     state: state === "loading" || state === "error" || state === "skeleton" ? state : "ready",
+    terrainDemo: first(query.terrain) === "demo",
   };
 }
 
 const EMPTY: BuildingCollection = { type: "FeatureCollection", features: [] };
+
+/** A synthetic ridge to the south, up to 16° high, wherever it tops the buildings. */
+function withDemoTerrain(horizon: HorizonProfile): HorizonProfile {
+  const elevationDeg = Float32Array.from(horizon.elevationDeg);
+  const blockerIndex = Int32Array.from(horizon.blockerIndex);
+  const blockerDistanceM = Float32Array.from(horizon.blockerDistanceM);
+  for (let bin = 0; bin < horizon.binCount; bin++) {
+    const azimuth = ((bin + 0.5) * 360) / horizon.binCount;
+    if (azimuth < 140 || azimuth > 220) continue;
+    const ridge = 16 * Math.sin(((azimuth - 140) / 80) * Math.PI) ** 0.7;
+    if (ridge > elevationDeg[bin]) {
+      elevationDeg[bin] = ridge;
+      blockerIndex[bin] = -2;
+      blockerDistanceM[bin] = 2400;
+    }
+  }
+  return { ...horizon, elevationDeg, blockerIndex, blockerDistanceM };
+}
 
 export default function ReportHarnessPage({ searchParams }: { searchParams: Promise<Query> }) {
   const query = use(searchParams);
@@ -145,13 +168,12 @@ function Harness({ params }: { params: HarnessParams }) {
     () => computeSunYearGrid({ lat, lng }, { year, timeZone, stepMinutes: 5 }),
     [lat, lng, year, timeZone],
   );
-  const horizon = useMemo(
-    () =>
-      status === "ready" && collection
-        ? computeHorizonProfile({ lat, lng }, collection, observer.heightM)
-        : null,
-    [status, collection, lat, lng, observer.heightM],
-  );
+  const { terrainDemo } = params;
+  const horizon = useMemo(() => {
+    if (status !== "ready" || !collection) return null;
+    const profile = computeHorizonProfile({ lat, lng }, collection, observer.heightM);
+    return terrainDemo ? withDemoTerrain(profile) : profile;
+  }, [status, collection, lat, lng, observer.heightM, terrainDemo]);
   const yearAnalysis = useMemo(
     () => analyzeYear(grid, horizon, observer),
     [grid, horizon, observer],

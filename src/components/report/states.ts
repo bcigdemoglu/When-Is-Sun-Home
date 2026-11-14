@@ -67,6 +67,22 @@ export function legendStates(observer: Pick<Observer, "mode" | "fovDeg">): SunSt
     : [SunState.Sun, SunState.Blocked, SunState.Night];
 }
 
+/** Legend / prose name of the Blocked state, depending on what can block. */
+export function blockedLabel(hasTerrain: boolean): string {
+  return hasTerrain ? "Shaded by buildings or hills" : "Shaded by buildings";
+}
+
+/**
+ * Tooltip phrase for a state. For Blocked, `blockerIndex` (the skyline's
+ * blocker in the sun's direction, if known) tells a hill from a building.
+ */
+export function statePhrase(code: number, blockerIndex?: number): string {
+  if (code === SunState.Blocked && blockerIndex !== undefined && isTerrainBlocker(blockerIndex)) {
+    return "Shaded by a hill";
+  }
+  return stateMeta(code).phrase;
+}
+
 // ─── Colours ───────────────────────────────────────────────────────────────
 
 /** Parse "#rgb", "#rrggbb" or "rgb(r, g, b)" / "rgb(r g b)"; `null` otherwise. */

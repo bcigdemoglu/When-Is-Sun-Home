@@ -124,18 +124,18 @@ function SunWindows({ day }: { day: DayAnalysis | null }) {
           </p>
         ) : (
           <ul className="grid gap-x-6 gap-y-1 text-sm @lg:grid-cols-2">
-            {day.windows.map((window) => (
+            {day.windows.map((sunWindow) => (
               <li
-                key={window.startMinute}
+                key={sunWindow.startMinute}
                 className="flex items-baseline justify-between gap-3 tabular-nums"
               >
                 <span className="text-ink">
-                  {window.startMinute <= 0 && window.endMinute >= 1440
+                  {sunWindow.startMinute <= 0 && sunWindow.endMinute >= 1440
                     ? "All day"
-                    : formatClockRange(window.startMinute, window.endMinute, hour12)}
+                    : formatClockRange(sunWindow.startMinute, sunWindow.endMinute, hour12)}
                 </span>
                 <span className="text-ink-2">
-                  {formatDuration(window.endMinute - window.startMinute)}
+                  {formatDuration(sunWindow.endMinute - sunWindow.startMinute)}
                 </span>
               </li>
             ))}

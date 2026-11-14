@@ -1,5 +1,5 @@
 import { Card } from "@/components/ui/Card";
-import type { HorizonProfile, Observer } from "@/lib/types";
+import type { Observer } from "@/lib/types";
 
 import { buildingStatsText } from "./BuildingStatus";
 import type { BuildingDataStatus } from "./types";
@@ -7,23 +7,27 @@ import type { BuildingDataStatus } from "./types";
 interface MethodNoteProps {
   buildings: BuildingDataStatus;
   observer: Observer;
-  horizon: HorizonProfile | null;
+  hasTerrain: boolean;
   pinOnBuilding: boolean;
   stepMinutes: number | null;
+  /** IANA zone of the place, shown so the clock times are unambiguous. */
+  timeZone: string;
 }
 
 /** A short, honest account of what the numbers mean and what they leave out. */
 export function MethodNote({
   buildings,
   observer,
-  horizon,
+  hasTerrain,
   pinOnBuilding,
   stepMinutes,
+  timeZone,
 }: MethodNoteProps) {
-  const hasTerrain = horizon !== null && horizon.blockerIndex.some((index) => index < -1);
   const buildingLine =
-    buildings.status === "ready" && buildings.stats
-      ? `${buildingStatsText(buildings.stats)}.`
+    buildings.status === "ready"
+      ? buildings.stats
+        ? `${buildingStatsText(buildings.stats)}.`
+        : "Footprints and heights of the surrounding buildings are included."
       : buildings.status === "error"
         ? "Building data could not be loaded, so no buildings are included."
         : "Building data is still loading; until it arrives no buildings are included.";
@@ -57,7 +61,7 @@ export function MethodNote({
           {pinOnBuilding && " The pin sits on a building; that building itself is ignored."}
         </li>
         <li>
-          Times are local clock times at this place
+          Times are local clock times at this place ({timeZone.replace(/_/g, " ")})
           {stepMinutes ? `, sampled every ${stepMinutes} minutes across the year` : ""}.
         </li>
       </ul>

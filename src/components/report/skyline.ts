@@ -65,38 +65,38 @@ export function compassTicks(centerDeg: number): CompassTick[] {
 
 // ─── Vertical axis: elevation angle ────────────────────────────────────────
 
-const KNEE_DEG = 40;
-const KNEE_SHARE = 0.62;
+/** Below this the scale stays linear: there is nothing to make room for. */
+const LINEAR_MAX_DEG = 50;
+/** Exponent of the stretched scale: 40° sits at about 61% of a 90° axis. */
+const STRETCH_EXPONENT = 0.6;
 
 export interface ElevationScale {
   maxDeg: number;
-  /** True when the band above 40° is compressed. */
-  compressed: boolean;
+  /** True when the scale is non-linear (stretched near the horizon). */
+  stretched: boolean;
   ticks: number[];
   /** 0 at the horizon, 1 at `maxDeg`. */
   fraction(elevationDeg: number): number;
 }
 
 /**
- * Vertical scale for elevations 0…`neededDeg`. Buildings live in the lowest
- * 40°, so that band always gets most of the height; anything above it is
- * squeezed into the remainder (a piecewise-linear scale with one knee).
+ * Vertical scale for elevations 0…`neededDeg` (rounded up to a multiple of
+ * 10°, at least 40°). Buildings live in the lowest 40° while the summer sun
+ * climbs far above them, so a tall axis is a power scale that gives the low
+ * band most of the height — smooth, so sun paths keep their shape.
  */
 export function createElevationScale(neededDeg: number): ElevationScale {
   const needed = Number.isFinite(neededDeg) ? neededDeg : 90;
-  const maxDeg = Math.min(90, Math.max(KNEE_DEG, Math.ceil(needed / 10) * 10));
-  const compressed = maxDeg > KNEE_DEG + 10;
+  const maxDeg = Math.min(90, Math.max(40, Math.ceil(needed / 10) * 10));
+  const stretched = maxDeg > LINEAR_MAX_DEG;
   const fraction = (elevationDeg: number): number => {
-    const e = Math.min(maxDeg, Math.max(0, elevationDeg));
-    if (!compressed) return e / maxDeg;
-    return e <= KNEE_DEG
-      ? (e / KNEE_DEG) * KNEE_SHARE
-      : KNEE_SHARE + ((e - KNEE_DEG) / (maxDeg - KNEE_DEG)) * (1 - KNEE_SHARE);
+    const share = Math.min(maxDeg, Math.max(0, elevationDeg)) / maxDeg;
+    return stretched ? Math.pow(share, STRETCH_EXPONENT) : share;
   };
-  const ticks = compressed
-    ? [0, 10, 20, 30, 40, 60, 90].filter((t) => t <= maxDeg)
-    : [0, 10, 20, 30, 40, 50].filter((t) => t <= maxDeg);
-  return { maxDeg, compressed, ticks, fraction };
+  const ticks = (stretched ? [0, 10, 20, 30, 40, 60, 90] : [0, 10, 20, 30, 40, 50]).filter(
+    (tick) => tick <= maxDeg,
+  );
+  return { maxDeg, stretched, ticks, fraction };
 }
 
 /** Highest the noon sun ever gets at a latitude, degrees. */
@@ -268,22 +268,34 @@ export function hourMarks(grid: SunYearGrid, dayIndex: number): HourMark[] {
   return marks;
 }
 
-/** The sample of a path closest in direction to `azimuthDeg`, if within `toleranceDeg`. */
+/**
+ * When, and how high, the sun of a path stands in the direction `azimuthDeg`:
+ * interpolated between the two consecutive samples that bracket it. `null` if
+ * the path never crosses that direction. `stepMinutes` is the path's sampling
+ * step (samples further apart are not connected).
+ */
 export function sunPassageAt(
   points: readonly SunPathPoint[],
   azimuthDeg: number,
-  toleranceDeg = 3,
+  stepMinutes: number,
 ): SunPathPoint | null {
-  let best: SunPathPoint | null = null;
-  let bestDistance = toleranceDeg;
-  for (const point of points) {
-    const distance = angularDistance(point.azimuthDeg, azimuthDeg);
-    if (distance <= bestDistance) {
-      best = point;
-      bestDistance = distance;
-    }
+  const signedDelta = (from: number, to: number) => ((to - from + 540) % 360) - 180;
+  for (let i = 1; i < points.length; i++) {
+    const a = points[i - 1];
+    const b = points[i];
+    if (b.minute - a.minute > stepMinutes * 1.5) continue;
+    const span = signedDelta(a.azimuthDeg, b.azimuthDeg);
+    if (span === 0) continue;
+    const t = signedDelta(a.azimuthDeg, azimuthDeg) / span;
+    if (t < 0 || t > 1) continue;
+    return {
+      minute: a.minute + (b.minute - a.minute) * t,
+      azimuthDeg: normalize360(azimuthDeg),
+      altitudeDeg: a.altitudeDeg + (b.altitudeDeg - a.altitudeDeg) * t,
+      state: t < 0.5 ? a.state : b.state,
+    };
   }
-  return best;
+  return null;
 }
 
 export interface ReferenceDay {

@@ -9,7 +9,14 @@ import {
 } from "react";
 
 import { Card } from "@/components/ui/Card";
-import type { Observer, YearAnalysis } from "@/lib/types";
+import { horizonBinFor } from "@/lib/analysis";
+import {
+  SunState,
+  type HorizonProfile,
+  type Observer,
+  type SunYearGrid,
+  type YearAnalysis,
+} from "@/lib/types";
 
 import {
   formatClock,
@@ -37,13 +44,17 @@ import { useColorSchemeKey, useDevicePixelRatio, useElementSize } from "./hooks"
 import type { ReportModel } from "./model";
 import { MonthlyTable } from "./MonthlyTable";
 import { ChartTooltip, SkeletonBlock, StateLegend, StateSwatch, useReport } from "./parts";
-import { legendStates, resolveStateColors, stateMeta } from "./states";
+import { blockedLabel, legendStates, resolveStateColors, stateMeta, statePhrase } from "./states";
 
 const MARGIN = { left: 42, right: 4, top: 18, bottom: 20 };
 
 interface YearHeatmapProps {
   year: YearAnalysis | null;
   model: ReportModel | null;
+  /** Sun positions and skyline: only used to say WHAT shades a hovered cell. */
+  grid: SunYearGrid | null;
+  horizon: HorizonProfile | null;
+  hasTerrain: boolean;
   date: string;
   minuteOfDay: number;
   observer: Observer;
@@ -54,6 +65,9 @@ interface YearHeatmapProps {
 export function YearHeatmap({
   year,
   model,
+  grid,
+  horizon,
+  hasTerrain,
   date,
   minuteOfDay,
   observer,
@@ -126,7 +140,11 @@ export function YearHeatmap({
         Each column is a day, read top to bottom from morning to evening. Tap anywhere to jump to
         that date and time.
       </p>
-      <StateLegend states={legendStates(observer)} className="mt-2" />
+      <StateLegend
+        states={legendStates(observer)}
+        labels={{ [SunState.Blocked]: blockedLabel(hasTerrain) }}
+        className="mt-2"
+      />
 
       <div
         ref={sizeRef}
@@ -151,7 +169,13 @@ export function YearHeatmap({
               aria-hidden="true"
             >
               <Furniture geometry={geometry} model={model} hour12={hour12} />
-              <ClockShiftMarks geometry={geometry} shifts={model.clockShifts} />
+              <ClockShiftMarks
+                geometry={geometry}
+                shifts={model.clockShifts}
+                avoid={
+                  selectedDay !== null ? flagSpan(geometry, selectedDay, formatDate(date)) : null
+                }
+              />
               {hover && <HoverMark geometry={geometry} cell={hover} />}
               {selectedDay !== null && (
                 <SelectionMark
@@ -196,7 +220,10 @@ export function YearHeatmap({
                     className="mt-0.5"
                   />
                   <span>
-                    {stateMeta(year.state[hover.dayIndex * year.slotsPerDay + hover.slot]).phrase}
+                    {statePhrase(
+                      year.state[hover.dayIndex * year.slotsPerDay + hover.slot],
+                      blockerAt(grid, horizon, hover.dayIndex, hover.slot),
+                    )}
                   </span>
                 </div>
                 <div className="mt-1 tabular-nums">
@@ -240,6 +267,18 @@ export function YearHeatmap({
       </div>
     </Card>
   );
+}
+
+/** The skyline's blocker in the sun's direction at a grid cell, if both are known. */
+function blockerAt(
+  grid: SunYearGrid | null,
+  horizon: HorizonProfile | null,
+  dayIndex: number,
+  slot: number,
+): number | undefined {
+  if (!grid || !horizon) return undefined;
+  const bin = horizonBinFor(horizon, grid.azimuthDeg[dayIndex * grid.slotsPerDay + slot]);
+  return bin < 0 ? undefined : horizon.blockerIndex[bin];
 }
 
 function chartSummary(year: YearAnalysis | null, model: ReportModel | null): string {
@@ -383,18 +422,33 @@ function Furniture({
   );
 }
 
+/** Horizontal extent of the selected-date flag above the plot. */
+function flagSpan(geometry: HeatmapGeometry, dayIndex: number, label: string) {
+  const half = (label.length * 5.8) / 2;
+  const right = geometry.x + geometry.width;
+  const center = Math.min(
+    Math.max(dayCenterX(geometry, dayIndex), geometry.x + half),
+    right - half,
+  );
+  return { center, x0: center - half, x1: center + half };
+}
+
 function ClockShiftMarks({
   geometry,
   shifts,
+  avoid,
 }: {
   geometry: HeatmapGeometry;
   shifts: readonly ClockShift[];
+  /** Span taken by the selected-date flag: marks under it are left out. */
+  avoid: { x0: number; x1: number } | null;
 }) {
   return (
     <g className="fill-ink-3">
       {shifts.map((shift) => {
         const x = dayX(geometry, shift.dayIndex);
         const y = geometry.y - 2;
+        if (avoid && x + 5 > avoid.x0 && x - 5 < avoid.x1) return null;
         return <path key={shift.dayIndex} d={`M${x - 3.5} ${y - 5}h7l-3.5 5z`} />;
       })}
     </g>
@@ -438,8 +492,7 @@ function SelectionMark({
   const right = geometry.x + geometry.width;
   const inRange = minute >= geometry.startMinute && minute <= geometry.endMinute;
   const y = minuteY(geometry, minute);
-  const labelHalf = (label.length * 5.8) / 2;
-  const labelX = Math.min(Math.max(x, geometry.x + labelHalf), right - labelHalf);
+  const labelX = flagSpan(geometry, dayIndex, label).center;
   return (
     <g data-testid="heatmap-selection">
       <line

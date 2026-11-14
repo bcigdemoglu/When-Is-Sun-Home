@@ -2,12 +2,7 @@
 
 import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
-import {
-  formatCoordinates,
-  utcOffsetLabel,
-  zoneAbbreviation,
-  zoneCity,
-} from "@/components/shared/format";
+import { formatCoordinates } from "@/components/shared/format";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { CheckIcon, ResetIcon, ShareIcon } from "@/components/ui/icons";
@@ -52,9 +47,8 @@ function useShareLink() {
 interface PlaceHeaderProps {
   place: Place;
   timeZone: string;
-  /** The selected wall-clock date and minute, to name the zone as it is then. */
-  date: string;
-  minuteOfDay: number;
+  /** The zone in words at the selected time: "Los Angeles time (PDT, UTC−7)". */
+  zoneLabel: string;
   /** State of the building data behind the numbers. */
   buildings: Pick<UseBuildingsResult, "status" | "stats" | "error" | "isFetching" | "refetch">;
 }
@@ -63,17 +57,12 @@ interface PlaceHeaderProps {
 export function PlaceHeader({
   place,
   timeZone,
-  date,
-  minuteOfDay,
+  zoneLabel,
   buildings,
 }: PlaceHeaderProps) {
   const queryClient = useQueryClient();
   const { share, copy, dismiss } = useShareLink();
   const [confirmingReset, setConfirmingReset] = useState(false);
-
-  const abbreviation = zoneAbbreviation(timeZone, date, minuteOfDay);
-  const offset = utcOffsetLabel(timeZone, date, minuteOfDay);
-  const zoneDetail = [abbreviation, offset].filter((part, index, all) => part && all.indexOf(part) === index);
 
   const reset = async () => {
     setConfirmingReset(false);
@@ -148,9 +137,7 @@ export function PlaceHeader({
       <p className="mt-1 text-sm text-ink-2">
         <span className="tabular-nums">{formatCoordinates(place.lat, place.lng)}</span>
         <span aria-hidden="true"> · </span>
-        <span title={timeZone}>
-          {zoneCity(timeZone)} time{zoneDetail.length > 0 ? ` (${zoneDetail.join(", ")})` : ""}
-        </span>
+        <span title={timeZone}>{zoneLabel}</span>
       </p>
       <div className="mt-2.5 border-t border-line pt-2">
         <DataStatus buildings={buildings} />

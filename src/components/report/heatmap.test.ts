@@ -169,7 +169,8 @@ describe("buildHeatmapPixels", () => {
     expect(pixels.data).toHaveLength(365 * 28 * 4);
     expect(pixels.outMask).toBeNull();
 
-    const at = (day: number, row: number) => Array.from(pixels.data.slice((row * 365 + day) * 4, (row * 365 + day) * 4 + 4));
+    const at = (day: number, row: number) =>
+      Array.from(pixels.data.slice((row * 365 + day) * 4, (row * 365 + day) * 4 + 4));
     // Row 0 = 05:00 (night), row 2 = 06:00 (first sunny slot), row 26 = 18:00 (night again).
     expect(at(0, 0)).toEqual([...colors.rgb[SunState.Night], 255]);
     expect(at(0, 2)).toEqual([...colors.rgb[SunState.Sun], 255]);
@@ -180,7 +181,13 @@ describe("buildHeatmapPixels", () => {
   it("matches the state array cell for cell", () => {
     const { year } = syntheticYear({ riseMinute: (d) => 300 + (d % 7) * 30 });
     const pixels = buildHeatmapPixels(year, FULL_DAY, colors);
-    for (const [day, slot] of [[0, 0], [3, 12], [100, 20], [200, 35], [364, 47]]) {
+    for (const [day, slot] of [
+      [0, 0],
+      [3, 12],
+      [100, 20],
+      [200, 35],
+      [364, 47],
+    ]) {
       const code = year.state[day * year.slotsPerDay + slot];
       const p = (slot * pixels.width + day) * 4;
       expect(Array.from(pixels.data.slice(p, p + 3))).toEqual([...colors.rgb[code]]);
@@ -189,27 +196,44 @@ describe("buildHeatmapPixels", () => {
 
   it("marks out-of-view cells for the hatch", () => {
     // A window facing east with a 90° view: the afternoon sun is out of view.
-    const { year } = syntheticYear({}, null, { mode: "window", heightM: 1.5, facingDeg: 90, fovDeg: 90 });
+    const { year } = syntheticYear({}, null, {
+      mode: "window",
+      heightM: 1.5,
+      facingDeg: 90,
+      fovDeg: 90,
+    });
     const pixels = buildHeatmapPixels(year, FULL_DAY, colors);
     expect(pixels.outMask).not.toBeNull();
     const slot = 30; // 15:00–15:30
     expect(year.state[slot]).toBe(SunState.OutOfView);
-    expect(pixels.outMask![(slot * pixels.width) * 4 + 3]).toBe(255);
+    expect(pixels.outMask![slot * pixels.width * 4 + 3]).toBe(255);
     const morning = 14; // 07:00–07:30: in view
     expect(year.state[morning]).toBe(SunState.Sun);
-    expect(pixels.outMask![(morning * pixels.width) * 4 + 3]).toBe(0);
+    expect(pixels.outMask![morning * pixels.width * 4 + 3]).toBe(0);
   });
 });
 
 describe("moveSelection", () => {
   it("moves by one day with the left and right arrows, across month and year ends", () => {
-    expect(moveSelection("2026-03-01", 600, "ArrowLeft")).toEqual({ date: "2026-02-28", minute: 600 });
-    expect(moveSelection("2026-12-31", 600, "ArrowRight")).toEqual({ date: "2027-01-01", minute: 600 });
+    expect(moveSelection("2026-03-01", 600, "ArrowLeft")).toEqual({
+      date: "2026-02-28",
+      minute: 600,
+    });
+    expect(moveSelection("2026-12-31", 600, "ArrowRight")).toEqual({
+      date: "2027-01-01",
+      minute: 600,
+    });
   });
 
   it("moves by 15 minutes with up (earlier) and down (later), snapping to the quarter hour", () => {
-    expect(moveSelection("2026-06-01", 600, "ArrowDown")).toEqual({ date: "2026-06-01", minute: 615 });
-    expect(moveSelection("2026-06-01", 600, "ArrowUp")).toEqual({ date: "2026-06-01", minute: 585 });
+    expect(moveSelection("2026-06-01", 600, "ArrowDown")).toEqual({
+      date: "2026-06-01",
+      minute: 615,
+    });
+    expect(moveSelection("2026-06-01", 600, "ArrowUp")).toEqual({
+      date: "2026-06-01",
+      minute: 585,
+    });
     expect(moveSelection("2026-06-01", 607, "ArrowDown")?.minute).toBe(615);
     expect(moveSelection("2026-06-01", 607, "ArrowUp")?.minute).toBe(600);
     expect(moveSelection("2026-06-01", 0, "ArrowUp")?.minute).toBe(0);

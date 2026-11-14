@@ -63,7 +63,17 @@ export function syntheticGrid(options: SyntheticSun = {}): SunYearGrid {
       }
     }
   }
-  return { lat, lng: 0, year, timeZone, stepMinutes, dayCount, slotsPerDay, azimuthDeg, altitudeDeg };
+  return {
+    lat,
+    lng: 0,
+    year,
+    timeZone,
+    stepMinutes,
+    dayCount,
+    slotsPerDay,
+    azimuthDeg,
+    altitudeDeg,
+  };
 }
 
 /** A skyline from a function of the bin's centre azimuth; 0 = open sky. */
@@ -116,7 +126,12 @@ export function syntheticDay(
   for (let minute = 0; minute < 1440; minute += stepMinutes) {
     const run = runs.find(([start, end]) => minute >= start && minute < end);
     const state: SunStateCode = run ? run[2] : 0;
-    samples.push({ minute, azimuthDeg: 90 + minute / 8, altitudeDeg: state === 0 ? -5 : 30, state });
+    samples.push({
+      minute,
+      azimuthDeg: 90 + minute / 8,
+      altitudeDeg: state === 0 ? -5 : 30,
+      state,
+    });
     if (state !== 0) daylightMinutes += stepMinutes;
     if (state === 1) {
       sunMinutes += stepMinutes;

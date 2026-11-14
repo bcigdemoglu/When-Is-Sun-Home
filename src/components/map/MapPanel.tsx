@@ -6,8 +6,9 @@ import { ErrorBoundary } from "@/components/app/ErrorBoundary";
 import { SearchBox } from "@/components/search/SearchBox";
 import { Button } from "@/components/ui/Button";
 import { pinSpot, pinSuggestion } from "@/hooks/placeActions";
-import type { SunAnalysis } from "@/hooks/useSunAnalysis";
-import type { Place } from "@/lib/types";
+import type { BuildingsStatus } from "@/lib/buildings/useBuildings";
+import type { BuildingCollection, Place, SunInstant } from "@/lib/types";
+import type { SunPathModel } from "./compassGeometry";
 
 function MapLoading() {
   return (
@@ -38,9 +39,17 @@ function MapUnavailable({ onRetry }: { onRetry(): void }) {
   );
 }
 
+// Deliberately small props: nothing here changes identity on a slider tick
+// except `instant` (three numbers).
 interface MapPanelProps {
   place: Place | null;
-  analysis: SunAnalysis | null;
+  /** Buildings to draw; may be a neighbouring area's while the real ones load. */
+  buildings: BuildingCollection | null;
+  buildingStatus: BuildingsStatus;
+  sunPath: SunPathModel | null;
+  instant: SunInstant | null;
+  blockerBuildingId: string | null;
+  pinBuildingId: string | null;
 }
 
 /**
@@ -48,15 +57,21 @@ interface MapPanelProps {
  * error boundary: if WebGL is missing or dies, this panel says so and the rest
  * of the app carries on.
  */
-export function MapPanel({ place, analysis }: MapPanelProps) {
+export function MapPanel({
+  place,
+  buildings,
+  buildingStatus,
+  sunPath,
+  instant,
+  blockerBuildingId,
+  pinBuildingId,
+}: MapPanelProps) {
   const [failed, setFailed] = useState(false);
   const [attempt, setAttempt] = useState(0);
   const retry = () => {
     setFailed(false);
     setAttempt((value) => value + 1);
   };
-
-  const buildingStatus = analysis ? analysis.buildings.status : "idle";
 
   return (
     <div className="relative h-full w-full overflow-hidden bg-surface-2">
@@ -66,11 +81,11 @@ export function MapPanel({ place, analysis }: MapPanelProps) {
         <ErrorBoundary key={attempt} fallback={() => <MapUnavailable onRetry={retry} />}>
           <SunMap
             place={place}
-            buildings={analysis ? analysis.buildings.buildings : null}
-            day={analysis ? analysis.day : null}
-            instant={analysis ? analysis.instant : null}
-            blockerBuildingId={analysis ? analysis.blockerBuildingId : null}
-            pinBuildingId={analysis ? analysis.pinBuildingId : null}
+            buildings={buildings}
+            sunPath={sunPath}
+            instant={instant}
+            blockerBuildingId={blockerBuildingId}
+            pinBuildingId={pinBuildingId}
             onPlacePin={pinSpot}
             onFatalError={() => setFailed(true)}
           />

@@ -15,7 +15,7 @@ import {
 import type { TimeRange } from "./heatmap";
 import type { ReportModel } from "./model";
 import { SkeletonBlock, SkeletonText, StateSwatch, useReport } from "./parts";
-import { stateMeta } from "./states";
+import { blockedLabel, stateMeta } from "./states";
 import {
   hemisphereOf,
   SEASON_MONTHS,
@@ -30,6 +30,8 @@ interface HeadlineProps {
   observer: Observer;
   /** Latitude of the place: decides which months are summer. */
   lat: number;
+  /** Whether hills are part of the skyline (changes how "shaded" is worded). */
+  hasTerrain: boolean;
 }
 
 /**
@@ -39,7 +41,7 @@ interface HeadlineProps {
  * While the analysis is loading the same layout is rendered with placeholders
  * in place of the numbers, so nothing moves when they arrive.
  */
-export function Headline({ year, model, observer, lat }: HeadlineProps) {
+export function Headline({ year, model, observer, lat, hasTerrain }: HeadlineProps) {
   const data = year && model ? { year, model } : null;
   const annual = data?.year.annual;
   const split = data?.model.split;
@@ -48,7 +50,11 @@ export function Headline({ year, model, observer, lat }: HeadlineProps) {
 
   const shares: { state: SunStateCode; label: string; hours: number | null }[] = [
     { state: SunState.Sun, label: "of daylight in direct sun", hours: split?.sunHours ?? null },
-    { state: SunState.Blocked, label: "shaded by buildings", hours: split?.blockedHours ?? null },
+    {
+      state: SunState.Blocked,
+      label: blockedLabel(hasTerrain).toLowerCase(),
+      hours: split?.blockedHours ?? null,
+    },
   ];
   if (coneLimited || (split && split.outOfViewHours > 0)) {
     shares.push({

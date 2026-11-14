@@ -31,6 +31,7 @@ import { YearHeatmap } from "./YearHeatmap";
  */
 export function SunReport({
   place,
+  timeZone,
   observer,
   date,
   minuteOfDay,
@@ -51,12 +52,17 @@ export function SunReport({
   const lat = place.lat;
   const model = useMemo(() => (year ? buildReportModel(year, lat) : null), [year, lat]);
 
+  const hasTerrain = useMemo(
+    () => horizon !== null && horizon.blockerIndex.some((index) => index < -1),
+    [horizon],
+  );
+
   return (
     <ReportContext.Provider value={context}>
       <div className="sun-report @container flex flex-col gap-3 text-ink">
         <HatchDefs id={hatchId} />
         <BuildingStatus buildings={buildings} pinOnBuilding={pinOnBuilding} />
-        <Headline year={year} model={model} observer={observer} lat={lat} />
+        <Headline year={year} model={model} observer={observer} lat={lat} hasTerrain={hasTerrain} />
         <DayPanel
           date={date}
           minuteOfDay={minuteOfDay}
@@ -68,6 +74,9 @@ export function SunReport({
         <YearHeatmap
           year={year}
           model={model}
+          grid={grid}
+          horizon={horizon}
+          hasTerrain={hasTerrain}
           date={date}
           minuteOfDay={minuteOfDay}
           observer={observer}
@@ -90,9 +99,10 @@ export function SunReport({
         <MethodNote
           buildings={buildings}
           observer={observer}
-          horizon={horizon}
+          hasTerrain={hasTerrain}
           pinOnBuilding={pinOnBuilding}
           stepMinutes={year?.stepMinutes ?? null}
+          timeZone={timeZone}
         />
       </div>
     </ReportContext.Provider>

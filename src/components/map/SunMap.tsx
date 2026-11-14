@@ -14,10 +14,12 @@ import MapGL, {
   type MarkerDragEvent,
 } from "react-map-gl/maplibre";
 import { useIsDesktop, usePrefersDark, usePrefersReducedMotion } from "@/hooks/useMediaQuery";
-import { useThrottledValue } from "@/hooks/useThrottledValue";
+import type { Settle } from "@/hooks/pacer";
+import { usePacedValue } from "@/hooks/usePacedValue";
 import { computeShadowPolygons } from "@/lib/analysis";
-import type { BuildingCollection, DayAnalysis, LatLng, Place, SunInstant } from "@/lib/types";
+import type { BuildingCollection, LatLng, Place, SunInstant } from "@/lib/types";
 import { selectLayers, selectObserver, useSettings } from "@/state";
+import type { SunPathModel } from "./compassGeometry";
 import { EMPTY_BUILDINGS, SHADOW_RADIUS_M, buildingsNear } from "./mapData";
 import {
   PLACE_PITCH,
@@ -36,8 +38,16 @@ const DARK_STYLE = "https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.
 /** The whole world, for when no place has been chosen yet. */
 const WORLD_VIEW = { longitude: 10, latitude: 28, zoom: 1.3, pitch: 0, bearing: 0 };
 
-/** How often the shadows follow a moving sun, ms (≈ 30 updates a second). */
-const SHADOW_THROTTLE_MS = 33;
+/**
+ * The sun as the WebGL layers see it (shadows, the highlighted blocker). It
+ * follows the real thing at up to ~30 updates a second, but never faster than
+ * the map can draw: see `settleMap` below.
+ */
+const GL_SUN_PACING = { minIntervalMs: 33, loadFactor: 3, allowanceMs: 50 };
+/** Give up waiting for the map to finish a redraw after this long, ms. */
+const MAP_SETTLE_TIMEOUT_MS = 800;
+/** Paint changes apply at once; a 300 ms cross-fade would only blur fast scrubbing. */
+const NO_TRANSITION = { duration: 0, delay: 0 };
 /** A WebGL context that stays lost this long is treated as gone. */
 const CONTEXT_LOSS_GRACE_MS = 4000;
 
@@ -49,7 +59,8 @@ export interface SunMapProps {
   place: Place | null;
   /** Buildings to draw (may be a neighbouring area's while the real ones load). */
   buildings: BuildingCollection | null;
-  day: DayAnalysis | null;
+  /** Today's sun path for the compass. */
+  sunPath: SunPathModel | null;
   instant: SunInstant | null;
   /** `properties.id` of the building hiding the sun right now, if any. */
   blockerBuildingId: string | null;
@@ -71,7 +82,7 @@ function makePresentational(element: HTMLElement | undefined) {
 export default function SunMap({
   place,
   buildings,
-  day,
+  sunPath,
   instant,
   blockerBuildingId,
   pinBuildingId,
@@ -175,11 +186,62 @@ export default function SunMap({
     [buildings, lat, lng],
   );
 
-  // The sun moves on every tick of a drag or of the animation; the shadows
-  // follow at a capped rate so a burst of ticks cannot flood the map.
-  const shadowSun = useThrottledValue(instant, SHADOW_THROTTLE_MS);
-  const sunAzimuth = shadowSun ? shadowSun.azimuthDeg : NaN;
-  const sunAltitude = shadowSun ? shadowSun.altitudeDeg : NaN;
+  // The sun moves on every tick of a drag or of the animation. The compass (plain
+  // SVG) follows every tick; what needs a WebGL redraw is paced to the map.
+  const sunAzimuthNow = instant ? instant.azimuthDeg : NaN;
+  const sunAltitudeNow = instant ? instant.altitudeDeg : NaN;
+  const glSunNow = useMemo(
+    () => ({
+      azimuthDeg: sunAzimuthNow,
+      altitudeDeg: sunAltitudeNow,
+      blockerBuildingId,
+    }),
+    [sunAzimuthNow, sunAltitudeNow, blockerBuildingId],
+  );
+  /**
+   * "The map has drawn the last update": the pacer waits for this before it
+   * sends the next one, so updates can never pile up — however slow the GPU
+   * (software rendering, old phones) and however fast the slider moves.
+   */
+  const settleMap: Settle = (done) => {
+    let finished = false;
+    let frame = 0;
+    let timeout: ReturnType<typeof setTimeout> | undefined;
+    let stopListening = () => {};
+    const stop = () => {
+      finished = true;
+      cancelAnimationFrame(frame);
+      clearTimeout(timeout);
+      stopListening();
+    };
+    const finish = () => {
+      if (finished) return;
+      stop();
+      done();
+    };
+    // One frame on, React has handed the update to the map.
+    frame = requestAnimationFrame(() => {
+      const map = mapRef.current?.getMap();
+      if (!map || map.isMoving() || map.loaded()) {
+        // Nothing (more) to wait for: the next frame closes the measurement.
+        frame = requestAnimationFrame(finish);
+        return;
+      }
+      // Re-tiling in the worker, then a redraw; one more frame covers its presentation.
+      const onIdle = () => {
+        frame = requestAnimationFrame(finish);
+      };
+      map.once("idle", onIdle);
+      stopListening = () => map.off("idle", onIdle);
+      timeout = setTimeout(finish, MAP_SETTLE_TIMEOUT_MS);
+    });
+    return stop;
+  };
+  const glSun = usePacedValue(glSunNow, { ...GL_SUN_PACING, settle: settleMap });
+
+  const sunAzimuth = glSun.azimuthDeg;
+  const sunAltitude = glSun.altitudeDeg;
+  const shownBlockerId = glSun.blockerBuildingId;
   const showShadows = layers.shadows;
   const shadowData = useMemo(() => {
     if (!showShadows || !nearby || lat === null || lng === null || !(sunAltitude > 0)) {
@@ -193,7 +255,7 @@ export default function SunMap({
   const buildingColor = useMemo(
     () => [
       "case",
-      ["==", ["get", "id"], blockerBuildingId ?? ""],
+      ["==", ["get", "id"], shownBlockerId ?? ""],
       theme.blocked,
       ["==", ["get", "id"], pinBuildingId ?? ""],
       theme.pinBuilding,
@@ -201,7 +263,7 @@ export default function SunMap({
       theme.buildingSoft,
       theme.building,
     ],
-    [blockerBuildingId, pinBuildingId, theme],
+    [shownBlockerId, pinBuildingId, theme],
   );
   const extruded = layers.buildings3d;
 
@@ -344,7 +406,11 @@ export default function SunMap({
             type="fill"
             beforeId={labelLayerId}
             layout={{ visibility: flatVisibility }}
-            paint={{ "fill-color": buildingColor as never, "fill-opacity": 0.75 }}
+            paint={{
+              "fill-color": buildingColor as never,
+              "fill-color-transition": NO_TRANSITION,
+              "fill-opacity": 0.75,
+            }}
           />
           <Layer
             id="sun-buildings-outline"
@@ -360,6 +426,7 @@ export default function SunMap({
             layout={{ visibility: extrudedVisibility }}
             paint={{
               "fill-extrusion-color": buildingColor as never,
+              "fill-extrusion-color-transition": NO_TRANSITION,
               "fill-extrusion-height": ["get", "heightM"],
               "fill-extrusion-base": 0,
               "fill-extrusion-opacity": 0.8,
@@ -385,7 +452,7 @@ export default function SunMap({
             className="sun-compass-marker"
             style={COMPASS_MARKER_STYLE}
           >
-            <SunCompass day={day} instant={instant} observer={observer} dimmed={dragSpot !== null} />
+            <SunCompass path={sunPath} instant={instant} observer={observer} dimmed={dragSpot !== null} />
           </Marker>
         )}
         {pin && (

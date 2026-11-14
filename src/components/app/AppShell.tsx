@@ -1,28 +1,31 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { dayTrackBackground } from "@/components/controls/dayTrack";
 import { ObserverControls } from "@/components/controls/ObserverControls";
 import { TimeScrubber } from "@/components/controls/TimeScrubber";
+import { COMPASS_RADIUS, sunPathModel } from "@/components/map/compassGeometry";
 import { MapPanel } from "@/components/map/MapPanel";
 import { SunReport } from "@/components/report/SunReport";
 import type { BuildingDataStatus } from "@/components/report/types";
+import { zoneAbbreviation, zoneLabel } from "@/components/shared/format";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { readLegacyPlace } from "@/hooks/legacyPlace";
-import { useSunAnalysis, type SunAnalysis } from "@/hooks/useSunAnalysis";
-import { useThrottledValue } from "@/hooks/useThrottledValue";
+import { usePacedValue } from "@/hooks/usePacedValue";
+import { useSunAnalysis } from "@/hooks/useSunAnalysis";
 import { selectPlace, useHydrateSettings, useSettings, useUrlSync } from "@/state";
 import { EmptyState } from "./EmptyState";
 import { ErrorBoundary } from "./ErrorBoundary";
 import { PlaceHeader } from "./PlaceHeader";
 
 /**
- * How often the report is handed new numbers while something is being dragged
- * or animated, ms. The map and the controls update on every tick; the report
- * (a tall column of charts) follows at this pace and catches up exactly when
- * the movement stops.
+ * The report (a tall column of charts) is the most expensive thing to redraw.
+ * While something is dragged or animated it gets new numbers at most 20 times
+ * a second, and less often when a redraw turns out to be slow, so it can never
+ * hold the sliders or the map back. It always ends on the final value.
  */
-const REPORT_THROTTLE_MS = 50;
+const REPORT_PACING = { minIntervalMs: 50, loadFactor: 3, allowanceMs: 40 };
 
 /** Two columns on desktop, one scrolling page on phones. */
 const LAYOUT =
@@ -53,53 +56,44 @@ function ShellSkeleton() {
   );
 }
 
-function ReportSection({ analysis }: { analysis: SunAnalysis }) {
-  const { status, stats, refetch } = analysis.buildings;
-  const buildings: BuildingDataStatus = { status, stats, onRetry: refetch };
-  // While the buildings load, the numbers are for an open sky: visibly provisional.
-  const provisional = status === "loading" || status === "idle";
-
+function reportFailed(_error: unknown, reset: () => void) {
   return (
-    <div
-      aria-busy={provisional}
-      className={`transition-opacity ${provisional ? "opacity-60" : ""}`}
-    >
-      <ErrorBoundary
-        fallback={(_error, reset) => (
-          <Card title="Sun report">
-            <p className="text-sm text-ink-2">
-              The report couldn’t be drawn. The map and the controls still work.
-            </p>
-            <Button className="mt-3" onClick={reset}>
-              Try again
-            </Button>
-          </Card>
-        )}
-      >
-        <SunReport
-          place={analysis.place}
-          timeZone={analysis.timeZone}
-          observer={analysis.observer}
-          date={analysis.date}
-          minuteOfDay={analysis.minuteOfDay}
-          year={analysis.year}
-          grid={analysis.grid}
-          day={analysis.day}
-          horizon={analysis.horizon}
-          instant={analysis.instant}
-          buildings={buildings}
-          pinOnBuilding={analysis.pinOnBuilding}
-          onSelectDateTime={selectDateTime}
-        />
-      </ErrorBoundary>
-    </div>
+    <Card title="Sun report">
+      <p className="text-sm text-ink-2">
+        The report couldn’t be drawn. The map and the controls still work.
+      </p>
+      <Button className="mt-3" onClick={reset}>
+        Try again
+      </Button>
+    </Card>
   );
 }
 
 function Workspace() {
   const place = useSettings(selectPlace);
   const analysis = useSunAnalysis();
-  const reportAnalysis = useThrottledValue(analysis, REPORT_THROTTLE_MS);
+  const report = usePacedValue(analysis, REPORT_PACING);
+  const reportStatus = report ? report.buildings.status : "idle";
+  const reportStats = report ? report.buildings.stats : null;
+  const reportRetry = report ? report.buildings.refetch : null;
+  const reportBuildings = useMemo<BuildingDataStatus>(
+    () => ({ status: reportStatus, stats: reportStats, onRetry: reportRetry ?? (() => {}) }),
+    [reportStatus, reportStats, reportRetry],
+  );
+  // While the buildings load, the numbers are for an open sky: visibly provisional.
+  const provisional = reportStatus === "loading" || reportStatus === "idle";
+
+  // Small, stable values for everything that redraws on a slider tick: the
+  // day's analysis itself (1440 samples) only travels to the report.
+  const day = analysis ? analysis.day : null;
+  const track = useMemo(() => dayTrackBackground(day), [day]);
+  const sunPath = useMemo(() => (day ? sunPathModel(day, COMPASS_RADIUS) : null), [day]);
+  const zone = analysis
+    ? zoneAbbreviation(analysis.timeZone, analysis.date, analysis.minuteOfDay)
+    : "";
+  const zoneText = analysis
+    ? zoneLabel(analysis.timeZone, analysis.date, analysis.minuteOfDay)
+    : "";
 
   const pinBuildingHeightM =
     analysis && analysis.horizon && analysis.horizon.containingBuildingIndex >= 0
@@ -111,16 +105,27 @@ function Workspace() {
     <div className={LAYOUT}>
       <div className="flex flex-col lg:h-full lg:min-h-0">
         <div className={MAP_AREA}>
-          <MapPanel place={place} analysis={analysis} />
+          <MapPanel
+            place={place}
+            buildings={analysis ? analysis.buildings.buildings : null}
+            buildingStatus={analysis ? analysis.buildings.status : "idle"}
+            sunPath={sunPath}
+            instant={analysis ? analysis.instant : null}
+            blockerBuildingId={analysis ? analysis.blockerBuildingId : null}
+            pinBuildingId={analysis ? analysis.pinBuildingId : null}
+          />
         </div>
         {analysis && (
           <TimeScrubber
             className="rounded-none! border-x-0! border-b-0! px-3! py-2.5! lg:px-4!"
             timeZone={analysis.timeZone}
+            zone={zone}
             date={analysis.date}
             minuteOfDay={analysis.minuteOfDay}
             isLive={analysis.isLive}
-            day={analysis.day}
+            track={track}
+            sunriseMinute={day ? day.sunriseMinute : null}
+            sunsetMinute={day ? day.sunsetMinute : null}
           />
         )}
       </div>
@@ -131,15 +136,37 @@ function Workspace() {
             <PlaceHeader
               place={analysis.place}
               timeZone={analysis.timeZone}
-              date={analysis.date}
-              minuteOfDay={analysis.minuteOfDay}
+              zoneLabel={zoneText}
               buildings={analysis.buildings}
             />
             <ObserverControls
               pinOnBuilding={analysis.pinOnBuilding}
               pinBuildingHeightM={pinBuildingHeightM}
             />
-            {reportAnalysis && <ReportSection analysis={reportAnalysis} />}
+            {report && (
+              <div
+                aria-busy={provisional}
+                className={`transition-opacity ${provisional ? "opacity-60" : ""}`}
+              >
+                <ErrorBoundary fallback={reportFailed}>
+                  <SunReport
+                    place={report.place}
+                    timeZone={report.timeZone}
+                    observer={report.observer}
+                    date={report.date}
+                    minuteOfDay={report.minuteOfDay}
+                    year={report.year}
+                    grid={report.grid}
+                    day={report.day}
+                    horizon={report.horizon}
+                    instant={report.instant}
+                    buildings={reportBuildings}
+                    pinOnBuilding={report.pinOnBuilding}
+                    onSelectDateTime={selectDateTime}
+                  />
+                </ErrorBoundary>
+              </div>
+            )}
           </>
         ) : (
           <EmptyState />
