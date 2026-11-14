@@ -12,6 +12,7 @@ export {
   type GridLayout,
 } from "./elevation";
 export {
+  decodeTile,
   decodeTileInBrowser,
   loadTerrain,
   loadTerrainForCoverage,
@@ -19,6 +20,7 @@ export {
   type DecodeTile,
   type LoadTerrainOptions,
 } from "./loadTerrain";
+export { canDecodePng, decodePng, UnsupportedPngError } from "./png";
 export { buildMosaic, resampleMosaic, type TileMosaic } from "./resample";
 export { computeTerrainSkyline, CURVATURE_DROP_PER_M2, type TerrainSkyline } from "./skyline";
 export {

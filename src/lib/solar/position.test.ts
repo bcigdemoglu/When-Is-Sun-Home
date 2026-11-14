@@ -1,5 +1,4 @@
 import fc from "fast-check";
-import SunCalc from "suncalc";
 import { describe, expect, test } from "vitest";
 
 import { angularDistanceDeg } from "@/lib/geo/local";
@@ -245,28 +244,6 @@ describe("sunPositionAt", () => {
     const p = sunPositionAt(SF.lat, SF.lng, new Date(NaN));
     expect(Number.isNaN(p.altitudeDeg)).toBe(true);
     expect(Number.isNaN(p.azimuthDeg)).toBe(true);
-  });
-
-  // The ONLY use of the suncalc package in this repository: a loose,
-  // independent sanity bound. suncalc itself is only good to ~0.2–0.3° in the
-  // 2020s (fixed perihelion, rounded sidereal-time constant), which is why it
-  // was replaced. Delete this test to drop the dependency.
-  test("loose sanity bound: within 0.3° of suncalc", () => {
-    let worst = 0;
-    for (const place of [SF, LONDON, SYDNEY, TROMSO, { lat: 0, lng: 0 }]) {
-      for (let ms = Date.UTC(2026, 0, 1); ms < Date.UTC(2027, 0, 1); ms += 97 * 60_000) {
-        const actual = sunPositionAtMs(place.lat, place.lng, ms);
-        const other = SunCalc.getPosition(new Date(ms), place.lat, place.lng);
-        const otherAzimuth = (other.azimuth / RAD + 180 + 360) % 360;
-        worst = Math.max(
-          worst,
-          Math.abs(actual.altitudeDeg - other.altitude / RAD),
-          angularDistanceDeg(actual.azimuthDeg, otherAzimuth) * Math.cos(other.altitude),
-        );
-      }
-    }
-    expect(worst).toBeLessThan(0.3);
-    expect(worst).toBeGreaterThan(0.05); // they are genuinely different models
   });
 });
 

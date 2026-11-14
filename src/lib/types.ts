@@ -145,8 +145,10 @@ export interface HorizonProfile {
   /**
    * Height above local ground of the observer this profile was computed for,
    * metres. A profile is only valid for an `Observer` with the same `heightM`.
+   * Always set by `computeHorizonProfile` (optional only so hand-made
+   * profiles stay valid).
    */
-  observerHeightM: number;
+  observerHeightM?: number;
   /**
    * Index of the building whose footprint contains the observer, or -1.
    * That building is EXCLUDED from the profile (the observer is assumed to be
@@ -290,7 +292,12 @@ export interface DayAnalysis {
   windows: SunWindow[];
   sunMinutes: number;
   daylightMinutes: number;
-  /** Wall-clock minute of sunrise / sunset / highest sun; null in polar day/night. */
+  /**
+   * Wall-clock minute (fractional) of sunrise / sunset / highest sun on this
+   * date; null when the event does not happen on it (polar day / night).
+   * Sunrise and sunset are where the geometric altitude of the sun's centre
+   * crosses 0° — the same boundary the samples use between Night and day.
+   */
   sunriseMinute: number | null;
   sunsetMinute: number | null;
   solarNoonMinute: number | null;

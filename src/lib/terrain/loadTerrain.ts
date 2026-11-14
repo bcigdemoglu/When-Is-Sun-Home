@@ -8,6 +8,7 @@
  */
 import type { LatLng, Terrain } from "@/lib/types";
 
+import { canDecodePng, decodePng, UnsupportedPngError } from "./png";
 import { buildMosaic, resampleMosaic } from "./resample";
 import { decodeTerrarium, type DecodedTile } from "./terrarium";
 import {
@@ -26,7 +27,7 @@ export interface LoadTerrainOptions {
   signal?: AbortSignal;
   /** Defaults to the global `fetch`. */
   fetchImpl?: typeof fetch;
-  /** PNG blob → RGBA pixels. Defaults to {@link decodeTileInBrowser}. */
+  /** PNG blob → RGBA pixels. Defaults to {@link decodeTile}. */
   decodeTile?: DecodeTile;
   /** `{z}/{x}/{y}` URL template. Defaults to the AWS Terrarium tiles. */
   urlTemplate?: string;
@@ -49,12 +50,38 @@ function isAbort(error: unknown): boolean {
 }
 
 /**
- * Decode a PNG with the browser's own decoder and read its pixels back.
+ * The default tile decoder: PNG bytes → RGBA pixels, bit-exact.
+ *
+ * Uses the built-in PNG decoder (`png.ts`: no canvas, immune to colour
+ * management and to browsers' anti-fingerprinting pixel noise) wherever the
+ * runtime can inflate data, and only otherwise — or for a PNG flavour that
+ * decoder does not handle — falls back to {@link decodeTileInBrowser}.
+ */
+export async function decodeTile(blob: Blob): Promise<DecodedTile> {
+  if (canDecodePng()) {
+    try {
+      return await decodePng(new Uint8Array(await blob.arrayBuffer()));
+    } catch (error) {
+      if (!(error instanceof UnsupportedPngError)) {
+        throw new TerrainError(
+          `Could not decode terrain tile: ${error instanceof Error ? error.message : String(error)}`,
+          { cause: error },
+        );
+      }
+    }
+  }
+  return decodeTileInBrowser(blob);
+}
+
+/**
+ * Fallback decoder: the browser's own image decoder plus a canvas read-back.
  *
  * Terrarium packs a number into the colour channels, so the pixels must come
  * back bit-exact: colour-space conversion and alpha premultiplication are
- * switched off, and the tiles are opaque, so a 2D canvas round-trips them
- * unchanged. Works on the main thread and in workers (OffscreenCanvas).
+ * switched off, and the tiles are opaque, so a 2D canvas normally round-trips
+ * them unchanged — but not in browsers that add anti-fingerprinting noise to
+ * canvas read-backs, which is why this is only the fallback. Works on the
+ * main thread and in workers (OffscreenCanvas).
  */
 export async function decodeTileInBrowser(blob: Blob): Promise<DecodedTile> {
   if (typeof createImageBitmap !== "function") {
@@ -87,7 +114,7 @@ export async function decodeTileInBrowser(blob: Blob): Promise<DecodedTile> {
 async function loadBlock(
   block: TileBlock,
   fetchImpl: typeof fetch,
-  decodeTile: DecodeTile,
+  decode: DecodeTile,
   urlTemplate: string,
   signal: AbortSignal | undefined,
 ): Promise<Float32Array[]> {
@@ -100,7 +127,7 @@ async function loadBlock(
           `Terrain tile ${tile.z}/${tile.x}/${tile.y} failed: HTTP ${response.status}`,
         );
       }
-      const decoded = await decodeTile(await response.blob());
+      const decoded = await decode(await response.blob());
       if (decoded.width !== TERRARIUM_TILE_SIZE || decoded.height !== TERRARIUM_TILE_SIZE) {
         throw new TerrainError(
           `Terrain tile ${tile.z}/${tile.x}/${tile.y} is ${decoded.width}×${decoded.height}, expected ${TERRARIUM_TILE_SIZE}×${TERRARIUM_TILE_SIZE}`,
@@ -136,13 +163,13 @@ export async function loadTerrainForCoverage(
 ): Promise<Terrain> {
   const fetchImpl = options.fetchImpl ?? globalThis.fetch;
   if (typeof fetchImpl !== "function") throw new TerrainError("No fetch implementation available");
-  const decodeTile = options.decodeTile ?? decodeTileInBrowser;
+  const decode = options.decodeTile ?? decodeTile;
   const urlTemplate = options.urlTemplate ?? TERRARIUM_URL_TEMPLATE;
 
   try {
     const [nearTiles, farTiles] = await Promise.all([
-      loadBlock(coverage.near, fetchImpl, decodeTile, urlTemplate, options.signal),
-      loadBlock(coverage.far, fetchImpl, decodeTile, urlTemplate, options.signal),
+      loadBlock(coverage.near, fetchImpl, decode, urlTemplate, options.signal),
+      loadBlock(coverage.far, fetchImpl, decode, urlTemplate, options.signal),
     ]);
     return {
       near: resampleMosaic(

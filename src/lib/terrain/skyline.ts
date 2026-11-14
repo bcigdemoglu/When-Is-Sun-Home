@@ -4,7 +4,7 @@
  * For every compass direction a ray is marched outward from the observer over
  * the elevation grids, and the steepest line of sight to the ground is kept.
  */
-import type { Terrain } from "@/lib/types";
+import type { ElevationGrid, Terrain } from "@/lib/types";
 
 import { elevationAt, gridContains } from "./elevation";
 
@@ -31,6 +31,31 @@ const MIN_DISTANCE_M = 5;
 const STEP_GROWTH = 0.01;
 /** The steepest point found by the march is then pinned down to this precision, metres. */
 const REFINE_TO_M = 0.25;
+
+/**
+ * Bilinear ground elevation at (x, y), or NaN if the point is outside the
+ * grid's nodes — containment test and interpolation in one pass, for the hot
+ * loop. Same arithmetic as `elevationAt`.
+ */
+function groundInside(grid: ElevationGrid, x: number, y: number): number {
+  const gx = (x - grid.minX) / grid.cellSizeM;
+  const gy = (y - grid.minY) / grid.cellSizeM;
+  const maxX = grid.width - 1;
+  const maxY = grid.height - 1;
+  if (!(gx >= 0 && gy >= 0 && gx <= maxX && gy <= maxY)) return NaN;
+  if (maxX < 1 || maxY < 1) return elevationAt(grid, x, y); // a single row or column
+  let col = gx | 0;
+  let row = gy | 0;
+  if (col >= maxX) col = maxX - 1;
+  if (row >= maxY) row = maxY - 1;
+  const fx = gx - col;
+  const fy = gy - row;
+  const { data, width } = grid;
+  const i = row * width + col;
+  const south = data[i] + (data[i + 1] - data[i]) * fx;
+  const north = data[i + width] + (data[i + width + 1] - data[i + width]) * fx;
+  return south + (north - south) * fy;
+}
 
 export interface TerrainSkyline {
   /**
@@ -79,15 +104,14 @@ export function computeTerrainSkyline(
   const riseAt = (d: number): number => {
     const x = observerX + d * ux;
     const y = observerY + d * uy;
-    let ground: number;
-    if (gridContains(near, x, y)) {
-      ground = elevationAt(near, x, y);
+    let ground = groundInside(near, x, y);
+    if (ground === ground) {
       cell = near.cellSizeM;
-    } else if (far !== undefined && gridContains(far, x, y)) {
-      ground = elevationAt(far, x, y);
-      cell = far.cellSizeM;
     } else {
-      return NaN; // beyond all terrain data
+      if (far === undefined) return NaN;
+      ground = groundInside(far, x, y);
+      if (ground !== ground) return NaN; // beyond all terrain data
+      cell = far.cellSizeM;
     }
     return ground - observerGround - CURVATURE_DROP_PER_M2 * d * d - observerHeightM;
   };

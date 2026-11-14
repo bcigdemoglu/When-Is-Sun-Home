@@ -6,6 +6,7 @@ import type { LatLng } from "@/lib/types";
 import { elevationAt, terrainElevationAt } from "./elevation";
 import { loadTerrain, loadTerrainForCoverage, TerrainError, type DecodeTile } from "./loadTerrain";
 import { metersToTerrarium, type DecodedTile } from "./terrarium";
+import { encodePng, type PngFilter } from "./testing";
 import { terrainCoverageFor, tileXToLng, tileYToLat } from "./tiles";
 
 const SF: LatLng = { lat: 37.7906, lng: -122.4294 };
@@ -165,9 +166,41 @@ describe("loadTerrain", () => {
     expect(tiles.requested).toHaveLength(0);
   });
 
-  test("without a browser image decoder the default decode step fails cleanly", async () => {
-    // Node has no createImageBitmap: the default decodeTile must reject, not crash.
+  test("the default decoder reads real PNG bytes (no canvas involved)", async () => {
+    // A tile server that answers with genuine PNG files of `world`, and NO
+    // injected decoder: fetch → built-in PNG decoder → Terrarium → grids.
+    const fetchImpl = vi.fn(async (input: RequestInfo | URL) => {
+      const [z, x, y] = /(\d+)\/(\d+)\/(\d+)\.png$/.exec(String(input))!.slice(1).map(Number);
+      const rgba = new Uint8ClampedArray(256 * 256 * 4);
+      for (let j = 0; j < 256; j++) {
+        const lat = tileYToLat(y + (j + 0.5) / 256, z);
+        for (let i = 0; i < 256; i++) {
+          const [r, g, b] = metersToTerrarium(world(lat, tileXToLng(x + (i + 0.5) / 256, z)));
+          rgba.set([r, g, b, 255], 4 * (j * 256 + i));
+        }
+      }
+      const png = encodePng(256, 256, rgba, { filter: (row) => (row % 5) as PngFilter });
+      return new Response(png as BodyInit, {
+        status: 200,
+        headers: { "Content-Type": "image/png" },
+      });
+    }) as unknown as typeof fetch;
+
+    const terrain = await loadTerrain(SF, { fetchImpl });
+    const pin = toLocalMeters(coverage.origin, SF);
+    expect(elevationAt(terrain.near, pin.x, pin.y)).toBeCloseTo(world(SF.lat, SF.lng), 1);
+    const far = fromLocalMeters(coverage.origin, pin.x - 5000, pin.y + 3000);
+    expect(terrainElevationAt(terrain, pin.x - 5000, pin.y + 3000)).toBeCloseTo(
+      world(far.lat, far.lng),
+      1,
+    );
+  });
+
+  test("a response that is not an image is a TerrainError, not a crash", async () => {
+    // e.g. an HTML error page served with status 200 by a captive portal.
     const { fetchImpl } = fakeTiles();
-    await expect(loadTerrain(SF, { fetchImpl })).rejects.toThrow(TerrainError);
+    const error = await loadTerrain(SF, { fetchImpl }).catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(TerrainError);
+    expect((error as Error).message).toMatch(/Not a PNG/);
   });
 });

@@ -215,10 +215,11 @@ describe("sunInstantAt", () => {
     expect(sunInstantAt(SF, "2026-12-21", 12 * 60 + 8, ZONE, horizon, yard()).state).toBe(
       SunState.Sun,
     );
-    // 08:10: 6.8° up in the south-east (azimuth ≈ 126°), behind the long ridge.
-    const morning = sunInstantAt(SF, "2026-12-21", 8 * 60 + 10, ZONE, horizon, yard());
-    expect(morning.altitudeDeg).toBeGreaterThan(5);
-    expect(morning.altitudeDeg).toBeLessThan(9);
+    // 07:50: 3–4° up in the south-east (azimuth ≈ 123°). Along that ray the
+    // ridge is 500 / cos(57°) ≈ 920 m away and still reaches 6°.
+    const morning = sunInstantAt(SF, "2026-12-21", 7 * 60 + 50, ZONE, horizon, yard());
+    expect(morning.altitudeDeg).toBeGreaterThan(2);
+    expect(morning.altitudeDeg).toBeLessThan(5);
     expect(morning.state).toBe(SunState.Blocked);
     expect(morning.blocker).toBeDefined();
     expect(morning.blocker!.kind).toBe("terrain");

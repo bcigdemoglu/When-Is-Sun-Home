@@ -14,7 +14,7 @@ export {
   yearOfDate,
   zonedToUtc,
 } from "@/lib/solar/timezone";
-export { sunPositionAt, sunTimesFor, type SunTimes } from "@/lib/solar/position";
+export { sunPositionAt, sunPositionAtMs, sunTimesFor, type SunTimes } from "@/lib/solar/position";
 export { computeSunYearGrid } from "@/lib/solar/yearGrid";
 
 export {
