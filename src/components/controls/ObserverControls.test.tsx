@@ -49,17 +49,17 @@ describe("ObserverControls", () => {
 
   it("applies height presets and marks the active one", async () => {
     const { user } = setup();
-    expect(screen.getByRole("button", { name: /Ground/ })).toHaveAttribute("aria-pressed", "true");
-    await user.click(screen.getByRole("button", { name: /Deck/ }));
+    expect(screen.getByRole("button", { name: "Ground: 1 m" })).toHaveAttribute("aria-pressed", "true");
+    await user.click(screen.getByRole("button", { name: "Deck: 3 m" }));
     expect(observer().heightM).toBe(3);
-    expect(screen.getByRole("button", { name: /Deck/ })).toHaveAttribute("aria-pressed", "true");
-    await user.click(screen.getByRole("button", { name: /Roof/ }));
+    expect(screen.getByRole("button", { name: "Deck: 3 m" })).toHaveAttribute("aria-pressed", "true");
+    await user.click(screen.getByRole("button", { name: /^Roof/ }));
     expect(observer().heightM).toBe(9);
   });
 
   it("puts the Roof preset on top of the building under the pin", async () => {
     const { user } = setup({ pinOnBuilding: true, pinBuildingHeightM: 12.2 });
-    await user.click(screen.getByRole("button", { name: /Roof/ }));
+    await user.click(screen.getByRole("button", { name: /^Roof/ }));
     expect(observer().heightM).toBe(13.5);
   });
 

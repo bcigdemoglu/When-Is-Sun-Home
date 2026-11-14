@@ -82,6 +82,22 @@ export function ObserverControls({ pinOnBuilding, pinBuildingHeightM }: Observer
           <Slider
             label="Height above ground"
             readout={formatMeters(heightM)}
+            labelExtra={
+              <div className="flex gap-1.5" role="group" aria-label="Height presets">
+                {presets.map((preset) => (
+                  <Button
+                    key={preset.label}
+                    aria-pressed={heightM === preset.heightM}
+                    aria-label={`${preset.label}: ${formatMeters(preset.heightM)}`}
+                    title={formatMeters(preset.heightM)}
+                    className={`px-2.5! ${heightM === preset.heightM ? "border-accent! text-accent" : ""}`}
+                    onClick={() => setObserver({ heightM: preset.heightM })}
+                  >
+                    {preset.label}
+                  </Button>
+                ))}
+              </div>
+            }
             value={Math.min(heightM, sliderMax)}
             min={0}
             max={sliderMax}
@@ -89,19 +105,6 @@ export function ObserverControls({ pinOnBuilding, pinBuildingHeightM }: Observer
             valueText={`${formatMeters(heightM)} above ground`}
             onChange={(value) => setObserver({ heightM: value })}
           />
-          <div className="flex flex-wrap gap-2" role="group" aria-label="Height presets">
-            {presets.map((preset) => (
-              <Button
-                key={preset.label}
-                aria-pressed={heightM === preset.heightM}
-                className={heightM === preset.heightM ? "border-accent! text-accent" : ""}
-                onClick={() => setObserver({ heightM: preset.heightM })}
-              >
-                {preset.label}
-                <span className="font-normal text-ink-2">{formatMeters(preset.heightM)}</span>
-              </Button>
-            ))}
-          </div>
           {pinOnBuilding && (
             <p
               role="alert"

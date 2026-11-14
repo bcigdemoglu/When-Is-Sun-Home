@@ -33,12 +33,12 @@ export function HatchDefs({ id }: { id: string }) {
       <defs>
         <pattern
           id={id}
-          width="5"
-          height="5"
+          width="6"
+          height="6"
           patternUnits="userSpaceOnUse"
           patternTransform="rotate(45)"
         >
-          <line x1="0.5" y1="0" x2="0.5" y2="5" stroke="var(--report-hatch)" strokeWidth="1" />
+          <line x1="0.5" y1="0" x2="0.5" y2="6" stroke="var(--report-hatch)" strokeWidth="1" />
         </pattern>
       </defs>
     </svg>

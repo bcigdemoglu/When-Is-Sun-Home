@@ -27,6 +27,10 @@ interface DayPanelProps {
   onSelectDateTime: (date: string, minuteOfDay?: number) => void;
 }
 
+/** Room for the figure and its sentence on two lines when the card is narrow. */
+const HERO_LINE =
+  "flex min-h-[50px] flex-wrap content-start items-baseline gap-x-2 @md:min-h-[30px]";
+
 /** The selected date: how much sun, when exactly, and what is happening right now. */
 export function DayPanel({
   date,
@@ -44,7 +48,7 @@ export function DayPanel({
     <Card title="Selected day" aside={formatDate(date, { weekday: true, year: true })}>
       <div aria-busy={!day} className={stale ? "opacity-60" : undefined}>
         {day ? (
-          <p className="flex flex-wrap items-baseline gap-x-2">
+          <p className={HERO_LINE}>
             <span className="text-2xl leading-tight font-semibold text-ink">
               {formatDuration(day.sunMinutes)}
             </span>
@@ -55,7 +59,7 @@ export function DayPanel({
             </span>
           </p>
         ) : (
-          <p className="flex flex-wrap items-baseline gap-x-2">
+          <p className={HERO_LINE}>
             <SkeletonText width="6rem" className="text-2xl leading-tight" />
             <SkeletonText width="13rem" className="text-sm" />
           </p>
@@ -69,10 +73,10 @@ export function DayPanel({
           onSelectDateTime={onSelectDateTime}
         />
 
-        <p className="mt-2 flex min-h-5 items-center gap-2 text-sm" aria-live="polite">
+        <p className="mt-2 flex min-h-10 items-start gap-2 text-sm @lg:min-h-5" aria-live="polite">
           {instant ? (
             <>
-              <StateSwatch state={instant.state} />
+              <StateSwatch state={instant.state} className="mt-1" />
               <span>
                 <strong className="font-semibold text-ink tabular-nums">
                   {formatClock(minuteOfDay, hour12)}
@@ -126,7 +130,9 @@ function SunWindows({ day }: { day: DayAnalysis | null }) {
                 className="flex items-baseline justify-between gap-3 tabular-nums"
               >
                 <span className="text-ink">
-                  {formatClockRange(window.startMinute, window.endMinute, hour12)}
+                  {window.startMinute <= 0 && window.endMinute >= 1440
+                    ? "All day"
+                    : formatClockRange(window.startMinute, window.endMinute, hour12)}
                 </span>
                 <span className="text-ink-2">
                   {formatDuration(window.endMinute - window.startMinute)}

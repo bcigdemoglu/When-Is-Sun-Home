@@ -56,7 +56,7 @@ export function SunReport({
       <div className="sun-report @container flex flex-col gap-3 text-ink">
         <HatchDefs id={hatchId} />
         <BuildingStatus buildings={buildings} pinOnBuilding={pinOnBuilding} />
-        <Headline year={year} model={model} observer={observer} />
+        <Headline year={year} model={model} observer={observer} lat={lat} />
         <DayPanel
           date={date}
           minuteOfDay={minuteOfDay}

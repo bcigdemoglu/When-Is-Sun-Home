@@ -12,27 +12,33 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
+// Pinch-zoom stays enabled: people need it to read small print.
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
-  maximumScale: 1,
-  userScalable: false,
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#f4f3ef" },
+    { media: "(prefers-color-scheme: dark)", color: "#111110" },
+  ],
 };
+
+const DESCRIPTION =
+  "See how many hours of direct sunlight a backyard, terrace or window gets on every day of the year, with the shade of nearby buildings taken into account.";
 
 export const metadata: Metadata = {
   title: "When is Sun Home?",
-  description: "Track the sun's position on an interactive map for any location and time",
+  description: DESCRIPTION,
   metadataBase: new URL("https://when-is-sun-home.vercel.app"),
   openGraph: {
     title: "When is Sun Home?",
-    description: "Track the sun's position on an interactive map for any location and time",
+    description: DESCRIPTION,
     siteName: "When is Sun Home?",
     type: "website",
   },
   twitter: {
     card: "summary_large_image",
     title: "When is Sun Home?",
-    description: "Track the sun's position on an interactive map for any location and time",
+    description: DESCRIPTION,
   },
 };
 

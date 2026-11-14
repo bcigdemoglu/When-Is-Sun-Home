@@ -8,6 +8,8 @@ export interface MapTheme {
   scheme: "light" | "dark";
   building: string;
   buildingSoft: string;
+  /** The building the pin sits in. */
+  pinBuilding: string;
   shadow: string;
   shadowOpacity: number;
   blocked: string;
@@ -23,6 +25,7 @@ function readTheme(scheme: MapTheme["scheme"]): MapTheme {
     scheme,
     building: token("--map-building", "silver"),
     buildingSoft: token("--map-building-soft", "lightgray"),
+    pinBuilding: token("--map-pin-building", "sandybrown"),
     shadow: token("--map-shadow", "black"),
     shadowOpacity: Number.isFinite(opacity) ? opacity : 0.3,
     blocked: token("--state-blocked", "slategray"),

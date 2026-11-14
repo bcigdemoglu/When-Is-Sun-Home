@@ -104,7 +104,7 @@ export interface StateColors {
 }
 
 const HATCH_VAR = "--report-hatch";
-const HATCH_FALLBACK = "#a9a79f";
+const HATCH_FALLBACK = "#b7b5ad";
 
 /**
  * Resolve the state colours through `read` (normally

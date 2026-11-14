@@ -36,7 +36,7 @@ export function createHeatmapBitmap(pixels: HeatmapPixels): HeatmapBitmap | null
 
 /** A small tile of 45° lines, tiled as the out-of-view texture. */
 function createHatchTile(ink: Rgb, scale: number): HTMLCanvasElement | null {
-  const size = Math.max(4, Math.round(6 * scale));
+  const size = Math.max(4, Math.round(7 * scale));
   const tile = createCanvas(size, size);
   const ctx = tile.getContext("2d");
   if (!ctx) return null;
@@ -76,7 +76,10 @@ export function drawHeatmapBase(
   if (canvas.width !== width) canvas.width = width;
   if (canvas.height !== height) canvas.height = height;
 
-  const ctx = canvas.getContext("2d");
+  // A CPU-backed context: this canvas is painted rarely and never animated,
+  // so it gains nothing from the GPU, and software canvases are captured
+  // reliably by screenshots and print.
+  const ctx = canvas.getContext("2d", { willReadFrequently: true });
   if (!ctx) return;
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   ctx.globalCompositeOperation = "source-over";

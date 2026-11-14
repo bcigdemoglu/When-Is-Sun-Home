@@ -45,7 +45,7 @@ export function BuildingStatus({
   return (
     <div
       role="status"
-      className="flex min-h-9 items-center gap-2.5 rounded-xl border border-line bg-surface px-4 py-2 text-xs text-ink-2"
+      className="flex min-h-[50px] items-center gap-2.5 rounded-xl border border-line bg-surface px-4 py-2 text-xs text-ink-2 @lg:min-h-9"
     >
       {loading ? (
         <>

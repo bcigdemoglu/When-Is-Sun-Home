@@ -90,7 +90,7 @@ export function SkylineChart({ grid, horizon, observer, date, instant }: Skyline
     const runs = horizon ? skylineRuns(horizon, centerDeg) : [];
     return {
       centerDeg,
-      scale: createElevationScale(Math.max(maxSunAltitude(grid.lat), skylineMax) + 2),
+      scale: createElevationScale(Math.max(maxSunAltitude(grid.lat), skylineMax) + 6),
       runs,
       hasTerrain: runs.some((run) => run.kind === "terrain"),
       outside: outsideViewSpans(viewer, centerDeg),
@@ -309,7 +309,7 @@ export function SkylineChart({ grid, horizon, observer, date, instant }: Skyline
         )}
       </div>
 
-      <p className="mt-1 text-xs text-ink-3">
+      <p className="mt-1 min-h-8 text-xs text-ink-3 @lg:min-h-4">
         {horizon
           ? "Dotted stretches of a path are hidden behind the skyline."
           : "Building data is not available, so the horizon is drawn open."}
@@ -335,25 +335,27 @@ function skylineSummary(horizon: HorizonProfile | null, hasGrid: boolean): strin
 
 function SectorTable({ horizon }: { horizon: HorizonProfile }) {
   return (
-    <table className="sr-only">
-      <caption>Highest obstruction in each compass direction</caption>
-      <thead>
-        <tr>
-          <th scope="col">Direction</th>
-          <th scope="col">Skyline elevation</th>
-          <th scope="col">Distance</th>
-        </tr>
-      </thead>
-      <tbody>
-        {sectorSummary(horizon).map((sector) => (
-          <tr key={sector.label}>
-            <th scope="row">{sector.label}</th>
-            <td>{sector.kind ? formatAngle(sector.maxElevationDeg) : "Open"}</td>
-            <td>{sector.kind ? formatDistance(sector.distanceM) : "—"}</td>
+    <div className="sr-only">
+      <table>
+        <caption>Highest obstruction in each compass direction</caption>
+        <thead>
+          <tr>
+            <th scope="col">Direction</th>
+            <th scope="col">Skyline elevation</th>
+            <th scope="col">Distance</th>
           </tr>
-        ))}
-      </tbody>
-    </table>
+        </thead>
+        <tbody>
+          {sectorSummary(horizon).map((sector) => (
+            <tr key={sector.label}>
+              <th scope="row">{sector.label}</th>
+              <td>{sector.kind ? formatAngle(sector.maxElevationDeg) : "Open"}</td>
+              <td>{sector.kind ? formatDistance(sector.distanceM) : "—"}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
   );
 }
 

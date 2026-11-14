@@ -12,9 +12,11 @@ import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { CheckIcon, ResetIcon, ShareIcon } from "@/components/ui/icons";
 import { clearBuildingCache } from "@/lib/buildings/cache";
+import type { UseBuildingsResult } from "@/lib/buildings/useBuildings";
 import type { Place } from "@/lib/types";
 import { buildShareUrl, pickSettings, useSettings } from "@/state";
 import { Brand } from "./Brand";
+import { DataStatus } from "./DataStatus";
 
 const COPIED_MS = 2200;
 
@@ -53,10 +55,18 @@ interface PlaceHeaderProps {
   /** The selected wall-clock date and minute, to name the zone as it is then. */
   date: string;
   minuteOfDay: number;
+  /** State of the building data behind the numbers. */
+  buildings: Pick<UseBuildingsResult, "status" | "stats" | "error" | "isFetching" | "refetch">;
 }
 
 /** Which place this is, in which time zone, plus the share link and reset. */
-export function PlaceHeader({ place, timeZone, date, minuteOfDay }: PlaceHeaderProps) {
+export function PlaceHeader({
+  place,
+  timeZone,
+  date,
+  minuteOfDay,
+  buildings,
+}: PlaceHeaderProps) {
   const queryClient = useQueryClient();
   const { share, copy, dismiss } = useShareLink();
   const [confirmingReset, setConfirmingReset] = useState(false);
@@ -142,6 +152,9 @@ export function PlaceHeader({ place, timeZone, date, minuteOfDay }: PlaceHeaderP
           {zoneCity(timeZone)} time{zoneDetail.length > 0 ? ` (${zoneDetail.join(", ")})` : ""}
         </span>
       </p>
+      <div className="mt-2.5 border-t border-line pt-2">
+        <DataStatus buildings={buildings} />
+      </div>
     </Card>
   );
 }

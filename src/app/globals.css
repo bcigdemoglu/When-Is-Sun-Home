@@ -26,8 +26,9 @@
   --state-night: #23283a;
 
   /* Map overlays (MapLibre needs concrete colours; read via getComputedStyle). */
-  --map-building: #b4b1a6;
-  --map-building-soft: #cfccc2;
+  --map-building: #aba89c;
+  --map-building-soft: #c6c3b8;
+  --map-pin-building: #e2a877;
   --map-shadow: #1b2033;
   --map-shadow-opacity: 0.28;
 }
@@ -53,6 +54,7 @@
 
     --map-building: #55544e;
     --map-building-soft: #42413c;
+    --map-pin-building: #8a5527;
     --map-shadow: #000000;
     --map-shadow-opacity: 0.5;
   }

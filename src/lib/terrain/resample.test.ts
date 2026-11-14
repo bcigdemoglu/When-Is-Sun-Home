@@ -6,14 +6,7 @@ import type { ElevationGrid, LatLng } from "@/lib/types";
 import { elevationAt } from "./elevation";
 import { buildMosaic, resampleMosaic } from "./resample";
 import { syntheticTiles } from "./testing";
-import {
-  terrainCoverageFor,
-  tileGroundWidthM,
-  tilesOf,
-  tileXToLng,
-  tileYToLat,
-  type TileBlock,
-} from "./tiles";
+import { terrainCoverageFor, tileGroundWidthM, type TileBlock } from "./tiles";
 
 const TILE = 256;
 

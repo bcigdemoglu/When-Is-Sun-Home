@@ -29,6 +29,8 @@ export const CURVATURE_DROP_PER_M2 = (1 - REFRACTION_COEFFICIENT) / (2 * EARTH_R
 const MIN_DISTANCE_M = 5;
 /** Sample spacing grows with distance: never finer than one cell, nor than 1% of the range. */
 const STEP_GROWTH = 0.01;
+/** The steepest point found by the march is then pinned down to this precision, metres. */
+const REFINE_TO_M = 0.25;
 
 export interface TerrainSkyline {
   /**
@@ -68,34 +70,63 @@ export function computeTerrainSkyline(
   const startM = Math.max(MIN_DISTANCE_M, near.cellSizeM);
   const binWidthRad = (360 / binCount) * DEG_TO_RAD;
 
+  // Apparent rise of the ground above the observer's eye at distance d along
+  // the current ray, or NaN beyond the data. Sets `cell` to the spacing of the
+  // grid that answered.
+  let ux = 0;
+  let uy = 0;
+  let cell = near.cellSizeM;
+  const riseAt = (d: number): number => {
+    const x = observerX + d * ux;
+    const y = observerY + d * uy;
+    let ground: number;
+    if (gridContains(near, x, y)) {
+      ground = elevationAt(near, x, y);
+      cell = near.cellSizeM;
+    } else if (far !== undefined && gridContains(far, x, y)) {
+      ground = elevationAt(far, x, y);
+      cell = far.cellSizeM;
+    } else {
+      return NaN; // beyond all terrain data
+    }
+    return ground - observerGround - CURVATURE_DROP_PER_M2 * d * d - observerHeightM;
+  };
+
   for (let bin = 0; bin < binCount; bin++) {
     const azimuth = (bin + 0.5) * binWidthRad;
-    const ux = Math.sin(azimuth);
-    const uy = Math.cos(azimuth);
+    ux = Math.sin(azimuth);
+    uy = Math.cos(azimuth);
     let best = 0;
     let bestDistance = 0;
+    let bestStep = 0;
 
+    // Coarse march: one sample per cell, or per 1% of the range if that is more.
     for (let d = startM; ;) {
-      const x = observerX + d * ux;
-      const y = observerY + d * uy;
-      let ground: number;
-      let cell: number;
-      if (gridContains(near, x, y)) {
-        ground = elevationAt(near, x, y);
-        cell = near.cellSizeM;
-      } else if (far !== undefined && gridContains(far, x, y)) {
-        ground = elevationAt(far, x, y);
-        cell = far.cellSizeM;
-      } else {
-        break; // beyond all terrain data
-      }
-      const rise = ground - observerGround - CURVATURE_DROP_PER_M2 * d * d - observerHeightM;
+      const rise = riseAt(d);
+      if (Number.isNaN(rise)) break;
+      const growth = d * STEP_GROWTH;
+      const step = growth > cell ? growth : cell;
       if (rise > best * d) {
         best = rise / d;
         bestDistance = d;
+        bestStep = step;
       }
-      const growth = d * STEP_GROWTH;
-      d += growth > cell ? growth : cell;
+      d += step;
+    }
+
+    // Refine: the true maximum lies within one step of the best sample; close
+    // in on it by trying ever smaller moves to either side.
+    if (bestDistance > 0) {
+      for (let move = bestStep / 2; move > REFINE_TO_M; move /= 2) {
+        for (const d of [bestDistance - move, bestDistance + move]) {
+          if (d < startM) continue;
+          const rise = riseAt(d);
+          if (rise > best * d) {
+            best = rise / d;
+            bestDistance = d;
+          }
+        }
+      }
     }
 
     slope[bin] = best;

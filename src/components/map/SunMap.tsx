@@ -196,7 +196,7 @@ export default function SunMap({
       ["==", ["get", "id"], blockerBuildingId ?? ""],
       theme.blocked,
       ["==", ["get", "id"], pinBuildingId ?? ""],
-      theme.accent,
+      theme.pinBuilding,
       ["==", ["get", "heightSource"], "default"],
       theme.buildingSoft,
       theme.building,
@@ -362,7 +362,7 @@ export default function SunMap({
               "fill-extrusion-color": buildingColor as never,
               "fill-extrusion-height": ["get", "heightM"],
               "fill-extrusion-base": 0,
-              "fill-extrusion-opacity": 0.72,
+              "fill-extrusion-opacity": 0.8,
             }}
           />
           <Layer

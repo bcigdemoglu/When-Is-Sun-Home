@@ -1,4 +1,4 @@
-import { useId, type CSSProperties, type PointerEvent, type ReactNode } from "react";
+import { useId, type CSSProperties, type ReactNode } from "react";
 
 interface SliderProps {
   label: string;
@@ -6,6 +6,8 @@ interface SliderProps {
   hideLabel?: boolean;
   /** Shown to the right of the label, e.g. "3:42 PM". */
   readout?: ReactNode;
+  /** Extra controls on the label row (presets, …), between label and readout. */
+  labelExtra?: ReactNode;
   value: number;
   min: number;
   max: number;
@@ -30,6 +32,7 @@ export function Slider({
   label,
   hideLabel = false,
   readout,
+  labelExtra,
   value,
   min,
   max,
@@ -43,25 +46,25 @@ export function Slider({
 }: SliderProps) {
   const id = useId();
   const style = track ? ({ "--range-track": track } as CSSProperties) : undefined;
-  const onPointerDown = onGrab ? (_event: PointerEvent<HTMLInputElement>) => onGrab() : undefined;
+  const grab = onGrab ? () => onGrab() : undefined;
 
   return (
     <div className={className}>
-      {(!hideLabel || readout !== undefined) && (
-        <div className="flex items-baseline justify-between gap-3">
-          <label htmlFor={id} className={hideLabel ? "sr-only" : "text-sm font-medium text-ink"}>
-            {label}
-          </label>
-          {readout !== undefined && (
-            <span className="text-sm text-ink-2 tabular-nums">{readout}</span>
-          )}
-        </div>
-      )}
-      {hideLabel && readout === undefined && (
-        <label htmlFor={id} className="sr-only">
+      <div
+        className={
+          hideLabel && readout === undefined && labelExtra === undefined
+            ? "sr-only"
+            : "flex flex-wrap items-center justify-between gap-x-3 gap-y-1"
+        }
+      >
+        <label htmlFor={id} className={hideLabel ? "sr-only" : "text-sm font-medium text-ink"}>
           {label}
         </label>
-      )}
+        {labelExtra}
+        {readout !== undefined && (
+          <span className="ml-auto text-sm text-ink-2 tabular-nums">{readout}</span>
+        )}
+      </div>
       <input
         id={id}
         type="range"
@@ -73,8 +76,8 @@ export function Slider({
         value={value}
         disabled={disabled}
         aria-valuetext={valueText}
-        onPointerDown={onPointerDown}
-        onKeyDown={onGrab ? () => onGrab() : undefined}
+        onPointerDown={grab}
+        onKeyDown={grab}
         onChange={(event) => {
           const next = event.currentTarget.valueAsNumber;
           if (Number.isFinite(next)) onChange(next);

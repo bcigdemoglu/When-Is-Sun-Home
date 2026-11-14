@@ -38,7 +38,7 @@ export default function TwitterImage() {
           textShadow: "0 1px 4px rgba(0,0,0,0.2)",
         }}
       >
-        Track the sun&apos;s position on an interactive map
+        Hours of direct sun for any backyard or window
       </div>
     </div>,
     { ...size },

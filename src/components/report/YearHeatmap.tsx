@@ -219,12 +219,10 @@ export function YearHeatmap({
           : ""}
       </p>
 
-      {model && model.clockShifts.length > 0 && (
-        <p className="mt-1 text-xs text-ink-3">
-          <span aria-hidden="true">{"▾"} </span>
-          {clockShiftNote(model.clockShifts)}
-        </p>
-      )}
+      {/* Always the same height, so the card does not grow when the analysis arrives. */}
+      <p className="mt-1 min-h-8 text-xs text-ink-3 @lg:min-h-4">
+        {model && clockShiftNote(model.clockShifts)}
+      </p>
 
       <div className="mt-2">
         <button
@@ -265,14 +263,11 @@ function chartSummary(year: YearAnalysis | null, model: ReportModel | null): str
 }
 
 function clockShiftNote(shifts: readonly ClockShift[]): string {
-  const list = shifts
-    .map((shift) => {
-      const hours = Math.abs(shift.deltaMinutes) / 60;
-      const amount = `${Number.isInteger(hours) ? hours : hours.toFixed(1)} h`;
-      return `${formatDate(shift.date)} (${shift.deltaMinutes > 0 ? "+" : "−"}${amount})`;
-    })
-    .join(" and ");
-  return `Clocks change on ${list}: the sudden step in the band is daylight saving time, not the sun.`;
+  if (shifts.length === 0) {
+    return "Clocks do not change here, so the band has no daylight-saving steps.";
+  }
+  const dates = shifts.map((shift) => formatDate(shift.date)).join(" and ");
+  return `\u25be Clocks change on ${dates} (daylight saving): hence the one-hour steps.`;
 }
 
 // ─── Base layer (canvas) ───────────────────────────────────────────────────
@@ -466,7 +461,7 @@ function SelectionMark({
             y2={y}
             stroke="var(--report-marker-halo)"
             strokeWidth={3}
-            strokeOpacity={0.35}
+            strokeOpacity={0.22}
           />
           <line
             x1={geometry.x}
@@ -475,7 +470,7 @@ function SelectionMark({
             y2={y}
             stroke="var(--report-marker)"
             strokeWidth={1}
-            strokeOpacity={0.7}
+            strokeOpacity={0.45}
           />
           <circle
             cx={x}
