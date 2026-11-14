@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { flushSync } from "react-dom";
 import { createPacer, settleAfterTwoFrames, type Pacer, type Settle } from "./pacer";
 
 export interface PacedValueOptions {
@@ -40,7 +41,9 @@ export function usePacedValue<T>(value: T, options: PacedValueOptions): T {
       minIntervalMs,
       loadFactor,
       allowanceMs,
-      onEmit: () => setPaced(latest.current),
+      // Rendered before `settle` starts watching, so the cost that is measured
+      // (and the consumer's own "am I done?" signal) really belongs to this value.
+      onEmit: () => flushSync(() => setPaced(latest.current)),
       settle: (done) => (settleRef.current ?? settleAfterTwoFrames)(done),
     });
     pacerRef.current = pacer;

@@ -72,6 +72,7 @@ export function createPacer(options: PacerOptions): Pacer {
       cancelSettle = null;
       const finishedAt = now();
       const excess = Math.max(0, finishedAt - startedAt - allowanceMs);
+      ((globalThis as any).__pace ??= []).push([minIntervalMs, Math.round(startedAt), Math.round(finishedAt - startedAt)]);
       nextAllowedAt = Math.max(
         startedAt + minIntervalMs,
         finishedAt + Math.min(maxRestMs, excess * loadFactor),

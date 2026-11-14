@@ -14,7 +14,7 @@ import MapGL, {
   type MarkerDragEvent,
 } from "react-map-gl/maplibre";
 import { useIsDesktop, usePrefersDark, usePrefersReducedMotion } from "@/hooks/useMediaQuery";
-import type { Settle } from "@/hooks/pacer";
+import { settleAfterTwoFrames, type Settle } from "@/hooks/pacer";
 import { usePacedValue } from "@/hooks/usePacedValue";
 import { computeShadowPolygons } from "@/lib/analysis";
 import type { BuildingCollection, LatLng, Place, SunInstant } from "@/lib/types";
@@ -43,7 +43,7 @@ const WORLD_VIEW = { longitude: 10, latitude: 28, zoom: 1.3, pitch: 0, bearing: 
  * follows the real thing at up to ~30 updates a second, but never faster than
  * the map can draw: see `settleMap` below.
  */
-const GL_SUN_PACING = { minIntervalMs: 33, loadFactor: 3, allowanceMs: 50 };
+const GL_SUN_PACING = { minIntervalMs: 33, loadFactor: 4, allowanceMs: 45 };
 /** Give up waiting for the map to finish a redraw after this long, ms. */
 const MAP_SETTLE_TIMEOUT_MS = 800;
 /** Paint changes apply at once; a 300 ms cross-fade would only blur fast scrubbing. */
@@ -204,37 +204,31 @@ export default function SunMap({
    * (software rendering, old phones) and however fast the slider moves.
    */
   const settleMap: Settle = (done) => {
+    const map = mapRef.current?.getMap();
+    // Nothing changed on the map, or the camera is moving and it redraws every
+    // frame anyway: two frames tell how long a frame takes.
+    if (!map || map.isMoving() || map.loaded()) return settleAfterTwoFrames(done);
+
+    // Otherwise it is re-tiling in its worker and will then redraw: wait for
+    // that, plus one frame for the result to reach the screen.
     let finished = false;
     let frame = 0;
-    let timeout: ReturnType<typeof setTimeout> | undefined;
-    let stopListening = () => {};
-    const stop = () => {
-      finished = true;
-      cancelAnimationFrame(frame);
-      clearTimeout(timeout);
-      stopListening();
-    };
     const finish = () => {
       if (finished) return;
       stop();
       done();
     };
-    // One frame on, React has handed the update to the map.
-    frame = requestAnimationFrame(() => {
-      const map = mapRef.current?.getMap();
-      if (!map || map.isMoving() || map.loaded()) {
-        // Nothing (more) to wait for: the next frame closes the measurement.
-        frame = requestAnimationFrame(finish);
-        return;
-      }
-      // Re-tiling in the worker, then a redraw; one more frame covers its presentation.
-      const onIdle = () => {
-        frame = requestAnimationFrame(finish);
-      };
-      map.once("idle", onIdle);
-      stopListening = () => map.off("idle", onIdle);
-      timeout = setTimeout(finish, MAP_SETTLE_TIMEOUT_MS);
-    });
+    const onIdle = () => {
+      frame = requestAnimationFrame(finish);
+    };
+    const timeout = setTimeout(finish, MAP_SETTLE_TIMEOUT_MS);
+    const stop = () => {
+      finished = true;
+      cancelAnimationFrame(frame);
+      clearTimeout(timeout);
+      map.off("idle", onIdle);
+    };
+    map.once("idle", onIdle);
     return stop;
   };
   const glSun = usePacedValue(glSunNow, { ...GL_SUN_PACING, settle: settleMap });
