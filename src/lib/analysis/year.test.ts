@@ -6,9 +6,11 @@ import { real } from "@/lib/geo/testing";
 import { computeHorizonProfile } from "@/lib/horizon/profile";
 import { buildingFromLocal, collectionOf, rect, rotatedRect } from "@/lib/horizon/testing";
 import { dateFromDayIndex, daysInYear } from "@/lib/solar/timezone";
+import { elevationGridFrom } from "@/lib/terrain/elevation";
 import { computeSunYearGrid } from "@/lib/solar/yearGrid";
 import {
   SunState,
+  TERRAIN_BLOCKER,
   type BuildingFeature,
   type HorizonProfile,
   type LatLng,
@@ -599,6 +601,75 @@ describe("analyzeYear: real sun grids", () => {
     expect(minutes(east) + minutes(west)).toBeLessThan(minutes(all) + 60);
     for (const analysis of [north, south, east, west])
       expectInternallyConsistent(analysis, sfGrid5);
+  });
+});
+
+describe("analyzeYear: terrain", () => {
+  // A ridge 100 m high running east–west 500 m to the south (11.3° at its
+  // nearest), plus a wall-like building to the north-east.
+  const terrain = {
+    near: elevationGridFrom(
+      SF,
+      { minX: -1500, minY: -1500, cellSizeM: 10, width: 301, height: 301 },
+      (_x, y) => (y <= -500 && y >= -540 ? 100 : 0),
+    ),
+  };
+  const northEastWall = collectionOf([
+    buildingFromLocal(SF, [[rotatedRect(40, 40, 30, 3, 135)]], 40),
+  ]);
+
+  test("minutes lost to the ground are reported separately, within blockedMinutes", () => {
+    const horizon = computeHorizonProfile(SF, northEastWall, 0, { terrain });
+    const analysis = analyzeYear(sfGrid5, horizon, yard());
+    const open = analyzeYear(sfGrid5, null, yard());
+    expectInternallyConsistent(analysis, sfGrid5);
+    expectNeverSunnier(analysis, open);
+    for (const day of analysis.days) {
+      check(day.terrainBlockedMinutes !== undefined, `${day.date}: missing terrainBlockedMinutes`);
+      check(day.terrainBlockedMinutes! >= 0, `${day.date}: negative`);
+      check(day.terrainBlockedMinutes! <= day.blockedMinutes, `${day.date}: exceeds blocked`);
+    }
+    // Midwinter: the sun rises and sets in the south-east / south-west, low
+    // behind the ridge → roughly an hour lost to it at each end of the day.
+    const midwinter = analysis.days[354];
+    expect(midwinter.terrainBlockedMinutes!).toBeGreaterThan(60);
+    expect(midwinter.terrainBlockedMinutes!).toBeLessThan(240);
+    // Midsummer: the sun rises in the north-east (behind the wall, a
+    // building) and never goes behind the southern ridge while low.
+    const midsummer = analysis.days[171];
+    expect(midsummer.terrainBlockedMinutes!).toBe(0);
+    expect(midsummer.blockedMinutes).toBeGreaterThan(0);
+
+    // The same cells, counted independently from the state grid.
+    let counted = 0;
+    for (let slot = 0; slot < 288; slot++) {
+      const i = 354 * 288 + slot;
+      if (analysis.state[i] !== SunState.Blocked) continue;
+      const bin = Math.floor((sfGrid5.azimuthDeg[i] * 720) / 360);
+      if (horizon.blockerIndex[bin] === TERRAIN_BLOCKER) counted += 5;
+    }
+    expect(midwinter.terrainBlockedMinutes).toBe(counted);
+  });
+
+  test("without terrain (or without a horizon) the terrain share is zero", () => {
+    for (const horizon of [null, southWallHorizon]) {
+      const analysis = analyzeYear(sfGrid, horizon, yard());
+      check(
+        analysis.days.every((day) => day.terrainBlockedMinutes === 0),
+        "terrainBlockedMinutes should be 0",
+      );
+    }
+  });
+
+  test("terrain only ever removes sun", () => {
+    const flat = analyzeYear(sfGrid5, computeHorizonProfile(SF, northEastWall, 0), yard());
+    const hilly = analyzeYear(
+      sfGrid5,
+      computeHorizonProfile(SF, northEastWall, 0, { terrain }),
+      yard(),
+    );
+    expectNeverSunnier(hilly, flat);
+    expect(hilly.annual.totalSunHours).toBeLessThan(flat.annual.totalSunHours - 100);
   });
 });
 

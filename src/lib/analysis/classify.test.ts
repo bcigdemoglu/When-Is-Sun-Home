@@ -6,7 +6,8 @@ import { real } from "@/lib/geo/testing";
 import { computeHorizonProfile, horizonElevationAt } from "@/lib/horizon/profile";
 import { buildingFromLocal, collectionOf, rect } from "@/lib/horizon/testing";
 import { sunPositionAt } from "@/lib/solar/position";
-import { SunState, type LatLng, type Observer } from "@/lib/types";
+import { elevationGridFrom } from "@/lib/terrain/elevation";
+import { SunState, TERRAIN_BLOCKER, type LatLng, type Observer } from "@/lib/types";
 
 import { classifySun, isInViewCone, sunInstantAt } from "./classify";
 
@@ -192,6 +193,56 @@ describe("sunInstantAt", () => {
     expect(sunInstantAt(SF, "2026-12-21", 12 * 60 + 8, ZONE, null, yard()).state).toBe(
       SunState.Sun,
     );
+  });
+
+  test("blocked by a hill: the blocker is the terrain, not a building", () => {
+    // A ridge 100 m high 500 m to the south (11.3°), a low house in front of
+    // it (5.7°) and, to the south-east, a tower (31°).
+    const terrain = {
+      near: elevationGridFrom(
+        SF,
+        { minX: -1000, minY: -1000, cellSizeM: 10, width: 201, height: 201 },
+        (_x, y) => (y <= -500 && y >= -540 ? 100 : 0),
+      ),
+    };
+    const scene = collectionOf([
+      buildingFromLocal(SF, [[rect(-10, -120, 10, -100)]], 10, "way/low"),
+      buildingFromLocal(SF, [[rect(60, -120, 80, -100)]], 60, "way/tower"),
+    ]);
+    const horizon = computeHorizonProfile(SF, scene, 0, { terrain });
+
+    // 21 December, 12:08: the sun is due south, 28.8° up — clear of the ridge.
+    expect(sunInstantAt(SF, "2026-12-21", 12 * 60 + 8, ZONE, horizon, yard()).state).toBe(
+      SunState.Sun,
+    );
+    // 08:10: 6.8° up in the south-east (azimuth ≈ 126°), behind the long ridge.
+    const morning = sunInstantAt(SF, "2026-12-21", 8 * 60 + 10, ZONE, horizon, yard());
+    expect(morning.altitudeDeg).toBeGreaterThan(5);
+    expect(morning.altitudeDeg).toBeLessThan(9);
+    expect(morning.state).toBe(SunState.Blocked);
+    expect(morning.blocker).toBeDefined();
+    expect(morning.blocker!.kind).toBe("terrain");
+    expect(morning.blocker!.buildingIndex).toBe(TERRAIN_BLOCKER);
+    expect(morning.blocker!.distanceM).toBeGreaterThan(500);
+    expect(morning.blocker!.elevationDeg).toBeGreaterThan(morning.altitudeDeg);
+
+    // 10:00: the sun (azimuth ≈ 148°, 22° up) is behind the tower (27° there):
+    // a building blocker.
+    const behindTower = sunInstantAt(SF, "2026-12-21", 10 * 60, ZONE, horizon, yard());
+    expect(Math.abs(behindTower.azimuthDeg - 148)).toBeLessThan(2);
+    expect(behindTower.state).toBe(SunState.Blocked);
+    expect(behindTower.blocker!.kind).toBe("building");
+    expect(behindTower.blocker!.buildingIndex).toBe(1);
+
+    // classifySun itself needs nothing new: terrain is just part of the skyline.
+    expect(classifySun(morning.azimuthDeg, morning.altitudeDeg, horizon, yard())).toBe(
+      SunState.Blocked,
+    );
+  });
+
+  test("building blockers are labelled as such", () => {
+    const instant = sunInstantAt(SF, "2026-12-21", 12 * 60 + 8, ZONE, wallHorizon, yard());
+    expect(instant.blocker!.kind).toBe("building");
   });
 
   test("out of view for a window facing away", () => {

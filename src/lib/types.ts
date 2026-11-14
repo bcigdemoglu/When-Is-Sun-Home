@@ -301,8 +301,11 @@ export interface SunInstant extends SunPosition {
   state: SunStateCode;
   /** Present when state is Blocked. */
   blocker?: {
-    /** "terrain" when the sun is behind the ground / a hill, else "building". */
-    kind: "building" | "terrain";
+    /**
+     * "terrain" when the sun is behind the ground / a hill, else "building".
+     * Always set by the engine (optional only so hand-made values stay valid).
+     */
+    kind?: "building" | "terrain";
     /** Index of the building, or `TERRAIN_BLOCKER` (-2) for terrain. */
     buildingIndex: number;
     distanceM: number;
