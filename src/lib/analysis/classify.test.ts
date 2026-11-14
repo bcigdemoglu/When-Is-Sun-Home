@@ -222,10 +222,12 @@ describe("sunInstantAt", () => {
     const inGap = sunInstantAt(place, "2026-04-24", 30, "Africa/Cairo", null, yard());
     const after = sunInstantAt(place, "2026-04-24", 90, "Africa/Cairo", null, yard());
     expect(inGap).toEqual(after);
-    // A whole missing day (Samoa, 30 December 2011) resolves to the next real time.
+    // A whole missing day (Samoa, 30 December 2011): whole hours are added
+    // until the clock shows a real time again — midnight on the 31st.
     const samoa = { lat: -13.83, lng: -171.77 };
     const missing = sunInstantAt(samoa, "2011-12-30", 720, "Pacific/Apia", null, yard());
-    const next = sunInstantAt(samoa, "2011-12-31", 720, "Pacific/Apia", null, yard());
+    const next = sunInstantAt(samoa, "2011-12-31", 0, "Pacific/Apia", null, yard());
     expect(missing).toEqual(next);
+    expect(Number.isNaN(missing.altitudeDeg)).toBe(false);
   });
 });
