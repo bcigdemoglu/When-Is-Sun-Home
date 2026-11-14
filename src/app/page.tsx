@@ -1,5 +1,3 @@
-import SunApp from "@/components/SunApp";
-
 export default function Home() {
-  return <SunApp />;
+  return <main className="p-8">Rebuilding…</main>;
 }
