@@ -149,7 +149,11 @@ export function describeInstant(instant: SunInstant, observer: Pick<Observer, "m
       return "In direct sun";
     case SunState.Blocked: {
       const blocker = instant.blocker;
-      const what = blocker && isTerrainBlocker(blocker.buildingIndex) ? "a hill" : "a building";
+      // The engine says what the obstruction is; older values only carry the index.
+      const terrain =
+        blocker !== undefined &&
+        (blocker.kind ? blocker.kind === "terrain" : isTerrainBlocker(blocker.buildingIndex));
+      const what = terrain ? "a hill" : "a building";
       const distance =
         blocker && blocker.distanceM > 0 ? ` ${formatDistance(blocker.distanceM)} away` : "";
       return `Shaded by ${what}${distance}`;

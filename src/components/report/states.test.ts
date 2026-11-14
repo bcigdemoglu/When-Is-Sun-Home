@@ -134,6 +134,8 @@ describe("describeInstant", () => {
     const hill = { buildingIndex: -2, distanceM: 1840, elevationDeg: 6 };
     expect(describeInstant(at(SunState.Blocked, hill), yard)).toBe("Shaded by a hill 1.8 km away");
     expect(describeInstant(at(SunState.Blocked), yard)).toBe("Shaded by a building");
+    const tagged = { kind: "terrain" as const, buildingIndex: -2, distanceM: 300, elevationDeg: 9 };
+    expect(describeInstant(at(SunState.Blocked, tagged), yard)).toBe("Shaded by a hill 300 m away");
   });
 
   it("classifies blocker indices", () => {
