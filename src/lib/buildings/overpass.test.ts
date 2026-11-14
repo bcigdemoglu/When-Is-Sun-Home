@@ -988,7 +988,7 @@ describe("fetchBuildings", () => {
       fetchImpl.mockResolvedValueOnce(ok());
 
       const pending = fetchBuildings(CENTER, 500, { fetchImpl });
-      await vi.advanceTimersByTimeAsync(19_999);
+      await vi.advanceTimersByTimeAsync(11_999);
       expect(fetchImpl).toHaveBeenCalledTimes(1);
       await vi.advanceTimersByTimeAsync(1);
       expect(fetchImpl).toHaveBeenCalledTimes(2);
