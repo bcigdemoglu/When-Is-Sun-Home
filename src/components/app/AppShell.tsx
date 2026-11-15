@@ -543,6 +543,26 @@ function Workspace() {
   return (
     <div className={ROOT} style={rootStyle}>
       {/*
+        The search pill's strip, on phones. It comes BEFORE the map and sheet in
+        the document so keyboard and screen-reader order starts at the search,
+        as the screen does; it stays a sibling of the sheet's scroller so the
+        stylesheet can turn it solid once the sheet is up (see `.sheet-topbar`).
+        A stable slot: on desktop it renders nothing, and the element after it
+        keeps its identity, so the map is still created exactly once.
+      */}
+      {isDesktop ? null : (
+        <header
+          ref={topBarRef}
+          className="sheet-topbar fixed inset-x-0 top-0 z-40 flex items-start gap-2 pt-[calc(var(--safe-top)+12px)] pr-[calc(var(--safe-right)+12px)] pb-2 pl-[calc(var(--safe-left)+12px)]"
+        >
+          <div ref={searchRef} className="min-w-0 flex-1">
+            {search}
+          </div>
+          <PlacesButton expanded={placesOpen} onClick={() => setPlacesOpen(true)} />
+        </header>
+      )}
+
+      {/*
         The map — and, on phones, the sheet that scrolls over it. One element
         in one place for every layout, so the map is created exactly once.
       */}
@@ -616,21 +636,6 @@ function Workspace() {
         </aside>
       ) : (
         <>
-          {/*
-            The search pill's strip. It takes input itself (no pass-through to
-            the map around the pill) and turns solid once the sheet is up: see
-            `.sheet-topbar`.
-          */}
-          <header
-            ref={topBarRef}
-            className="sheet-topbar fixed inset-x-0 top-0 z-40 flex items-start gap-2 pt-[calc(var(--safe-top)+12px)] pr-[calc(var(--safe-right)+12px)] pb-2 pl-[calc(var(--safe-left)+12px)]"
-          >
-            <div ref={searchRef} className="min-w-0 flex-1">
-              {search}
-            </div>
-            <PlacesButton expanded={placesOpen} onClick={() => setPlacesOpen(true)} />
-          </header>
-
           {timeBar && (
             <div ref={timeBarRef} className="fixed inset-x-0 bottom-0 z-30">
               {timeBar}

@@ -57,7 +57,8 @@ test.describe("Bottom sheet (phone)", () => {
     expect(layout).toEqual({
       position: "fixed",
       overflowY: "auto",
-      snap: "y proximity",
+      // Proximity snapping (the default strictness, which the browser reports as plain "y").
+      snap: "y",
       takesTouches: true,
       holdsTheMap: true,
       mapIsSticky: true,

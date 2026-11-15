@@ -433,7 +433,7 @@ body {
 .sheet-topbar {
   transition: background-color 0.15s ease-out;
 }
-.sheet-scroller[data-covering] ~ .sheet-topbar {
+.sheet-topbar:has(~ .sheet-scroller[data-covering]) {
   background-color: var(--page);
 }
 

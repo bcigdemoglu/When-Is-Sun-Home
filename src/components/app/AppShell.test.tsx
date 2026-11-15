@@ -84,13 +84,14 @@ describe("AppShell, phone layout — what Safari on iOS needs (WebKit bug 183870
     expect(container.querySelectorAll(".pointer-events-none")).toHaveLength(0);
   });
 
-  it("keeps the search strip after the scroller, where the stylesheet can find it", async () => {
+  it("puts the search strip before the scroller, as a sibling the stylesheet can match", async () => {
     const { container } = await renderShell();
     const scroller = container.querySelector(".sheet-scroller")!;
     const topBar = container.querySelector(".sheet-topbar")!;
     expect(topBar.parentElement).toBe(scroller.parentElement);
+    // Before it in the document: keyboard and screen-reader order starts at the search.
     expect(
-      scroller.compareDocumentPosition(topBar) & Node.DOCUMENT_POSITION_FOLLOWING,
+      scroller.compareDocumentPosition(topBar) & Node.DOCUMENT_POSITION_PRECEDING,
     ).toBeTruthy();
   });
 });
