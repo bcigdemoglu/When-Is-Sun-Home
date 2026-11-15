@@ -5,21 +5,9 @@
 
 export type PlayMode = "day" | "year";
 
-export interface PlaySpeed {
-  label: string;
-  /** Simulated minutes per real second in "day" mode. */
-  minutesPerSecond: number;
-  /** Simulated days per real second in "year" mode. */
-  daysPerSecond: number;
-}
-
-/** Slow enough to read, fast enough to watch a whole day / year go by. */
-export const PLAY_SPEEDS: readonly PlaySpeed[] = [
-  { label: "1×", minutesPerSecond: 30, daysPerSecond: 8 },
-  { label: "2×", minutesPerSecond: 90, daysPerSecond: 20 },
-  { label: "4×", minutesPerSecond: 240, daysPerSecond: 50 },
-];
-export const DEFAULT_SPEED_INDEX = 1;
+/** How long one pass takes, whatever is being swept: long enough to follow, short enough to watch. */
+export const DAY_LOOP_SECONDS = 8;
+export const YEAR_LOOP_SECONDS = 15;
 
 /**
  * A frame never advances the animation by more than this much real time, so a
@@ -105,4 +93,14 @@ export function advanceDayIndex(
   const from = Number.isFinite(dayIndex) ? dayIndex : 0;
   const step = (Math.max(0, elapsedMs) / 1000) * daysPerSecond;
   return wrap(from + step, 0, dayCount);
+}
+
+/** Simulated minutes per real second that take `loop` from start to end in `DAY_LOOP_SECONDS`. */
+export function dayLoopSpeed(loop: DayLoop): number {
+  return (loop.endMinute - loop.startMinute + 1) / DAY_LOOP_SECONDS;
+}
+
+/** Simulated days per real second that take a year of `dayCount` days `YEAR_LOOP_SECONDS`. */
+export function yearLoopSpeed(dayCount: number): number {
+  return dayCount / YEAR_LOOP_SECONDS;
 }

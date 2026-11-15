@@ -3,6 +3,7 @@
  * up, the building silhouette, and the sun's paths over it. Pure functions.
  */
 import { classifySun, dayIndexFromDate } from "@/lib/analysis";
+import { compassPoint, formatAngle, formatDistance } from "./format";
 import {
   SunState,
   type HorizonProfile,
@@ -403,4 +404,74 @@ export function sectorSummary(horizon: HorizonProfile): SectorSummary[] {
           kind: obstructionKind(blockerIndex[best]),
         };
   });
+}
+
+// ─── Takeaway ──────────────────────────────────────────────────────────────
+
+/**
+ * Which directions the sun ever stands in: a per-bin mask (1 = the sun passes
+ * there on one of the given paths). Consecutive samples are joined along the
+ * shorter arc, so no bin between them is skipped.
+ */
+export function sunDirectionMask(
+  paths: readonly (readonly SunPathPoint[])[],
+  binCount: number,
+  stepMinutes: number,
+): Uint8Array {
+  const mask = new Uint8Array(binCount);
+  const binOf = (azimuthDeg: number) =>
+    Math.min(binCount - 1, Math.floor((normalize360(azimuthDeg) * binCount) / 360));
+  for (const path of paths) {
+    for (let i = 0; i < path.length; i++) {
+      const b = binOf(path[i].azimuthDeg);
+      mask[b] = 1;
+      if (i === 0 || path[i].minute - path[i - 1].minute > stepMinutes * 1.5) continue;
+      const a = binOf(path[i - 1].azimuthDeg);
+      const forward = (b - a + binCount) % binCount;
+      const step = forward <= binCount / 2 ? 1 : -1;
+      for (let bin = a; bin !== b; bin = (bin + step + binCount) % binCount) mask[bin] = 1;
+    }
+  }
+  return mask;
+}
+
+export interface Obstruction {
+  /** Centre of the direction bin, compass degrees. */
+  azimuthDeg: number;
+  elevationDeg: number;
+  distanceM: number;
+  kind: ObstructionKind;
+}
+
+/**
+ * The highest point of the skyline among the bins selected by `mask` (all
+ * bins when omitted); `null` when nothing there rises above the horizon.
+ */
+export function tallestObstruction(
+  horizon: HorizonProfile,
+  mask?: ArrayLike<number>,
+): Obstruction | null {
+  const { binCount, elevationDeg, blockerDistanceM, blockerIndex } = horizon;
+  let best = -1;
+  for (let bin = 0; bin < binCount; bin++) {
+    if (mask && !mask[bin]) continue;
+    if (elevationDeg[bin] > 0 && (best < 0 || elevationDeg[bin] > elevationDeg[best])) best = bin;
+  }
+  if (best < 0) return null;
+  return {
+    azimuthDeg: ((best + 0.5) * 360) / binCount,
+    elevationDeg: elevationDeg[best],
+    distanceM: blockerDistanceM[best],
+    kind: obstructionKind(blockerIndex[best]),
+  };
+}
+
+/** "a building to the SSW reaching 31° up, 15 m away" */
+export function obstructionPhrase(obstruction: Obstruction): string {
+  const what = obstruction.kind === "terrain" ? "a hill" : "a building";
+  const distance =
+    obstruction.distanceM > 0 ? `, ${formatDistance(obstruction.distanceM)} away` : "";
+  return `${what} to the ${compassPoint(obstruction.azimuthDeg, 16)} reaching ${formatAngle(
+    obstruction.elevationDeg,
+  )} up${distance}`;
 }

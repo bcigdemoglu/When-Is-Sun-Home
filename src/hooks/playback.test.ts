@@ -1,10 +1,14 @@
 import { describe, expect, it } from "vitest";
 import {
+  DAY_LOOP_SECONDS,
   MAX_FRAME_MS,
+  YEAR_LOOP_SECONDS,
   advanceDayIndex,
   advanceMinute,
   dayLoopRange,
+  dayLoopSpeed,
   frameElapsedMs,
+  yearLoopSpeed,
 } from "./playback";
 
 describe("dayLoopRange", () => {
@@ -82,5 +86,27 @@ describe("advanceDayIndex", () => {
     expect(advanceDayIndex(365.5, 1000, 1, 366)).toBeCloseTo(0.5);
     const wrapped = advanceDayIndex(364.9, 100, 50, 365);
     expect(Math.floor(wrapped)).toBeLessThan(365);
+  });
+});
+
+describe("loop speeds", () => {
+  it("plays sunrise to sunset in about eight seconds, whatever the season", () => {
+    for (const loop of [dayLoopRange(300, 1200), dayLoopRange(480, 990)]) {
+      const speed = dayLoopSpeed(loop);
+      let position = loop.startMinute;
+      let wraps = 0;
+      const frames = DAY_LOOP_SECONDS * 60;
+      for (let i = 0; i < frames - 1; i++) {
+        const next = advanceMinute(position, 1000 / 60, speed, loop);
+        if (next < position) wraps++;
+        position = next;
+      }
+      expect(wraps).toBe(0);
+      expect(position).toBeGreaterThan(loop.endMinute - 5);
+    }
+  });
+
+  it("plays a year in about fifteen seconds", () => {
+    expect(yearLoopSpeed(365) * YEAR_LOOP_SECONDS).toBeCloseTo(365);
   });
 });

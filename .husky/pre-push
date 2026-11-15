@@ -1,0 +1,3 @@
+# Everything CI checks, before anything leaves this machine.
+pnpm format:check
+pnpm check

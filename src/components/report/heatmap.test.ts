@@ -11,10 +11,10 @@ import {
   dayX,
   findClockShifts,
   FULL_DAY,
-  hourTicks,
   minuteY,
   monthSpans,
   moveSelection,
+  timeAxisTicks,
   type HeatmapGeometry,
 } from "./heatmap";
 import { resolveStateColors } from "./states";
@@ -44,14 +44,27 @@ describe("daylightTimeRange", () => {
   });
 });
 
-describe("hourTicks", () => {
-  it("spaces gridlines so labels do not collide", () => {
-    const range = { startMinute: 5 * 60, endMinute: 21 * 60 };
-    // 16 hours on 320 px = 20 px per hour → every 2 hours.
-    expect(hourTicks(range, 320)).toEqual([6, 8, 10, 12, 14, 16, 18, 20].map((h) => h * 60));
-    // On 160 px → every 3 hours.
-    expect(hourTicks(range, 160)).toEqual([6, 9, 12, 15, 18, 21].map((h) => h * 60));
-    expect(hourTicks(FULL_DAY, 290)).toEqual([0, 3, 6, 9, 12, 15, 18, 21, 24].map((h) => h * 60));
+describe("timeAxisTicks", () => {
+  const hours = (ticks: number[]) => ticks.map((minute) => minute / 60);
+
+  it("gives a normal day three ticks: 6 AM, noon, 6 PM", () => {
+    expect(hours(timeAxisTicks({ startMinute: 5 * 60, endMinute: 21 * 60 }))).toEqual([6, 12, 18]);
+    expect(hours(timeAxisTicks(FULL_DAY))).toEqual([6, 12, 18]);
+  });
+
+  it("uses a finer grid when the range is short, never more than four ticks", () => {
+    expect(hours(timeAxisTicks({ startMinute: 8 * 60, endMinute: 17 * 60 }))).toEqual([12, 16]);
+    expect(hours(timeAxisTicks({ startMinute: 10 * 60, endMinute: 15 * 60 }))).toEqual([12, 14]);
+    expect(timeAxisTicks({ startMinute: 12 * 60, endMinute: 13 * 60 })).toEqual([]);
+  });
+
+  it("never puts a tick on the edge of the range", () => {
+    for (const range of [FULL_DAY, { startMinute: 360, endMinute: 1080 }]) {
+      for (const tick of timeAxisTicks(range)) {
+        expect(tick).toBeGreaterThan(range.startMinute);
+        expect(tick).toBeLessThan(range.endMinute);
+      }
+    }
   });
 });
 

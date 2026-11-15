@@ -130,11 +130,17 @@ describe("sunPathModel", () => {
     expect(model.set).toEqual({ azimuthDeg: 82, minute: 3.4 });
   });
 
-  it("falls back to the first and last daylight samples, and to nothing in the dark", () => {
-    const up = [sample(10, SunState.Sun, 5, 90), sample(11, SunState.Sun, 5, 91)];
+  it("labels no sunrise or sunset when there is none (polar day), but still draws the path", () => {
+    const up: DaySample[] = [];
+    for (let m = 0; m < 1440; m += 10) up.push(sample(m, SunState.Sun, 5, (m / 4) % 360));
     const model = sunPathModel({ samples: up, sunriseMinute: null, sunsetMinute: null }, 100);
-    expect(model.rise?.minute).toBe(10);
-    expect(model.set?.minute).toBe(11);
+    expect(model.runs.length).toBeGreaterThan(0);
+    expect(model.rise).toBeNull();
+    expect(model.set).toBeNull();
+    // A date that starts in daylight and only has a sunset keeps just that one.
+    const evening = sunPathModel({ samples: up, sunriseMinute: null, sunsetMinute: 40.5 }, 100);
+    expect(evening.rise).toBeNull();
+    expect(evening.set?.minute).toBe(40.5);
     expect(
       sunPathModel(
         { samples: [sample(0, SunState.Night, -5)], sunriseMinute: null, sunsetMinute: null },

@@ -60,17 +60,23 @@ export function daylightTimeRange(year: YearCells, padMinutes = 30): TimeRange {
 }
 
 /**
- * Whole-hour gridline positions (minutes) inside `range`, spaced so that
- * labels are at least `minGapPx` apart on a plot `plotHeight` pixels tall.
+ * A calm time axis: at most `maxTicks` whole-hour ticks strictly inside
+ * `range`, on the coarsest of the 6 / 4 / 3 / 2 / 1-hour grids that still
+ * gives two (so a normal day reads "6 AM · 12 PM · 6 PM").
  */
-export function hourTicks(range: TimeRange, plotHeight: number, minGapPx = 26): number[] {
-  const hours = (range.endMinute - range.startMinute) / 60;
-  const pxPerHour = hours > 0 ? plotHeight / hours : 0;
-  const step = [1, 2, 3, 4, 6, 12].find((s) => s * pxPerHour >= minGapPx) ?? 12;
-  const ticks: number[] = [];
-  const firstHour = Math.ceil(range.startMinute / 60 / step) * step;
-  for (let hour = firstHour; hour * 60 <= range.endMinute; hour += step) ticks.push(hour * 60);
-  return ticks;
+export function timeAxisTicks(range: TimeRange, maxTicks = 4): number[] {
+  for (const step of [6, 4, 3, 2, 1]) {
+    const ticks: number[] = [];
+    for (
+      let hour = Math.ceil(range.startMinute / 60 / step) * step;
+      hour * 60 < range.endMinute;
+      hour += step
+    ) {
+      if (hour * 60 > range.startMinute) ticks.push(hour * 60);
+    }
+    if (ticks.length >= 2 && ticks.length <= maxTicks) return ticks;
+  }
+  return [];
 }
 
 // ─── Pixel ⇄ (day, minute) ─────────────────────────────────────────────────

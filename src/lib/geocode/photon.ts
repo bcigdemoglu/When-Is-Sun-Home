@@ -2,35 +2,33 @@
  * Place search and reverse geocoding with Photon (https://photon.komoot.io),
  * an OpenStreetMap geocoder that, unlike Nominatim, permits
  * search-as-you-type.
+ *
+ * Photon is a public service and can cut a client off. `reverseGeocode`
+ * therefore has a second path (Nominatim, see `./nominatim`), and both it and
+ * the search hook keep `./photonHealth` informed.
  */
 import { z } from "zod";
-import type { LatLng, Place } from "@/lib/types";
+import type { LatLng } from "@/lib/types";
+import { describeAddress, shortAddressLabel, type AddressParts } from "./labels";
+import { getJson, isAbortError } from "./net";
+import { NOMINATIM_ENABLED, reverseGeocodeNominatim } from "./nominatim";
+import { isPhotonResting, reportPhotonFailure, reportPhotonSuccess } from "./photonHealth";
+import {
+  DEFAULT_SEARCH_LIMIT,
+  REVERSE_GEOCODE_DECIMALS,
+  type PlaceSuggestion,
+  type ReverseGeocodeOptions,
+  type SearchPlacesOptions,
+} from "./types";
+
+export { DEFAULT_SEARCH_LIMIT, REVERSE_GEOCODE_DECIMALS } from "./types";
+export type { PlaceSuggestion, ReverseGeocodeOptions, SearchPlacesOptions } from "./types";
 
 export const PHOTON_BASE_URL = "https://photon.komoot.io";
-export const DEFAULT_SEARCH_LIMIT = 6;
-
-export type PlaceSuggestion = Place & {
-  /** Stable within one result list, e.g. "W259269865" or "coord:37.79000,-122.43000". */
-  id: string;
-  /** Primary line: the place name, or "housenumber street". */
-  label: string;
-  /** Secondary line: street / city / state / country. May be empty. */
-  detail: string;
-};
-
-export interface SearchPlacesOptions {
-  signal?: AbortSignal;
-  /** Maximum number of suggestions (default 6). */
-  limit?: number;
-  /** Prefer results near this point. */
-  bias?: LatLng;
-  fetchImpl?: typeof fetch;
-}
-
-export interface ReverseGeocodeOptions {
-  signal?: AbortSignal;
-  fetchImpl?: typeof fetch;
-}
+/** A typed search that has not answered by now counts as failed. */
+export const PHOTON_SEARCH_TIMEOUT_MS = 6000;
+/** A pin's label is a nicety: give up on Photon sooner and ask the second service. */
+export const PHOTON_REVERSE_TIMEOUT_MS = 5000;
 
 // ─── Response schema ───────────────────────────────────────────────────────
 
@@ -62,59 +60,6 @@ const photonFeatureSchema = z.object({
 });
 
 const photonResponseSchema = z.object({ features: z.array(z.unknown()) });
-
-type PhotonProperties = z.infer<typeof photonPropertiesSchema>;
-
-// ─── Labels ────────────────────────────────────────────────────────────────
-
-/** Countries that write the house number after the street name. */
-const NUMBER_AFTER_STREET: ReadonlySet<string> = new Set(
-  "AT BE BG CH CZ DE DK EE ES FI GR HR HU IS IT LT LV NL NO PL PT RO RS SE SI SK TR".split(" "),
-);
-
-function clean(value: string | undefined): string | undefined {
-  const trimmed = value?.trim();
-  return trimmed ? trimmed : undefined;
-}
-
-function streetAddress(p: PhotonProperties): string | undefined {
-  const street = clean(p.street);
-  const number = clean(p.housenumber);
-  if (!street || !number) return street;
-  return NUMBER_AFTER_STREET.has((p.countrycode ?? "").toUpperCase())
-    ? `${street} ${number}`
-    : `${number} ${street}`;
-}
-
-/** Join non-empty parts, dropping case-insensitive repeats and anything in `exclude`. */
-function joinDistinct(parts: (string | undefined)[], exclude: string[] = []): string {
-  const seen = new Set(exclude.map((part) => part.toLowerCase()));
-  const kept: string[] = [];
-  for (const part of parts) {
-    const value = clean(part);
-    if (!value || seen.has(value.toLowerCase())) continue;
-    seen.add(value.toLowerCase());
-    kept.push(value);
-  }
-  return kept.join(", ");
-}
-
-function describe(p: PhotonProperties): { label: string; detail: string } | null {
-  const address = streetAddress(p);
-  const town = clean(p.city) ?? clean(p.locality) ?? clean(p.district) ?? clean(p.county);
-  const label =
-    clean(p.name) ?? address ?? town ?? clean(p.state) ?? clean(p.country) ?? clean(p.postcode);
-  if (!label) return null;
-  const detail = joinDistinct([address, town, p.state, p.country], [label]);
-  return { label, detail };
-}
-
-/** A short "where is this" label for a pin: the address if there is one, plus the town. */
-function shortLabel(p: PhotonProperties): string | null {
-  const town = clean(p.city) ?? clean(p.locality) ?? clean(p.district) ?? clean(p.county);
-  const label = joinDistinct([streetAddress(p) ?? p.name, town]);
-  return label || joinDistinct([p.state, p.country]) || null;
-}
 
 // ─── Coordinates typed by hand ─────────────────────────────────────────────
 
@@ -155,14 +100,13 @@ function toSuggestion(feature: unknown): PlaceSuggestion | null {
   if (!parsed.success) return null;
   const [lng, lat] = parsed.data.geometry.coordinates;
   if (!(Math.abs(lat) <= 90) || !(Math.abs(lng) <= 180)) return null;
-  const properties = parsed.data.properties ?? {};
-  const description = describe(properties);
+  const properties: AddressParts = parsed.data.properties ?? {};
+  const osm = parsed.data.properties;
+  const description = describeAddress(properties);
   if (!description) return null;
   const { label, detail } = description;
   const id =
-    properties.osm_type && properties.osm_id !== undefined
-      ? `${properties.osm_type}${properties.osm_id}`
-      : `${lat},${lng}`;
+    osm?.osm_type && osm.osm_id !== undefined ? `${osm.osm_type}${osm.osm_id}` : `${lat},${lng}`;
   return { id, lat, lng, name: detail ? `${label}, ${detail}` : label, label, detail };
 }
 
@@ -170,11 +114,11 @@ async function photonFeatures(
   url: URL,
   signal: AbortSignal | undefined,
   fetchImpl: typeof fetch,
+  timeoutMs: number,
 ): Promise<unknown[]> {
-  // No custom headers: this stays a CORS "simple request".
-  const response = await fetchImpl(url.toString(), { signal });
-  if (!response.ok) throw new Error(`Place search failed (HTTP ${response.status})`);
-  const parsed = photonResponseSchema.safeParse(await response.json());
+  const parsed = photonResponseSchema.safeParse(
+    await getJson(url, { signal, fetchImpl, timeoutMs }),
+  );
   if (!parsed.success) throw new Error("Place search returned an unexpected response");
   return parsed.data.features;
 }
@@ -184,7 +128,8 @@ async function photonFeatures(
  *
  * A query that is a "lat, lng" pair resolves to exactly that point without a
  * network request. An empty query resolves to no suggestions. Rejects on
- * network / HTTP errors and when aborted.
+ * network / HTTP errors, on a timeout (`GeocoderTimeoutError`) and when
+ * aborted.
  */
 export async function searchPlaces(
   query: string,
@@ -208,7 +153,8 @@ export async function searchPlaces(
 
   const suggestions: PlaceSuggestion[] = [];
   const seen = new Set<string>();
-  for (const feature of await photonFeatures(url, signal, fetchImpl)) {
+  const features = await photonFeatures(url, signal, fetchImpl, PHOTON_SEARCH_TIMEOUT_MS);
+  for (const feature of features) {
     const suggestion = toSuggestion(feature);
     // Photon lists one OSM object once per matching tag; keep the first.
     if (!suggestion || seen.has(suggestion.id)) continue;
@@ -218,25 +164,63 @@ export async function searchPlaces(
   return suggestions;
 }
 
-/** A short label ("2200 Sacramento Street, San Francisco") for a point, or null on any failure. */
+/**
+ * Photon's label for a point, or null when it knows no address there.
+ * Rejects when Photon cannot be asked (network, HTTP status, timeout, a
+ * response that makes no sense) and when aborted.
+ */
+export async function reverseGeocodePhoton(
+  place: LatLng,
+  options: ReverseGeocodeOptions = {},
+): Promise<string | null> {
+  const { signal, fetchImpl = globalThis.fetch } = options;
+  const url = new URL("/reverse", PHOTON_BASE_URL);
+  // Only as precise as an address needs: the service never sees the exact
+  // pin or GPS fix.
+  url.searchParams.set("lat", place.lat.toFixed(REVERSE_GEOCODE_DECIMALS));
+  url.searchParams.set("lon", place.lng.toFixed(REVERSE_GEOCODE_DECIMALS));
+  url.searchParams.set("lang", "en");
+  const features = await photonFeatures(url, signal, fetchImpl, PHOTON_REVERSE_TIMEOUT_MS);
+  for (const feature of features) {
+    const parsed = photonFeatureSchema.safeParse(feature);
+    if (!parsed.success) continue;
+    const label = shortAddressLabel(parsed.data.properties ?? {});
+    if (label) return label;
+  }
+  return null;
+}
+
+/**
+ * A short label ("2200 Sacramento Street, San Francisco") for a point, or
+ * null — never a rejection.
+ *
+ * Photon is asked first. If it cannot be reached (network / CORS failure,
+ * 429 or 5xx, timeout, nonsense) Nominatim is asked instead — once; while
+ * Photon is known to be down it is not tried at all. An aborted lookup and a
+ * clean "no address here" from Photon do NOT fall back.
+ */
 export async function reverseGeocode(
   place: LatLng,
   options: ReverseGeocodeOptions = {},
 ): Promise<string | null> {
-  try {
-    if (!Number.isFinite(place.lat) || !Number.isFinite(place.lng)) return null;
-    const { signal, fetchImpl = globalThis.fetch } = options;
-    const url = new URL("/reverse", PHOTON_BASE_URL);
-    url.searchParams.set("lat", String(place.lat));
-    url.searchParams.set("lon", String(place.lng));
-    url.searchParams.set("lang", "en");
-    for (const feature of await photonFeatures(url, signal, fetchImpl)) {
-      const parsed = photonFeatureSchema.safeParse(feature);
-      if (!parsed.success) continue;
-      const label = shortLabel(parsed.data.properties ?? {});
-      if (label) return label;
+  if (!Number.isFinite(place.lat) || !Number.isFinite(place.lng)) return null;
+  const { signal } = options;
+  if (signal?.aborted) return null;
+
+  if (!(NOMINATIM_ENABLED && isPhotonResting())) {
+    try {
+      const label = await reverseGeocodePhoton(place, options);
+      reportPhotonSuccess();
+      return label;
+    } catch (error) {
+      if (signal?.aborted || isAbortError(error)) return null;
+      reportPhotonFailure();
     }
-    return null;
+  }
+
+  if (!NOMINATIM_ENABLED) return null;
+  try {
+    return await reverseGeocodeNominatim(place, options);
   } catch {
     return null;
   }

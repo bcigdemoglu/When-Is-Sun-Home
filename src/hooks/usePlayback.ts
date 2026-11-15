@@ -4,12 +4,12 @@ import { useEffect, useRef, useState } from "react";
 import { dateFromDayIndex, dayIndexFromDate, daysInYear, yearOfDate } from "@/lib/analysis";
 import { useSettings } from "@/state";
 import {
-  DEFAULT_SPEED_INDEX,
-  PLAY_SPEEDS,
   advanceDayIndex,
   advanceMinute,
   dayLoopRange,
+  dayLoopSpeed,
   frameElapsedMs,
+  yearLoopSpeed,
   type PlayMode,
 } from "./playback";
 
@@ -25,19 +25,18 @@ export interface PlaybackInput {
 export interface Playback {
   playing: boolean;
   mode: PlayMode;
-  speedIndex: number;
   /** Start (or resume) the animation. Leaves "live" mode. */
   play(): void;
   /** Stop the animation. Safe to call when it is not running. */
   pause(): void;
   toggle(): void;
   setMode(mode: PlayMode): void;
-  setSpeedIndex(index: number): void;
 }
 
 /**
- * The play animation: "day" sweeps the time of day over the selected date,
- * "year" sweeps the date at the selected time.
+ * The play animation: "day" sweeps the time of day over the selected date
+ * (sunrise to sunset in about 8 s, looping), "year" sweeps the date at the
+ * selected time (a year in about 15 s).
  *
  * Driven by `requestAnimationFrame` with time-based steps, so the speed does
  * not depend on the frame rate and a busy frame never queues up work. It
@@ -48,7 +47,6 @@ export interface Playback {
 export function usePlayback(input: PlaybackInput): Playback {
   const [playing, setPlaying] = useState(false);
   const [mode, setMode] = useState<PlayMode>("day");
-  const [speedIndex, setSpeedIndex] = useState(DEFAULT_SPEED_INDEX);
 
   // The frame loop reads the latest inputs without restarting on every tick.
   const latest = useRef(input);
@@ -58,7 +56,6 @@ export function usePlayback(input: PlaybackInput): Playback {
 
   useEffect(() => {
     if (!playing) return;
-    const speed = PLAY_SPEEDS[speedIndex] ?? PLAY_SPEEDS[DEFAULT_SPEED_INDEX];
     const { setDateTime } = useSettings.getState();
 
     const start = latest.current;
@@ -98,11 +95,11 @@ export function usePlayback(input: PlaybackInput): Playback {
       if (mode === "day") {
         const { sunriseMinute, sunsetMinute } = latest.current;
         const loop = dayLoopRange(sunriseMinute, sunsetMinute);
-        minutePosition = advanceMinute(minutePosition, elapsed, speed.minutesPerSecond, loop);
+        minutePosition = advanceMinute(minutePosition, elapsed, dayLoopSpeed(loop), loop);
         const minute = Math.floor(minutePosition);
         if (minute !== written.minute) write(start.date, minute);
       } else {
-        dayPosition = advanceDayIndex(dayPosition, elapsed, speed.daysPerSecond, dayCount);
+        dayPosition = advanceDayIndex(dayPosition, elapsed, yearLoopSpeed(dayCount), dayCount);
         const day = Math.min(dayCount - 1, Math.floor(dayPosition));
         if (day !== writtenDay) {
           writtenDay = day;
@@ -121,16 +118,14 @@ export function usePlayback(input: PlaybackInput): Playback {
       cancelAnimationFrame(frame);
       document.removeEventListener("visibilitychange", onVisibility);
     };
-  }, [playing, mode, speedIndex]);
+  }, [playing, mode]);
 
   return {
     playing,
     mode,
-    speedIndex,
     play: () => setPlaying(true),
     pause: () => setPlaying(false),
     toggle: () => setPlaying((value) => !value),
     setMode,
-    setSpeedIndex,
   };
 }

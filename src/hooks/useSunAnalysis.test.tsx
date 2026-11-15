@@ -276,6 +276,22 @@ describe("useSunAnalysis", () => {
     expect(calls.grid).toBe(1); // the grid did not need the buildings
   });
 
+  it("passes through whatever else the building data says about itself (its source …)", () => {
+    buildingsState.current = {
+      ...READY,
+      source: "cache",
+      originalSource: "tiles",
+      sourceLabel: "OpenFreeMap vector tiles (saved copy)",
+    };
+    const { result } = setup();
+    expect(result.current!.buildings).toMatchObject({
+      status: "ready",
+      source: "cache",
+      originalSource: "tiles",
+      sourceLabel: "OpenFreeMap vector tiles (saved copy)",
+    });
+  });
+
   it("stays unobstructed, with the error exposed, when the buildings fail to load", () => {
     const error = new Error("Overpass is down");
     buildingsState.current = buildingsResult({ status: "error", error });

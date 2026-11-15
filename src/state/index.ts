@@ -41,9 +41,14 @@ export type { LayerKey, Layers, Settings, SettingsPatch } from "./schema";
 
 export {
   LEGACY_URL_KEYS,
+  MONTH_NAMES,
+  SUMMARY_URL_KEY,
   URL_KEYS,
   buildShareUrl,
   dayOfYearToIsoDate,
+  decodeSummaryParam,
+  encodeSummaryParam,
+  formatSunHours,
   hhmmToMinuteOfDay,
   isEmptyPatch,
   isLegacySearchParams,
@@ -51,9 +56,15 @@ export {
   overlayUrlSettings,
   roundSettingsForUrl,
   searchParamsToSettings,
+  searchParamsToSummary,
   settingsToSearchParams,
+  shareText,
 } from "./urlCodec";
-export type { SearchParamsToSettingsOptions } from "./urlCodec";
+export type {
+  BuildShareUrlOptions,
+  SearchParamsToSettingsOptions,
+  ShareTextOptions,
+} from "./urlCodec";
 
 export {
   LEGACY_STORAGE_KEYS,

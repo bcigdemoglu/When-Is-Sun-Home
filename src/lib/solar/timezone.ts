@@ -12,7 +12,7 @@
  * applies — see {@link zoneOffsetTable}.
  */
 import { tzOffset } from "@date-fns/tz";
-import tzlookup from "tz-lookup";
+import tzlookup from "@photostructure/tz-lookup";
 
 const MS_PER_SECOND = 1000;
 const MS_PER_MINUTE = 60_000;
@@ -48,14 +48,40 @@ function fixedOffsetZone(lng: number): string {
 }
 
 /**
- * IANA time zone at a coordinate. Falls back to a fixed-offset `Etc/GMT±N`
- * zone derived from the longitude if the lookup fails or names a zone this
- * runtime does not know.
+ * Zones that only exist in recent time-zone data (2020 and later), each with
+ * a zone every runtime knows that keeps the same clock today.
+ *
+ * A browser's zone list is as old as its operating system: a phone that has
+ * not been updated for a few years rejects "Europe/Kyiv" outright. Without a
+ * stand-in such a place would get a fixed offset from its longitude, which
+ * ignores daylight saving time and so is an hour (or more) off for half the
+ * year.
+ */
+export const OLDER_ZONE_NAMES: Readonly<Record<string, string>> = {
+  // Renamed, same rules: America/Godthab (2020), Pacific/Enderbury (2021), Europe/Kiev (2022).
+  "America/Nuuk": "America/Godthab",
+  "Pacific/Kanton": "Pacific/Enderbury",
+  "Europe/Kyiv": "Europe/Kiev",
+  // Split off in 2022: Ciudad Juárez kept US Mountain Time when the rest of Chihuahua left it.
+  "America/Ciudad_Juarez": "America/Denver",
+  // Split off in 2025: Aysén stays on UTC−3 all year, like Magallanes.
+  "America/Coyhaique": "America/Punta_Arenas",
+};
+
+/**
+ * IANA time zone at a coordinate. If this runtime does not know the zone's
+ * name, an older zone with the same clock is used where there is one
+ * (`OLDER_ZONE_NAMES`); failing that, and whenever the lookup itself fails,
+ * a fixed-offset `Etc/GMT±N` zone derived from the longitude.
  */
 export function timeZoneAt(lat: number, lng: number): string {
   try {
     const zone = tzlookup(lat, lng);
     if (isSupportedZone(zone)) return zone;
+    const older = Object.prototype.hasOwnProperty.call(OLDER_ZONE_NAMES, zone)
+      ? OLDER_ZONE_NAMES[zone]
+      : undefined;
+    if (older !== undefined && isSupportedZone(older)) return older;
   } catch {
     // fall through to the longitude estimate
   }

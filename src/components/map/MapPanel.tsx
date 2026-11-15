@@ -3,9 +3,8 @@
 import dynamic from "next/dynamic";
 import { useState } from "react";
 import { ErrorBoundary } from "@/components/app/ErrorBoundary";
-import { SearchBox } from "@/components/search/SearchBox";
 import { Button } from "@/components/ui/Button";
-import { pinSpot, pinSuggestion } from "@/hooks/placeActions";
+import { pinSpot } from "@/hooks/placeActions";
 import type { BuildingsStatus } from "@/lib/buildings/useBuildings";
 import type { BuildingCollection, Place, SunInstant } from "@/lib/types";
 import type { SunPathModel } from "./compassGeometry";
@@ -27,20 +26,22 @@ function MapUnavailable({ onRetry }: { onRetry(): void }) {
   return (
     <div
       role="alert"
-      className="flex h-full w-full flex-col items-center justify-center gap-3 bg-surface-2 p-6 pt-20 text-center"
+      className="flex h-full w-full flex-col items-center justify-start gap-3 bg-surface-2 px-6 pt-[calc(var(--map-inset-top,0px)+3rem)] text-center lg:justify-center lg:pt-6"
     >
-      <p className="text-base font-semibold text-ink">The map can’t be shown</p>
+      <p className="type-card-title text-ink">The map can’t be shown</p>
       <p className="max-w-sm text-sm text-ink-2">
         This browser or device couldn’t start the 3D map (WebGL). You can still search for an
-        address above, and the sun report keeps working.
+        address, and the sun report keeps working.
       </p>
-      <Button onClick={onRetry}>Try the map again</Button>
+      <Button variant="outline" onClick={onRetry}>
+        Try the map again
+      </Button>
     </div>
   );
 }
 
 const NOTICE =
-  "mt-1.5 flex w-fit max-w-full items-center gap-2 rounded-lg border bg-surface px-2.5 py-1.5 text-xs leading-snug text-ink shadow-md";
+  "flex w-fit max-w-full items-center gap-2.5 rounded-2xl border bg-surface px-3.5 py-2 text-[13px] leading-[18px] text-ink shadow-float";
 
 /**
  * Says, on the map, when the shade is missing: while the buildings load or
@@ -66,8 +67,8 @@ function BuildingNotice({
           className="h-3 w-3 shrink-0 rounded-full border-2 border-line border-t-accent motion-safe:animate-spin"
         />
         <span>
-          <strong className="font-semibold">Loading buildings…</strong> Sun hours are provisional
-          until they arrive.
+          <strong className="font-semibold">Checking nearby buildings…</strong> Sun hours are before
+          shading until then.
         </span>
       </p>
     );
@@ -76,8 +77,8 @@ function BuildingNotice({
     return (
       <div role="alert" className={`${NOTICE} border-danger`}>
         <span>
-          <strong className="font-semibold">Building data couldn’t be loaded.</strong> No shade is
-          shown, and the sun hours assume an open sky.
+          <strong className="font-semibold">Couldn’t load building heights.</strong> Showing sun
+          without shading for now.
         </span>
         {onRetry && (
           <Button variant="primary" onClick={onRetry} disabled={fetching}>
@@ -157,14 +158,15 @@ export function MapPanel({
         </ErrorBoundary>
       )}
 
-      <div className="absolute top-2.5 left-2.5 z-20 w-[min(22rem,calc(100%-4.25rem))]">
-        <SearchBox bias={place} onSelect={pinSuggestion} />
-        <BuildingNotice
-          status={buildingStatus}
-          count={buildingCount}
-          fetching={buildingsFetching}
-          onRetry={onRetryBuildings}
-        />
+      <div className="pointer-events-none absolute top-[calc(var(--map-inset-top,0px)+8px)] right-3 left-3 z-10 flex justify-center lg:justify-start">
+        <div className="pointer-events-auto">
+          <BuildingNotice
+            status={buildingStatus}
+            count={buildingCount}
+            fetching={buildingsFetching}
+            onRetry={onRetryBuildings}
+          />
+        </div>
       </div>
     </div>
   );

@@ -11,13 +11,16 @@ import {
   hourMarks,
   maxSunAltitude,
   obstructionKind,
+  obstructionPhrase,
   outsideViewSpans,
   panoramaCenter,
   referenceDays,
   sectorSummary,
   skylineRuns,
+  sunDirectionMask,
   sunPassageAt,
   sunPathForDay,
+  tallestObstruction,
   type SunPathPoint,
 } from "./skyline";
 import { syntheticGrid, syntheticHorizon, YARD } from "./testing";
@@ -366,5 +369,68 @@ describe("outsideViewSpans", () => {
     expect(spans).toHaveLength(1);
     expect(spans[0].x0).toBeCloseTo(60 / 360, 9);
     expect(spans[0].x1).toBeCloseTo(300 / 360, 9);
+  });
+});
+
+describe("the tallest obstruction in the sun's way", () => {
+  const grid = syntheticGrid(); // the sun sweeps east (90°) → south → west (270°)
+  const path = sunPathForDay(grid, 0, null, YARD);
+
+  it("marks every direction the sun passes, and no other", () => {
+    const mask = sunDirectionMask([path], 720, grid.stepMinutes);
+    const binOf = (azimuth: number) => Math.floor(azimuth * 2);
+    expect(mask[binOf(100)]).toBe(1);
+    expect(mask[binOf(180)]).toBe(1);
+    expect(mask[binOf(260)]).toBe(1);
+    expect(mask[binOf(0)]).toBe(0);
+    expect(mask[binOf(45)]).toBe(0);
+    expect(mask[binOf(315)]).toBe(0);
+    // Samples are 7.5° apart: the bins between them are filled in.
+    let marked = 0;
+    for (const value of mask) marked += value;
+    expect(marked).toBeGreaterThan(340);
+    expect(marked).toBeLessThanOrEqual(362);
+  });
+
+  it("joins samples along the shorter arc across north", () => {
+    const point = (minute: number, azimuthDeg: number) => ({
+      minute,
+      azimuthDeg,
+      altitudeDeg: 5,
+      state: SunState.Sun,
+    });
+    const mask = sunDirectionMask([[point(0, 355), point(30, 5)]], 720, 30);
+    expect(mask[0]).toBe(1);
+    expect(mask[719]).toBe(1);
+    expect(mask[360]).toBe(0);
+  });
+
+  it("ignores taller things where the sun never goes", () => {
+    const horizon = syntheticHorizon(
+      (azimuth) => (azimuth < 20 ? 60 : azimuth >= 200 && azimuth < 210 ? 31 : 0),
+      () => 3,
+      15,
+    );
+    const mask = sunDirectionMask([path], horizon.binCount, grid.stepMinutes);
+    expect(tallestObstruction(horizon)).toMatchObject({ elevationDeg: 60 });
+    const inTheWay = tallestObstruction(horizon, mask)!;
+    expect(inTheWay).toMatchObject({ elevationDeg: 31, distanceM: 15, kind: "building" });
+    expect(inTheWay.azimuthDeg).toBeCloseTo(200.25, 5);
+    expect(obstructionPhrase(inTheWay)).toBe(
+      "a building to the SSW reaching 31\u00b0 up, 15 m away",
+    );
+  });
+
+  it("names a hill, and copes with an open sky", () => {
+    const ridge = syntheticHorizon(
+      (azimuth) => (azimuth >= 250 && azimuth < 260 ? 9 : 0),
+      () => -2,
+      2400,
+    );
+    expect(obstructionPhrase(tallestObstruction(ridge)!)).toBe(
+      "a hill to the WSW reaching 9\u00b0 up, 2.4 km away",
+    );
+    expect(tallestObstruction(syntheticHorizon(() => 0))).toBeNull();
+    expect(tallestObstruction(ridge, new Uint8Array(720))).toBeNull();
   });
 });

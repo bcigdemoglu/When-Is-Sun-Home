@@ -6,7 +6,6 @@ import MapGL, {
   AttributionControl,
   Layer,
   Marker,
-  NavigationControl,
   Source,
   type ErrorEvent,
   type MapLayerMouseEvent,
@@ -21,6 +20,7 @@ import type { BuildingCollection, LatLng, Place, SunInstant } from "@/lib/types"
 import { selectLayers, selectObserver, useSettings } from "@/state";
 import type { SunPathModel } from "./compassGeometry";
 import { EMPTY_BUILDINGS, SHADOW_RADIUS_M, buildingsNear } from "./mapData";
+import { useMapUi } from "./mapUi";
 import {
   PLACE_PITCH,
   PLACE_ZOOM,
@@ -106,13 +106,25 @@ export default function SunMap({
 
   // Only the view the map OPENS with comes from React; after that the camera
   // belongs to MapLibre (uncontrolled), so panning never re-renders anything.
-  const [initialViewState] = useState(() =>
-    hasPlace
-      ? { longitude: lng, latitude: lat, zoom: PLACE_ZOOM, pitch: PLACE_PITCH, bearing: 0 }
-      : WORLD_VIEW,
-  );
+  const [initialViewState] = useState(() => {
+    const { insets, wantsTilt } = useMapUi.getState();
+    const padding = { top: insets.top, bottom: insets.bottom, left: 0, right: 0 };
+    return hasPlace
+      ? {
+          longitude: lng,
+          latitude: lat,
+          zoom: PLACE_ZOOM,
+          pitch: wantsTilt ? PLACE_PITCH : 0,
+          bearing: 0,
+          padding,
+        }
+      : { ...WORLD_VIEW, padding };
+  });
   const [ready, setReady] = useState(false);
-  const [tilted, setTilted] = useState(hasPlace);
+  // What floats over the map (search pill, sheet, time bar): the camera keeps
+  // the pin centred in what is left.
+  const insets = useMapUi((state) => state.insets);
+  const commandSeq = useMapUi((state) => state.commandSeq);
   /** Id of the basemap's first label layer: our layers go right below it. */
   const [labelLayerId, setLabelLayerId] = useState<string | undefined>(undefined);
   /** Where the pin is while it is being dragged. */
@@ -122,8 +134,6 @@ export default function SunMap({
   const handledPlace = useRef<LatLng | null>(hasPlace ? { lat, lng } : null);
   /** The last spot picked on the map itself: no need to fly there. */
   const placedOnMap = useRef<LatLng | null>(null);
-  /** The user's 2D / 3D choice, applied whenever the camera flies to a place. */
-  const wantsTilt = useRef(true);
   const lastDragEndAt = useRef(0);
   const [clickGate] = useState(() => createClickGate());
   useEffect(() => () => clickGate.cancel(), [clickGate]);
@@ -138,11 +148,12 @@ export default function SunMap({
       const point = map.project([next.lng, next.lat]);
       const { clientWidth, clientHeight } = map.getContainer();
       const margin = Math.min(48, clientWidth / 6, clientHeight / 6);
+      const covered = useMapUi.getState().insets;
       inView =
         point.x >= margin &&
         point.x <= clientWidth - margin &&
-        point.y >= margin &&
-        point.y <= clientHeight - margin;
+        point.y >= covered.top + margin &&
+        point.y <= clientHeight - covered.bottom - margin;
     }
     const move = cameraMoveFor({
       next,
@@ -156,7 +167,7 @@ export default function SunMap({
     if (!next || move.type === "none") return;
 
     const center: [number, number] = [next.lng, next.lat];
-    const pitch = wantsTilt.current ? PLACE_PITCH : 0;
+    const pitch = useMapUi.getState().wantsTilt ? PLACE_PITCH : 0;
     if (move.type === "ease") {
       map.easeTo({ center, duration: 500, essential: true });
     } else if (move.type === "jump") {
@@ -165,6 +176,54 @@ export default function SunMap({
       map.flyTo({ center, zoom: move.zoom, pitch, duration: 1800, essential: true });
     }
   }, [ready, lat, lng, reducedMotion]);
+
+  // ── Camera: keep clear of what covers the map ───────────────────────────
+  const insetTop = insets.top;
+  const insetBottom = insets.bottom;
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!ready || !map) return;
+    const padding = { top: insetTop, bottom: insetBottom, left: 0, right: 0 };
+    const current = map.getPadding();
+    if (current.top === padding.top && current.bottom === padding.bottom) return;
+    if (reducedMotion) map.jumpTo({ padding });
+    else map.easeTo({ padding, duration: 250, essential: true });
+  }, [ready, insetTop, insetBottom, reducedMotion]);
+
+  // ── Commands from the buttons around the map ────────────────────────────
+  useEffect(() => {
+    const map = mapRef.current;
+    const { command } = useMapUi.getState();
+    if (!ready || !map || !command) return;
+    const animate = !reducedMotion;
+    switch (command.type) {
+      case "zoom":
+        map.easeTo({ zoom: map.getZoom() + command.delta, duration: animate ? 250 : 0 });
+        break;
+      case "north":
+        map.easeTo({ bearing: 0, duration: animate ? 400 : 0 });
+        break;
+      case "tilt": {
+        const pitch = command.tilted ? PLACE_PITCH : 0;
+        map.easeTo({ pitch, duration: animate ? 500 : 0 });
+        break;
+      }
+      case "recenter": {
+        const spot = useSettings.getState().place;
+        if (!spot) break;
+        const options = {
+          center: [spot.lng, spot.lat] as [number, number],
+          zoom: Math.max(map.getZoom(), PLACE_ZOOM - 1),
+        };
+        if (animate) map.flyTo({ ...options, duration: 900, essential: true });
+        else map.jumpTo(options);
+        break;
+      }
+    }
+    // Runs once per command: `commandSeq` changes with each one.
+  }, [ready, commandSeq, reducedMotion]);
+
+  useEffect(() => () => useMapUi.getState().report({ ready: false }), []);
 
   // ── Markers: accessible names ───────────────────────────────────────────
   useEffect(() => {
@@ -305,28 +364,6 @@ export default function SunMap({
     placePin(offsetByMeters({ lat, lng }, delta[0], delta[1]));
   };
 
-  const toggleTilt = () => {
-    const map = mapRef.current;
-    if (!map) return;
-    const next = !(map.getPitch() > 5);
-    wantsTilt.current = next;
-    setTilted(next);
-    const pitch = next ? PLACE_PITCH : 0;
-    if (reducedMotion) map.jumpTo({ pitch });
-    else map.easeTo({ pitch, duration: 500, essential: true });
-  };
-
-  const recenter = () => {
-    const map = mapRef.current;
-    if (!map || lat === null || lng === null) return;
-    const options = {
-      center: [lng, lat] as [number, number],
-      zoom: Math.max(map.getZoom(), PLACE_ZOOM - 1),
-    };
-    if (reducedMotion) map.jumpTo(options);
-    else map.flyTo({ ...options, duration: 900, essential: true });
-  };
-
   const onError = (event: ErrorEvent) => {
     // No map instance: MapLibre could not start at all (typically no WebGL).
     // Anything later (a tile that failed to load, …) is not worth a crash.
@@ -348,7 +385,10 @@ export default function SunMap({
         maxPitch={70}
         onClick={onClick}
         onDblClick={clickGate.cancel}
-        onPitchEnd={(event) => setTilted(event.viewState.pitch > 5)}
+        onPitchEnd={(event) => useMapUi.getState().report({ tilted: event.viewState.pitch > 5 })}
+        onRotateEnd={(event) =>
+          useMapUi.getState().report({ bearing: Math.round(event.viewState.bearing) })
+        }
         onStyleData={(event) => {
           const map = event.target;
           setLabelLayerId(map.getLayersOrder().find((id) => map.getLayer(id)?.type === "symbol"));
@@ -356,6 +396,11 @@ export default function SunMap({
         onLoad={(event) => {
           setReady(true);
           const map = event.target;
+          useMapUi.getState().report({
+            ready: true,
+            tilted: map.getPitch() > 5,
+            bearing: Math.round(map.getBearing()),
+          });
           let lostTimer: ReturnType<typeof setTimeout> | undefined;
           map.on("webglcontextlost", () => {
             clearTimeout(lostTimer);
@@ -369,8 +414,11 @@ export default function SunMap({
         }}
         onError={onError}
       >
-        <NavigationControl position="top-right" showZoom={isDesktop} visualizePitch />
-        <AttributionControl position="bottom-right" compact={!isDesktop} />
+        {/* Phones: a compact "i" just above the sheet. Desktop: spelled out, top right. */}
+        <AttributionControl
+          position={isDesktop ? "top-right" : "bottom-left"}
+          compact={!isDesktop}
+        />
 
         {/*
           Both sources are cut into few, large tiles (zoom 14 / 15: 25 / 12 cm
@@ -474,59 +522,23 @@ export default function SunMap({
               role="button"
               tabIndex={0}
               aria-label="Pin. Drag it, or use the arrow keys, to move the spot being analysed."
-              className="flex h-11 w-10 cursor-grab items-end justify-center rounded-lg active:cursor-grabbing"
+              className="flex h-12 w-11 cursor-grab touch-none items-end justify-center rounded-xl active:cursor-grabbing"
               onKeyDown={onPinKeyDown}
             >
-              <svg width="30" height="40" viewBox="0 0 30 40" aria-hidden="true">
+              <svg width="34" height="44" viewBox="0 0 34 44" aria-hidden="true">
+                <ellipse cx="17" cy="41.5" rx="6" ry="2" fill="var(--ink)" opacity="0.25" />
                 <path
-                  d="M15 39C15 39 28 24.5 28 14.5a13 13 0 1 0-26 0C2 24.5 15 39 15 39Z"
-                  fill="var(--accent)"
+                  d="M17 41C17 41 31 26 31 15.5a14 14 0 1 0-28 0C3 26 17 41 17 41Z"
+                  fill="var(--ink)"
                   stroke="var(--surface)"
                   strokeWidth="2"
                 />
-                <circle cx="15" cy="14.5" r="5" fill="var(--surface)" />
+                <circle cx="17" cy="15.5" r="5.5" fill="var(--accent-fill)" />
               </svg>
             </div>
           </Marker>
         )}
       </MapGL>
-
-      {hasPlace && (
-        <div className="absolute bottom-2.5 left-2.5 z-10 flex gap-1.5">
-          <button
-            type="button"
-            aria-pressed={tilted}
-            aria-label={
-              tilted ? "Tilted 3D view. Switch to flat 2D" : "Flat 2D view. Switch to tilted 3D"
-            }
-            className="h-10 min-w-10 rounded-lg border border-line bg-surface px-2.5 text-sm font-semibold text-ink shadow-md hover:bg-surface-2"
-            onClick={toggleTilt}
-          >
-            {tilted ? "3D" : "2D"}
-          </button>
-          <button
-            type="button"
-            aria-label="Centre the map on the pin"
-            className="flex h-10 w-10 items-center justify-center rounded-lg border border-line bg-surface text-ink shadow-md hover:bg-surface-2"
-            onClick={recenter}
-          >
-            <svg
-              viewBox="0 0 24 24"
-              width="20"
-              height="20"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              aria-hidden="true"
-            >
-              <circle cx="12" cy="12" r="6" />
-              <circle cx="12" cy="12" r="1.5" fill="currentColor" />
-              <path d="M12 2v4M12 18v4M2 12h4M18 12h4" />
-            </svg>
-          </button>
-        </div>
-      )}
     </div>
   );
 }

@@ -7,6 +7,12 @@ const eslintConfig = defineConfig([
   ...nextVitals,
   ...nextTs,
   prettier,
+  {
+    // Playwright fixtures receive a callback named `use`, which the React
+    // hooks rule mistakes for React's `use()`. There is no React in here.
+    files: ["tests/e2e/**"],
+    rules: { "react-hooks/rules-of-hooks": "off" },
+  },
   globalIgnores([
     ".next/**",
     "out/**",
@@ -14,6 +20,7 @@ const eslintConfig = defineConfig([
     "next-env.d.ts",
     "playwright-report/**",
     "test-results/**",
+    "tests/e2e/_scratch/**",
   ]),
 ]);
 

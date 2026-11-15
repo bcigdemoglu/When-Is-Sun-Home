@@ -3,8 +3,11 @@ import { useSettings } from "@/state";
 import {
   REVERSE_GEOCODE_DELAY_MS,
   cancelPendingPlaceLookup,
+  clearPlace,
+  nameCurrentPlace,
+  openSelection,
+  pinNamedPlace,
   pinSpot,
-  pinSuggestion,
 } from "./placeActions";
 
 const reverseGeocode = vi.hoisted(() => vi.fn());
@@ -110,19 +113,82 @@ describe("pinSpot", () => {
   });
 });
 
-describe("pinSuggestion", () => {
-  it("pins a search result with its name and cancels any pending lookup", async () => {
+describe("pinNamedPlace", () => {
+  it("pins a named place and cancels any pending lookup", async () => {
     reverseGeocode.mockResolvedValue("Should not be used");
     pinSpot(A);
-    pinSuggestion({
-      id: "x",
-      ...B,
-      name: "Pacific Heights, San Francisco",
-      label: "Pacific Heights",
-      detail: "",
-    });
+    pinNamedPlace({ ...B, name: "Pacific Heights, San Francisco" });
     await settle();
     expect(reverseGeocode).not.toHaveBeenCalled();
     expect(place()).toEqual({ ...B, name: "Pacific Heights, San Francisco" });
+  });
+
+  it("restores the viewpoint that was saved with the place", () => {
+    const observer = { mode: "window" as const, heightM: 4.5, facingDeg: 200, fovDeg: 120 };
+    pinNamedPlace({ ...B, name: "Elm St kitchen window" }, observer);
+    expect(useSettings.getState().observer).toEqual(observer);
+    expect(place()).toEqual({ ...B, name: "Elm St kitchen window" });
+  });
+});
+
+describe("openSelection", () => {
+  it("opens a named result as it is", async () => {
+    openSelection({ place: { ...A, name: "2550 Pacific Avenue" }, source: "search" });
+    await settle();
+    expect(reverseGeocode).not.toHaveBeenCalled();
+    expect(place()).toEqual({ ...A, name: "2550 Pacific Avenue" });
+  });
+
+  it("looks up a label for a bare spot (my location, typed coordinates)", async () => {
+    reverseGeocode.mockResolvedValue("Somewhere on Clay Street");
+    openSelection({ place: A, source: "location" });
+    expect(place()).toEqual(A);
+    await settle();
+    expect(place()).toEqual({ ...A, name: "Somewhere on Clay Street" });
+  });
+
+  it("restores a saved place's viewpoint", () => {
+    const observer = { mode: "yard" as const, heightM: 3, facingDeg: 180, fovDeg: 180 };
+    openSelection({ place: { ...B, name: "Deck" }, observer, source: "saved" });
+    expect(useSettings.getState().observer).toEqual(observer);
+  });
+});
+
+describe("clearPlace", () => {
+  it("forgets the place and any lookup on its way", async () => {
+    reverseGeocode.mockResolvedValue("Late answer");
+    pinSpot(A);
+    clearPlace();
+    await settle();
+    expect(place()).toBeNull();
+  });
+});
+
+describe("nameCurrentPlace", () => {
+  it("looks up a label for a pin that arrived without one", async () => {
+    useSettings.getState().setPlace(A);
+    reverseGeocode.mockResolvedValue("2550 Pacific Avenue");
+    nameCurrentPlace();
+    await settle();
+    expect(reverseGeocode).toHaveBeenCalledTimes(1);
+    expect(place()).toEqual({ ...A, name: "2550 Pacific Avenue" });
+  });
+
+  it("leaves a named place and an empty app alone", async () => {
+    nameCurrentPlace();
+    useSettings.getState().setPlace({ ...A, name: "Home" });
+    nameCurrentPlace();
+    await settle();
+    expect(reverseGeocode).not.toHaveBeenCalled();
+    expect(place()).toEqual({ ...A, name: "Home" });
+  });
+
+  it("does not apply the label if the pin moved meanwhile", async () => {
+    useSettings.getState().setPlace(A);
+    reverseGeocode.mockResolvedValue("Old spot");
+    nameCurrentPlace();
+    useSettings.getState().setPlace(B);
+    await settle();
+    expect(place()).toEqual(B);
   });
 });

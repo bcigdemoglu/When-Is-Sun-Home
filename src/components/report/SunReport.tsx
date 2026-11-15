@@ -2,27 +2,32 @@
 
 import { useId, useMemo } from "react";
 
-import { BuildingStatus } from "./BuildingStatus";
-import { DailyHoursChart } from "./DailyHoursChart";
-import { DayPanel } from "./DayPanel";
-import { Headline } from "./Headline";
+import { AboutCard } from "./AboutCard";
+import { Hero } from "./Hero";
 import { useHour12 } from "./hooks";
-import { MethodNote } from "./MethodNote";
 import { buildReportModel } from "./model";
-import { MonthlyBars } from "./MonthlyBars";
 import { HatchDefs, ReportContext } from "./parts";
 import "./report.css";
+import { SeasonsCard } from "./SeasonsCard";
 import { SkylineChart } from "./SkylineChart";
+import { SunHoursCard } from "./SunHoursCard";
+import { TodayCard } from "./TodayCard";
 import type { SunReportProps } from "./types";
 import { YearHeatmap } from "./YearHeatmap";
+
+export { REPORT_SECTION_IDS, REPORT_SECTIONS, type ReportSection } from "./sections";
 
 /**
  * The sun report: how much direct sun a spot gets, when, and why.
  *
- * Purely presentational. Sections, top to bottom: building-data status,
- * headline, selected day, year heat map, daily hours, monthly averages,
- * skyline, method note. Every analysis prop may be `null` (still computing):
- * the section then shows a skeleton of exactly its final size.
+ * Purely presentational, and laid out for a phone-width column (a bottom
+ * sheet, or a 440 px side panel). Cards, top to bottom: the average day with a
+ * verdict, the selected day, the seasons, the year heat map, sun hours by
+ * month / by day, the skyline, and a note on method. The cards listed in
+ * `REPORT_SECTIONS` carry stable ids for jump tabs.
+ *
+ * Every analysis prop may be `null` (still computing): cards keep their
+ * titles, axes and exact size, with placeholders where the numbers will be.
  *
  * Palette note — the sun-state colours are overridden in `report.css` with
  * values checked by the data-viz palette validator (sun and blocked pass the
@@ -41,6 +46,7 @@ export function SunReport({
   horizon,
   instant,
   buildings,
+  terrain = "idle",
   pinOnBuilding,
   onSelectDateTime,
 }: SunReportProps) {
@@ -51,7 +57,6 @@ export function SunReport({
   // Derived once per analysis; scrubbing the time of day never re-runs this.
   const lat = place.lat;
   const model = useMemo(() => (year ? buildReportModel(year, lat) : null), [year, lat]);
-
   const hasTerrain = useMemo(
     () => horizon !== null && horizon.blockerIndex.some((index) => index < -1),
     [horizon],
@@ -61,19 +66,32 @@ export function SunReport({
     <ReportContext.Provider value={context}>
       <div className="sun-report @container flex flex-col gap-3 text-ink">
         <HatchDefs id={hatchId} />
-        <BuildingStatus buildings={buildings} pinOnBuilding={pinOnBuilding} />
-        <Headline year={year} model={model} observer={observer} lat={lat} hasTerrain={hasTerrain} />
-        <DayPanel
+        <Hero
+          year={year}
+          model={model}
+          day={day}
+          date={date}
+          observer={observer}
+          lat={lat}
+          hasTerrain={hasTerrain}
+          buildings={buildings}
+          terrain={terrain}
+          pinOnBuilding={pinOnBuilding}
+        />
+        <TodayCard
           date={date}
           minuteOfDay={minuteOfDay}
           day={day}
-          instant={instant}
+          year={year}
           observer={observer}
+          hasTerrain={hasTerrain}
           onSelectDateTime={onSelectDateTime}
         />
+        <SeasonsCard model={model} lat={lat} />
         <YearHeatmap
           year={year}
           model={model}
+          day={day}
           grid={grid}
           horizon={horizon}
           hasTerrain={hasTerrain}
@@ -82,13 +100,13 @@ export function SunReport({
           observer={observer}
           onSelectDateTime={onSelectDateTime}
         />
-        <DailyHoursChart
+        <SunHoursCard
           year={year}
           model={model}
+          day={day}
           date={date}
           onSelectDateTime={onSelectDateTime}
         />
-        <MonthlyBars year={year} model={model} date={date} onSelectDateTime={onSelectDateTime} />
         <SkylineChart
           grid={grid}
           horizon={horizon}
@@ -96,10 +114,11 @@ export function SunReport({
           date={date}
           instant={instant}
         />
-        <MethodNote
+        <AboutCard
           buildings={buildings}
-          observer={observer}
+          terrain={terrain}
           hasTerrain={hasTerrain}
+          observer={observer}
           pinOnBuilding={pinOnBuilding}
           stepMinutes={year?.stepMinutes ?? null}
           timeZone={timeZone}

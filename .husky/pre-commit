@@ -1,0 +1,2 @@
+# Never commit a tree that does not build: every push is deployed by Vercel.
+pnpm build

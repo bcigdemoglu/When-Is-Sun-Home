@@ -1,0 +1,30 @@
+[
+  {
+    "place_id": 404162678,
+    "licence": "Data \u00a9 OpenStreetMap contributors, ODbL 1.0. http://osm.org/copyright",
+    "osm_type": "way",
+    "osm_id": 468450103,
+    "lat": "37.7931118",
+    "lon": "-122.4372316",
+    "category": "place",
+    "type": "house",
+    "place_rank": 30,
+    "importance": 9.99999999995449e-6,
+    "addresstype": "place",
+    "name": "",
+    "display_name": "2550, Pacific Avenue, Cow Hollow, Pacific Heights, San Francisco, California, 94115, United States",
+    "address": {
+      "house_number": "2550",
+      "road": "Pacific Avenue",
+      "neighbourhood": "Cow Hollow",
+      "quarter": "Pacific Heights",
+      "city": "San Francisco",
+      "state": "California",
+      "ISO3166-2-lvl4": "US-CA",
+      "postcode": "94115",
+      "country": "United States",
+      "country_code": "us"
+    },
+    "boundingbox": ["37.7930618", "37.7931618", "-122.4372816", "-122.4371816"]
+  }
+]

@@ -1,118 +1,286 @@
 import { describe, expect, it } from "vitest";
+
+import { formatSunHours } from "@/state/urlCodec";
+
 import {
-  compassName,
   compassPoint,
+  compassWords,
+  daysInMonth,
+  detectHour12,
+  formatAngle,
+  formatBearing,
   formatClock,
+  formatClockApprox,
   formatClockCompact,
+  formatClockRange,
   formatCoordinates,
-  formatMonthDay,
-  formatShortDate,
-  utcOffsetLabel,
-  zoneAbbreviation,
-  zoneCity,
-  zoneLabel,
+  formatCount,
+  formatDate,
+  formatDistance,
+  formatDuration,
+  formatHours,
+  formatHoursUnit,
+  formatHourTick,
+  formatPercent,
+  formatRangeList,
+  joinList,
+  ordinal,
+  parseIsoDate,
+  toIsoDate,
+  weekdayOf,
 } from "./format";
 
-describe("formatClock", () => {
-  it("formats 12-hour wall-clock times", () => {
-    expect(formatClock(0)).toBe("12:00 AM");
-    expect(formatClock(59)).toBe("12:59 AM");
-    expect(formatClock(60)).toBe("1:00 AM");
-    expect(formatClock(720)).toBe("12:00 PM");
-    expect(formatClock(15 * 60 + 42)).toBe("3:42 PM");
-    expect(formatClock(1439)).toBe("11:59 PM");
+describe("detectHour12", () => {
+  it("follows the locale's hour cycle", () => {
+    expect(detectHour12("en-US")).toBe(true);
+    expect(detectHour12("en-GB")).toBe(false);
+    expect(detectHour12("de-DE")).toBe(false);
+    expect(detectHour12("ja-JP-u-hc-h11")).toBe(true);
   });
 
-  it("floors fractions, wraps out-of-range values and survives NaN", () => {
-    expect(formatClock(942.9)).toBe("3:42 PM");
-    expect(formatClock(1440)).toBe("12:00 AM");
-    expect(formatClock(-1)).toBe("11:59 PM");
-    expect(formatClock(NaN)).toBe("–");
-  });
-
-  it("has a compact form", () => {
-    expect(formatClockCompact(6 * 60 + 5)).toBe("6:05a");
-    expect(formatClockCompact(17 * 60)).toBe("5:00p");
+  it("falls back to 12-hour for a locale Intl rejects", () => {
+    expect(detectHour12("not_a_locale!!")).toBe(true);
   });
 });
 
-describe("zone naming across DST", () => {
-  const LA = "America/Los_Angeles";
-
-  it("uses the abbreviation in force on that date", () => {
-    expect(zoneAbbreviation(LA, "2026-01-15", 720)).toBe("PST");
-    expect(zoneAbbreviation(LA, "2026-07-01", 720)).toBe("PDT");
+describe("formatClock", () => {
+  it("formats 12-hour times from wall-clock minutes", () => {
+    expect(formatClock(0, true)).toBe("12:00 AM");
+    expect(formatClock(9 * 60 + 10, true)).toBe("9:10 AM");
+    expect(formatClock(12 * 60, true)).toBe("12:00 PM");
+    expect(formatClock(12 * 60 + 40, true)).toBe("12:40 PM");
+    expect(formatClock(23 * 60 + 59, true)).toBe("11:59 PM");
   });
 
-  it("switches on the day of the change, at the hour of the change", () => {
-    // Spring forward: 2026-03-08 02:00 PST → 03:00 PDT.
-    expect(zoneAbbreviation(LA, "2026-03-08", 60)).toBe("PST");
-    expect(zoneAbbreviation(LA, "2026-03-08", 200)).toBe("PDT");
-    // 02:30 does not exist; the clocks show 03:30 PDT next.
-    expect(zoneAbbreviation(LA, "2026-03-08", 150)).toBe("PDT");
-    // Fall back: 2026-11-01 02:00 PDT → 01:00 PST.
-    expect(zoneAbbreviation(LA, "2026-11-01", 30)).toBe("PDT");
-    expect(zoneAbbreviation(LA, "2026-11-01", 180)).toBe("PST");
+  it("formats 24-hour times", () => {
+    expect(formatClock(0, false)).toBe("00:00");
+    expect(formatClock(9 * 60 + 5, false)).toBe("09:05");
+    expect(formatClock(17 * 60 + 30, false)).toBe("17:30");
   });
 
-  it("does not depend on the machine's own zone", () => {
-    expect(zoneAbbreviation("Asia/Tokyo", "2026-06-01", 720)).toBe("GMT+9");
-    expect(zoneAbbreviation("Not/AZone", "2026-06-01", 720)).toBe("");
+  it("names the end of the day", () => {
+    expect(formatClock(1440, true)).toBe("midnight");
+    expect(formatClock(1440, false)).toBe("24:00");
   });
 
-  it("labels the UTC offset", () => {
-    expect(utcOffsetLabel(LA, "2026-01-15", 720)).toBe("UTC−8");
-    expect(utcOffsetLabel(LA, "2026-07-01", 720)).toBe("UTC−7");
-    expect(utcOffsetLabel(LA, "2026-03-08", 150)).toBe("UTC−7");
-    expect(utcOffsetLabel("Asia/Kolkata", "2026-07-01", 0)).toBe("UTC+5:30");
-    expect(utcOffsetLabel("Etc/GMT", "2026-07-01", 0)).toBe("UTC");
-    expect(utcOffsetLabel("Not/AZone", "2026-07-01", 0)).toBe("");
+  it("rounds fractional minutes and clamps out-of-range input", () => {
+    expect(formatClock(6 * 60 + 12.7, true)).toBe("6:13 AM");
+    expect(formatClock(59.6, false)).toBe("01:00");
+    expect(formatClock(-5, false)).toBe("00:00");
+    expect(formatClock(5000, false)).toBe("24:00");
+    expect(formatClock(NaN, true)).toBe("12:00 AM");
+  });
+
+  it("joins a range with an en dash", () => {
+    expect(formatClockRange(550, 760, true)).toBe("9:10 AM – 12:40 PM");
+    expect(formatClockRange(550, 760, false)).toBe("09:10 – 12:40");
+  });
+});
+
+describe("formatClockCompact", () => {
+  it("is the same time, shortened", () => {
+    expect(formatClockCompact(6 * 60 + 5, true)).toBe("6:05a");
+    expect(formatClockCompact(17 * 60, true)).toBe("5:00p");
+    expect(formatClockCompact(17 * 60, false)).toBe("17:00");
+  });
+
+  it("rounds exactly like formatClock, so a sunrise reads the same everywhere", () => {
+    // 6:53:40 → 6:54 in both.
+    expect(formatClock(413.67, true)).toBe("6:54 AM");
+    expect(formatClockCompact(413.67, true)).toBe("6:54a");
+    expect(formatClock(413.67, false)).toBe("06:54");
+    expect(formatClockCompact(413.67, false)).toBe("06:54");
+  });
+
+  it("wraps the end of the day to midnight's clock reading", () => {
+    expect(formatClockCompact(1439.7, true)).toBe("12:00a");
+    expect(formatClockCompact(1440, false)).toBe("00:00");
+  });
+});
+
+describe("formatHourTick", () => {
+  it("labels whole hours", () => {
+    expect(formatHourTick(0, true)).toBe("12 AM");
+    expect(formatHourTick(360, true)).toBe("6 AM");
+    expect(formatHourTick(720, true)).toBe("12 PM");
+    expect(formatHourTick(1080, true)).toBe("6 PM");
+    expect(formatHourTick(1440, true)).toBe("12 AM");
+    expect(formatHourTick(360, false)).toBe("06:00");
+    expect(formatHourTick(1440, false)).toBe("24:00");
+  });
+});
+
+describe("durations and numbers", () => {
+  it("formats durations as hours and minutes", () => {
+    expect(formatDuration(385)).toBe("6 h 25 m");
+    expect(formatDuration(210)).toBe("3 h 30 m");
+    expect(formatDuration(180)).toBe("3 h");
+    expect(formatDuration(45)).toBe("45 m");
+    expect(formatDuration(0)).toBe("0 m");
+    expect(formatDuration(1440)).toBe("24 h");
+    expect(formatDuration(-10)).toBe("0 m");
+    expect(formatDuration(NaN)).toBe("0 m");
+  });
+
+  it("formats hours with one decimal — always, zero included", () => {
+    expect(formatHours(6.44)).toBe("6.4");
+    expect(formatHours(6.45)).toBe("6.5");
+    expect(formatHours(0)).toBe("0.0");
+    expect(formatHours(0.04)).toBe("0.0");
+    expect(formatHours(-0.01)).toBe("0.0");
+    expect(formatHours(-3)).toBe("0.0");
+    expect(formatHours(12)).toBe("12.0");
+    expect(formatHoursUnit(9.84)).toBe("9.8 h");
+    expect(formatHoursUnit(0)).toBe("0.0 h");
+  });
+
+  it("admits it when a number is missing instead of inventing a zero", () => {
+    expect(formatHours(NaN)).toBe("–");
+    expect(formatHoursUnit(Infinity)).toBe("–");
+    expect(formatPercent(NaN)).toBe("–");
+  });
+
+  it("agrees with the link-preview formatter, which lives with the URL codec", () => {
+    for (const hours of [0, 0.04, 1.25, 6.45, 9.84, 10, 12.96]) {
+      expect(formatHoursUnit(hours)).toBe(formatSunHours(hours));
+    }
+  });
+
+  it("formats percentages and counts", () => {
+    expect(formatPercent(0.584)).toBe("58%");
+    expect(formatPercent(0)).toBe("0%");
+    expect(formatPercent(1)).toBe("100%");
+    // A share cannot exceed the whole, whatever rounding upstream produced.
+    expect(formatPercent(1.4)).toBe("100%");
+    expect(formatPercent(-0.2)).toBe("0%");
+    expect(formatCount(2336.4)).toBe("2,336");
+    expect(formatCount(384)).toBe("384");
+    expect(formatCount(1234567)).toBe("1,234,567");
   });
 });
 
 describe("dates", () => {
-  it("formats ISO dates without a time zone", () => {
-    expect(formatShortDate("2026-11-14")).toBe("Sat, Nov 14");
-    expect(formatShortDate("2026-01-01", true)).toBe("Thu, Jan 1, 2026");
-    expect(formatMonthDay("2024-02-29")).toBe("February 29");
+  it("parses and rebuilds ISO dates", () => {
+    expect(parseIsoDate("2026-11-14")).toEqual({ year: 2026, month: 10, day: 14 });
+    expect(parseIsoDate("2026-13-01")).toBeNull();
+    expect(parseIsoDate("14/11/2026")).toBeNull();
+    expect(toIsoDate(2026, 0, 5)).toBe("2026-01-05");
   });
 
-  it("returns unparseable input unchanged", () => {
-    expect(formatShortDate("nope")).toBe("nope");
-    expect(formatMonthDay("2026-13-01")).toBe("2026-13-01");
+  it("knows month lengths, including leap years", () => {
+    expect(daysInMonth(2026, 1)).toBe(28);
+    expect(daysInMonth(2028, 1)).toBe(29);
+    expect(daysInMonth(2100, 1)).toBe(28);
+    expect(daysInMonth(2026, 3)).toBe(30);
+  });
+
+  it("derives the weekday without a time zone", () => {
+    expect(weekdayOf({ year: 2026, month: 10, day: 14 })).toBe(6); // Saturday
+    expect(weekdayOf({ year: 2026, month: 0, day: 1 })).toBe(4); // Thursday
+  });
+
+  it("formats dates in words", () => {
+    expect(formatDate("2026-11-14")).toBe("Nov 14");
+    expect(formatDate("2026-11-14", { weekday: true })).toBe("Sat, Nov 14");
+    expect(formatDate("2026-03-08", { weekday: true, year: true })).toBe("Sun, Mar 8, 2026");
+    expect(formatDate("garbage")).toBe("garbage");
   });
 });
 
-describe("compass", () => {
-  it("names the nearest of eight points", () => {
+describe("directions, angles and distances", () => {
+  it("names compass points", () => {
     expect(compassPoint(0)).toBe("N");
-    expect(compassPoint(22)).toBe("N");
-    expect(compassPoint(23)).toBe("NE");
-    expect(compassPoint(180)).toBe("S");
-    expect(compassPoint(337.5)).toBe("N");
+    expect(compassPoint(225)).toBe("SW");
+    expect(compassPoint(359)).toBe("N");
     expect(compassPoint(-90)).toBe("W");
-    expect(compassPoint(NaN)).toBe("–");
-    expect(compassName(135)).toBe("south-east");
+    expect(compassPoint(202.5, 16)).toBe("SSW");
+    expect(compassWords(135)).toBe("south-east");
+    expect(compassPoint(NaN)).toBe("");
+  });
+
+  it("formats bearings, angles and distances", () => {
+    expect(formatBearing(224.6)).toBe("SW · 225°");
+    expect(formatBearing(359.7)).toBe("N · 0°");
+    expect(formatAngle(34.2)).toBe("34°");
+    expect(formatAngle(4.46)).toBe("4.5°");
+    expect(formatDistance(41.6)).toBe("42 m");
+    expect(formatDistance(1234)).toBe("1.2 km");
+    expect(formatDistance(-1)).toBe("");
   });
 });
 
-describe("places", () => {
+describe("approximate clock times", () => {
+  it("rounds to the half hour and drops :00", () => {
+    expect(formatClockApprox(9 * 60 + 11, true)).toBe("9 AM");
+    expect(formatClockApprox(17 * 60 + 25, true)).toBe("5:30 PM");
+    expect(formatClockApprox(13 * 60 + 43, true)).toBe("1:30 PM");
+    expect(formatClockApprox(12 * 60 + 10, true)).toBe("noon");
+    expect(formatClockApprox(1430, true)).toBe("midnight");
+  });
+
+  it("keeps the 24-hour form whole", () => {
+    expect(formatClockApprox(9 * 60 + 11, false)).toBe("09:00");
+    expect(formatClockApprox(12 * 60 + 10, false)).toBe("12:00");
+    expect(formatClockApprox(17 * 60 + 25, false)).toBe("17:30");
+  });
+
+  it("takes another step", () => {
+    expect(formatClockApprox(9 * 60 + 11, true, 15)).toBe("9:15 AM");
+  });
+});
+
+describe("lists", () => {
+  it("joins words", () => {
+    expect(joinList([])).toBe("");
+    expect(joinList(["June"])).toBe("June");
+    expect(joinList(["June", "July"])).toBe("June and July");
+    expect(joinList(["May", "June", "July"])).toBe("May, June and July");
+  });
+
+  it("writes clock ranges on one line", () => {
+    const ranges = [
+      { startMinute: 550, endMinute: 760 },
+      { startMinute: 900, endMinute: 1000 },
+    ];
+    expect(formatRangeList([], true)).toBe("");
+    expect(formatRangeList(ranges, true)).toBe("9:10 AM \u2013 12:40 PM, 3:00 PM \u2013 4:40 PM");
+    expect(formatRangeList(ranges, false)).toBe("09:10 \u2013 12:40, 15:00 \u2013 16:40");
+    expect(formatRangeList(ranges, true, { max: 1 })).toBe("9:10 AM \u2013 12:40 PM, +1 more");
+  });
+
+  it("writes the night as until / from", () => {
+    const night = [
+      { startMinute: 0, endMinute: 414 },
+      { startMinute: 1014, endMinute: 1440 },
+    ];
+    expect(formatRangeList(night, true, { openEnded: true })).toBe("until 6:54 AM, from 4:54 PM");
+    // Without the flag the edges of the day are ordinary clock times.
+    expect(formatRangeList(night, true)).toBe("12:00 AM \u2013 6:54 AM, 4:54 PM \u2013 midnight");
+    expect(formatRangeList([{ startMinute: 0, endMinute: 1440 }], true)).toBe("all day");
+  });
+});
+
+describe("coordinates and ordinals", () => {
   it("formats coordinates with hemispheres", () => {
     expect(formatCoordinates(37.7906, -122.4294)).toBe("37.7906° N, 122.4294° W");
     expect(formatCoordinates(-33.8568, 151.2153)).toBe("33.8568° S, 151.2153° E");
+    expect(formatCoordinates(NaN, 0)).toBe("–");
   });
 
-  it("names a zone in one line", () => {
-    expect(zoneLabel("America/Los_Angeles", "2026-07-01", 720)).toBe(
-      "Los Angeles time (PDT, UTC−7)",
-    );
-    expect(zoneLabel("Asia/Tokyo", "2026-07-01", 720)).toBe("Tokyo time (GMT+9, UTC+9)");
-    expect(zoneLabel("Etc/GMT", "2026-07-01", 720)).toBe("GMT time (UTC)");
-  });
-
-  it("shortens zone names", () => {
-    expect(zoneCity("America/Los_Angeles")).toBe("Los Angeles");
-    expect(zoneCity("America/Argentina/Buenos_Aires")).toBe("Buenos Aires");
-    expect(zoneCity("Etc/GMT+8")).toBe("GMT+8");
+  it("writes ordinals", () => {
+    expect([1, 2, 3, 4, 11, 12, 13, 21, 22, 23, 101, 111].map(ordinal)).toEqual([
+      "1st",
+      "2nd",
+      "3rd",
+      "4th",
+      "11th",
+      "12th",
+      "13th",
+      "21st",
+      "22nd",
+      "23rd",
+      "101st",
+      "111th",
+    ]);
   });
 });

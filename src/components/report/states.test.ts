@@ -12,6 +12,7 @@ import {
   STATE_META,
   stateMeta,
   statePhrase,
+  stateShort,
 } from "./states";
 
 const yard: Observer = { mode: "yard", heightM: 1.5, facingDeg: 180, fovDeg: 360 };
@@ -46,6 +47,17 @@ describe("naming what blocks the sun", () => {
     expect(statePhrase(SunState.Blocked, -2)).toBe("Shaded by a hill");
     expect(statePhrase(SunState.Sun, -2)).toBe("In direct sun");
     expect(statePhrase(SunState.Night)).toMatch(/^Night/);
+  });
+});
+
+describe("stateShort", () => {
+  it("is the shortest wording, for a value line", () => {
+    expect(stateShort(SunState.Sun)).toBe("In direct sun");
+    expect(stateShort(SunState.Blocked)).toBe("Shaded by a building");
+    expect(stateShort(SunState.Blocked, -2)).toBe("Shaded by a hill");
+    expect(stateShort(SunState.OutOfView)).toBe("Sun outside the view");
+    expect(stateShort(SunState.Night)).toBe("Night");
+    expect(stateShort(99)).toBe("Night");
   });
 });
 

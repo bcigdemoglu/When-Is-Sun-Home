@@ -45,7 +45,7 @@ export function stateRuns(day: Pick<DayAnalysis, "samples" | "stepMinutes">): St
 }
 
 /** Width of the slider thumb, px: the thumb's centre stops half of it short of each end. */
-const THUMB_PX = 24;
+export const THUMB_PX = 28;
 
 /**
  * CSS `background` for the time slider's track, or `undefined` without data.

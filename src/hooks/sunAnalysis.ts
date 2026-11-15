@@ -3,7 +3,7 @@
  * and which building data may be used for numbers.
  */
 import type { UseBuildingsResult } from "@/lib/buildings/useBuildings";
-import type { BuildingCollection } from "@/lib/types";
+import type { BuildingCollection, Place } from "@/lib/types";
 
 export interface SelectedDateTime {
   /** "YYYY-MM-DD" on the place's wall clock. */
@@ -39,6 +39,18 @@ export function usableBuildings(
   result: Pick<UseBuildingsResult, "status" | "buildings">,
 ): BuildingCollection | null {
   return result.status === "ready" ? result.buildings : null;
+}
+
+/**
+ * Do two analyses describe the same pinned spot? (Both absent counts as the
+ * same.) Used to let a NEW place skip the pacing that smooths slider ticks.
+ */
+export function isSameSpot(
+  a: { place: Place } | null | undefined,
+  b: { place: Place } | null | undefined,
+): boolean {
+  if (!a || !b) return !a && !b;
+  return a.place.lat === b.place.lat && a.place.lng === b.place.lng;
 }
 
 /** `properties.id` of the building at `index`, or null when there is none. */

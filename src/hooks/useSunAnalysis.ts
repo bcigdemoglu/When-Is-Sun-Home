@@ -42,6 +42,7 @@ import type {
 import { selectDate, selectMinuteOfDay, selectObserver, selectPlace, useSettings } from "@/state";
 import { buildingIdAt, resolveDateTime, usableBuildings } from "./sunAnalysis";
 import { useNow } from "./useNow";
+import { useShallowStable } from "./useShallowStable";
 import { useThrottledValue } from "./useThrottledValue";
 
 /** Sampling step of the whole-year grid, minutes. */
@@ -101,13 +102,9 @@ export function useSunAnalysis(): SunAnalysis | null {
   const year = date === null ? null : yearOfDate(date);
 
   // `useBuildings` hands out a fresh object per render; keep ours stable so
-  // that consumers (and the throttles below them) only see real changes.
-  const query = useBuildings(place);
-  const { buildings: collection, status, error, isFetching, isPlaceholder, refetch, stats } = query;
-  const buildings = useMemo<UseBuildingsResult>(
-    () => ({ buildings: collection, status, error, isFetching, isPlaceholder, refetch, stats }),
-    [collection, status, error, isFetching, isPlaceholder, refetch, stats],
-  );
+  // that consumers (and the throttles below them) only see real changes —
+  // whatever fields the result carries (its data source and so on included).
+  const buildings = useShallowStable(useBuildings(place));
   const measured = usableBuildings(buildings);
 
   const grid = useMemo(() => {

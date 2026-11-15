@@ -2,8 +2,9 @@
  * Ways a place gets pinned. Plain functions on the settings store, so the map,
  * the search box and the geolocation button all go through the same door.
  */
-import { reverseGeocode, type PlaceSuggestion } from "@/lib/geocode/photon";
-import type { LatLng } from "@/lib/types";
+import type { PlaceSelection } from "@/components/search/types";
+import { reverseGeocode } from "@/lib/geocode/photon";
+import type { LatLng, Observer, Place } from "@/lib/types";
 import { useSettings } from "@/state";
 
 /** Wait this long before looking a spot up, so a flurry of pin moves asks once. */
@@ -32,8 +33,21 @@ export function pinSpot(spot: LatLng): void {
   const { setPlace } = useSettings.getState();
   setPlace({ lat: spot.lat, lng: spot.lng });
   const pinned = useSettings.getState().place;
-  if (!pinned) return;
+  if (pinned) lookUpName(pinned);
+}
 
+/**
+ * Give the current place a name if it has none — a pin that arrived by link
+ * or was restored from storage with bare coordinates. Same rules as a fresh
+ * pin: in the background, and only if the pin has not moved meanwhile.
+ */
+export function nameCurrentPlace(): void {
+  const place = useSettings.getState().place;
+  if (!place || place.name !== undefined || pendingLookup) return;
+  lookUpName(place);
+}
+
+function lookUpName(pinned: Place): void {
   const controller = new AbortController();
   const timer = setTimeout(() => {
     reverseGeocode(pinned, { signal: controller.signal })
@@ -51,16 +65,40 @@ export function pinSpot(spot: LatLng): void {
       })
       .catch(() => {
         // The label is a nicety; the coordinates are shown instead.
+      })
+      .finally(() => {
+        if (pendingLookup?.controller === controller) pendingLookup = null;
       });
   }, REVERSE_GEOCODE_DELAY_MS);
   pendingLookup = { controller, timer };
 }
 
-/** Pin a search result, with its name. */
-export function pinSuggestion(suggestion: PlaceSuggestion): void {
+/**
+ * Pin a place that already has a name (a search result, a saved or recent
+ * place) — and, when it comes with one, put its viewpoint back as well.
+ */
+export function pinNamedPlace(place: Place, observer?: Observer): void {
   cancelLookup();
-  const name = suggestion.name ?? suggestion.label;
-  useSettings.getState().setPlace({ lat: suggestion.lat, lng: suggestion.lng, name });
+  const settings = useSettings.getState();
+  if (observer) settings.setObserver(observer);
+  settings.setPlace(place.name ? { lat: place.lat, lng: place.lng, name: place.name } : place);
+}
+
+/** Whatever the search experience hands over: named places as they are, bare spots looked up. */
+export function openSelection(selection: PlaceSelection): void {
+  const { place, observer } = selection;
+  if (place.name) {
+    pinNamedPlace(place, observer);
+    return;
+  }
+  if (observer) useSettings.getState().setObserver(observer);
+  pinSpot(place);
+}
+
+/** Forget the place: back to the start screen. */
+export function clearPlace(): void {
+  cancelLookup();
+  useSettings.getState().setPlace(null);
 }
 
 /** For tests: forget any lookup in flight. */

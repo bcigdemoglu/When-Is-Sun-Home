@@ -9,8 +9,10 @@ import {
   assemblePolygons,
   buildOverpassQuery,
   fetchBuildings,
+  footprintAreaM2,
   isAbortError,
   parseOverpassResponse,
+  refineDefaultHeights,
   signedRingArea,
   stitchRings,
 } from "./overpass";
@@ -460,6 +462,234 @@ describe("parseOverpassResponse: ways", () => {
   });
 });
 
+describe("coordinate rounding", () => {
+  test("coordinates are rounded to 7 decimal places", () => {
+    const noisy = [
+      { lat: 37.79000004999, lon: -122.43000000001 },
+      { lat: 37.79, lon: -122.42900000000002 },
+      { lat: 37.791000049, lon: -122.4290000499 },
+      { lat: 37.79000004999, lon: -122.43000000001 },
+    ];
+    const { features } = parseOverpassResponse(response(way(1, noisy, { building: "yes" })));
+    expect(features[0].geometry.coordinates[0]).toEqual([
+      [-122.43, 37.79],
+      [-122.429, 37.79],
+      [-122.429, 37.791],
+      [-122.43, 37.79],
+    ]);
+  });
+
+  test("real OSM coordinates (7 decimals) pass through unchanged", () => {
+    fc.assert(
+      fc.property(
+        fc.integer({ min: -900_000_000, max: 900_000_000 }),
+        fc.integer({ min: -1_800_000_000, max: 1_800_000_000 }),
+        (latE7, lonE7) => {
+          const lat = Number((latE7 / 1e7).toFixed(7));
+          const lon = Number((lonE7 / 1e7).toFixed(7));
+          const triangle = [
+            { lat, lon },
+            { lat: lat > 0 ? lat - 0.001 : lat + 0.001, lon },
+            { lat, lon: lon > 0 ? lon - 0.001 : lon + 0.001 },
+          ];
+          const { features } = parseOverpassResponse(
+            response(way(1, triangle, { building: "yes" })),
+          );
+          expect(features[0].geometry.coordinates[0]).toContainEqual([lon, lat]);
+        },
+      ),
+    );
+  });
+
+  test("the serialised collection carries no floating-point noise", () => {
+    const text = JSON.stringify(parseOverpassResponse(fixture("pacific-heights.overpass.json")));
+    expect(text).not.toMatch(/\.\d{8,}/);
+  });
+});
+
+describe("refineDefaultHeights", () => {
+  /** A square footprint of the given area at the equator, as an Overpass way. */
+  function footprint(id: number, areaM2: number, tags: Record<string, string>) {
+    const side = Math.sqrt(areaM2);
+    const dLat = side / 110_574;
+    const dLon = side / 111_320;
+    const lon = id * 0.01;
+    return way(
+      id,
+      [
+        { lat: 0, lon },
+        { lat: 0, lon: lon + dLon },
+        { lat: dLat, lon: lon + dLon },
+        { lat: dLat, lon },
+        { lat: 0, lon },
+      ],
+      tags,
+    );
+  }
+
+  /** `count` tagged buildings whose heights have the given median. */
+  function neighbourhood(count: number, medianM: number) {
+    return Array.from({ length: count }, (_, i) =>
+      footprint(1000 + i, 150, {
+        building: "yes",
+        height: String(medianM + (i - (count - 1) / 2) * 0.1),
+      }),
+    );
+  }
+
+  const heightOf = (collection: BuildingCollection, id: number) =>
+    byId(collection, `way/${id}`).properties.heightM;
+
+  test("footprintAreaM2", () => {
+    const { features } = parseOverpassResponse(
+      response(footprint(1, 100, { building: "yes" }), footprint(2, 2500, { building: "yes" })),
+    );
+    expect(footprintAreaM2(features[0].geometry)).toBeCloseTo(100, 0);
+    expect(footprintAreaM2(features[1].geometry)).toBeCloseTo(2500, -1);
+    // Holes are subtracted; MultiPolygon parts are added.
+    const relations = parseOverpassResponse(fixture("overpass-relations.json"));
+    const courtyard = byId(relations, "relation/9100001");
+    const [outer, hole] = (courtyard.geometry as Polygon).coordinates;
+    const solid = footprintAreaM2({ type: "Polygon", coordinates: [outer] });
+    const gap = footprintAreaM2({ type: "Polygon", coordinates: [hole] });
+    expect(footprintAreaM2(courtyard.geometry)).toBeCloseTo(solid - gap, 1);
+    expect(solid).toBeGreaterThan(7000);
+    expect(solid).toBeLessThan(8000);
+  });
+
+  test("a generic building takes the median of the tagged and level-based heights", () => {
+    const collection = parseOverpassResponse(
+      response(
+        ...neighbourhood(9, 12),
+        footprint(900, 150, { building: "apartments", "building:levels": "6" }),
+        footprint(1, 150, { building: "yes" }),
+        footprint(2, 150, { building: "something_new" }),
+      ),
+    );
+    // Ten references: nine around 12 m and one of 18.5 m. The median shrugs off the outlier.
+    expect(heightOf(collection, 1)).toBeGreaterThanOrEqual(12);
+    expect(heightOf(collection, 1)).toBeLessThanOrEqual(12.1);
+    expect(heightOf(collection, 2)).toBe(heightOf(collection, 1));
+    // Rounded to 0.1 m.
+    expect(heightOf(collection, 1) * 10).toBeCloseTo(Math.round(heightOf(collection, 1) * 10), 9);
+    expect(byId(collection, "way/1").properties).toMatchObject({
+      heightSource: "default",
+      levels: null,
+      kind: "yes",
+    });
+  });
+
+  test("needs at least ten reference buildings", () => {
+    const few = parseOverpassResponse(
+      response(...neighbourhood(9, 12), footprint(1, 150, { building: "yes" })),
+    );
+    expect(heightOf(few, 1)).toBe(7);
+    const enough = parseOverpassResponse(
+      response(...neighbourhood(10, 12), footprint(1, 150, { building: "yes" })),
+    );
+    expect(heightOf(enough, 1)).toBe(12);
+  });
+
+  test("other default buildings are not evidence", () => {
+    const collection = parseOverpassResponse(
+      response(
+        ...neighbourhood(9, 12),
+        ...Array.from({ length: 30 }, (_, i) => footprint(200 + i, 150, { building: "hotel" })),
+        footprint(1, 150, { building: "yes" }),
+      ),
+    );
+    expect(heightOf(collection, 1)).toBe(7);
+  });
+
+  test.each([
+    [2, 4],
+    [4.4, 4.4],
+    [25, 25],
+    [40, 40],
+    [90, 40],
+  ])("a median of %d m is used as %d m (clamped to 4–40)", (medianM, expected) => {
+    const collection = parseOverpassResponse(
+      response(...neighbourhood(11, medianM), footprint(1, 150, { building: "yes" })),
+    );
+    expect(heightOf(collection, 1)).toBe(expected);
+  });
+
+  test("buildings with a specific kind keep their table value", () => {
+    const collection = parseOverpassResponse(
+      response(
+        ...neighbourhood(20, 15),
+        footprint(1, 150, { building: "garage" }),
+        footprint(2, 150, { building: "house" }),
+        footprint(3, 150, { building: "church" }),
+        footprint(4, 10, { building: "house" }),
+      ),
+    );
+    expect(heightOf(collection, 1)).toBe(3);
+    expect(heightOf(collection, 2)).toBe(7);
+    expect(heightOf(collection, 3)).toBe(12);
+    expect(heightOf(collection, 4)).toBe(7);
+  });
+
+  test("tagged and level-based heights are never touched", () => {
+    const collection = parseOverpassResponse(
+      response(
+        ...neighbourhood(20, 15),
+        footprint(1, 10, { building: "yes", height: "9" }),
+        footprint(2, 10, { building: "yes", "building:levels": "2" }),
+      ),
+    );
+    expect(heightOf(collection, 1)).toBe(9);
+    expect(heightOf(collection, 2)).toBe(6.5);
+  });
+
+  test("a tiny generic footprint is an outbuilding (3 m), with or without neighbours", () => {
+    const alone = parseOverpassResponse(
+      response(footprint(1, 12, { building: "yes" }), footprint(2, 24, { building: "yes" })),
+    );
+    expect(heightOf(alone, 1)).toBe(3);
+    expect(heightOf(alone, 2)).toBe(3);
+    const tall = parseOverpassResponse(
+      response(...neighbourhood(20, 30), footprint(1, 12, { building: "yes" })),
+    );
+    expect(heightOf(tall, 1)).toBe(3);
+    expect(byId(tall, "way/1").properties.heightSource).toBe("default");
+  });
+
+  test("a small footprint (25–50 m²) is never raised above 7 m, but can be lowered", () => {
+    const tall = parseOverpassResponse(
+      response(
+        ...neighbourhood(20, 18),
+        footprint(1, 26, { building: "yes" }),
+        footprint(2, 49, { building: "yes" }),
+        footprint(3, 51, { building: "yes" }),
+      ),
+    );
+    expect(heightOf(tall, 1)).toBe(7);
+    expect(heightOf(tall, 2)).toBe(7);
+    expect(heightOf(tall, 3)).toBe(18);
+
+    const low = parseOverpassResponse(
+      response(...neighbourhood(20, 5), footprint(1, 40, { building: "yes" })),
+    );
+    expect(heightOf(low, 1)).toBe(5);
+  });
+
+  test("does not mutate its input and is idempotent", () => {
+    const parsed = parseOverpassResponse(fixture("pacific-heights.overpass.json"));
+    const snapshot = structuredClone(parsed);
+    const again = refineDefaultHeights(parsed);
+    expect(parsed).toEqual(snapshot);
+    expect(again).toEqual(parsed);
+  });
+
+  test("an empty collection stays empty", () => {
+    expect(refineDefaultHeights({ type: "FeatureCollection", features: [] })).toEqual({
+      type: "FeatureCollection",
+      features: [],
+    });
+  });
+});
+
 describe("parseOverpassResponse: leniency and errors", () => {
   test("bad elements are skipped without throwing", () => {
     const { features } = parseOverpassResponse(
@@ -729,7 +959,7 @@ describe("parseOverpassResponse: Pacific Heights fixture", () => {
       expect(properties.heightM).toBeLessThan(150);
       expect(properties.kind).toBe("yes");
       if (properties.heightSource === "default") {
-        expect(properties.heightM).toBe(7);
+        expect([3, 7, 12]).toContain(properties.heightM);
         expect(properties.levels).toBeNull();
       }
       if (properties.heightSource === "levels") {
@@ -737,6 +967,33 @@ describe("parseOverpassResponse: Pacific Heights fixture", () => {
       }
     }
     expect(counts).toEqual({ tagged: 321, levels: 8, default: 55 });
+  });
+
+  test("untagged buildings take the neighbourhood's height, not a global 7 m", () => {
+    const reference = collection.features
+      .filter((f) => f.properties.heightSource !== "default")
+      .map((f) => f.properties.heightM)
+      .sort((a, b) => a - b);
+    expect(reference).toHaveLength(329);
+    // The neighbourhood: mostly three and four storeys.
+    expect(reference[164]).toBe(12);
+
+    const defaults = collection.features.filter((f) => f.properties.heightSource === "default");
+    const byHeight = new Map<number, number[]>();
+    for (const feature of defaults) {
+      const areas = byHeight.get(feature.properties.heightM) ?? [];
+      areas.push(footprintAreaM2(feature.geometry));
+      byHeight.set(feature.properties.heightM, areas);
+    }
+    expect([...byHeight.keys()].sort((a, b) => a - b)).toEqual([3, 7, 12]);
+    // 41 ordinary footprints follow the median; 9 small and 5 tiny ones do not.
+    expect(byHeight.get(12)).toHaveLength(41);
+    expect(byHeight.get(7)).toHaveLength(9);
+    expect(byHeight.get(3)).toHaveLength(5);
+    expect(Math.min(...byHeight.get(12)!)).toBeGreaterThanOrEqual(50);
+    expect(Math.max(...byHeight.get(7)!)).toBeLessThan(50);
+    expect(Math.min(...byHeight.get(7)!)).toBeGreaterThanOrEqual(25);
+    expect(Math.max(...byHeight.get(3)!)).toBeLessThan(25);
   });
 
   test("agrees with the legacy conversion it was generated from", () => {
@@ -768,6 +1025,8 @@ describe("parseOverpassResponse: Pacific Heights fixture", () => {
 // ─── Network ───────────────────────────────────────────────────────────────
 
 const CENTER = { lat: 37.791, lng: -122.4297 };
+/** Stand-in servers, for tests of the fallback mechanics whatever the real list is. */
+const THREE = ["https://a.test/i", "https://b.test/i", "https://c.test/i"];
 const OK_BODY = JSON.stringify(response(way(1, SQUARE, { building: "yes" })));
 
 function ok(body: string = OK_BODY, init: ResponseInit = {}) {
@@ -832,10 +1091,11 @@ describe("fetchBuildings", () => {
   });
 
   test("the default endpoint list", () => {
+    // Two servers, as a last resort. Each one learns the user's IP address
+    // and rough position, so the list is kept as short as it can be.
     expect(OVERPASS_ENDPOINTS).toEqual([
       "https://overpass-api.de/api/interpreter",
       "https://overpass.private.coffee/api/interpreter",
-      "https://maps.mail.ru/osm/tools/overpass/api/interpreter",
     ]);
   });
 
@@ -845,8 +1105,14 @@ describe("fetchBuildings", () => {
       new TypeError("Failed to fetch"),
       ok(),
     );
-    const buildings = await fetchBuildings(CENTER, 500, { fetchImpl });
+    const buildings = await fetchBuildings(CENTER, 500, { fetchImpl, endpoints: THREE });
     expect(buildings.features).toHaveLength(1);
+    expect(fetchImpl.mock.calls.map(([url]) => url)).toEqual(THREE);
+  });
+
+  test("the default list is tried in its order", async () => {
+    const fetchImpl = mockFetch(new Response("slow down", { status: 429 }), ok());
+    await fetchBuildings(CENTER, 500, { fetchImpl });
     expect(fetchImpl.mock.calls.map(([url]) => url)).toEqual([...OVERPASS_ENDPOINTS]);
   });
 
@@ -927,6 +1193,39 @@ describe("fetchBuildings", () => {
     expect(error).toMatchObject({ kind, status: 200, endpoint: "https://a.test/i" });
   });
 
+  test("a 429 carries the server's Retry-After, as seconds or as a date", async () => {
+    const endpoints = ["https://a.test/i"];
+    const withHeader = (value: string) =>
+      mockFetch(new Response("slow down", { status: 429, headers: { "Retry-After": value } }));
+
+    expect(
+      await failure(fetchBuildings(CENTER, 500, { fetchImpl: withHeader("17"), endpoints })),
+    ).toMatchObject({ kind: "rate-limited", retryAfterS: 17 });
+
+    const inAMinute = new Date(Date.now() + 60_000).toUTCString();
+    const dated = (await failure(
+      fetchBuildings(CENTER, 500, { fetchImpl: withHeader(inAMinute), endpoints }),
+    )) as OverpassError;
+    expect(dated.retryAfterS).toBeGreaterThan(55);
+    expect(dated.retryAfterS).toBeLessThanOrEqual(61);
+
+    for (const junk of ["soon", "-5", "1e9", "999999999"]) {
+      const error = (await failure(
+        fetchBuildings(CENTER, 500, { fetchImpl: withHeader(junk), endpoints }),
+      )) as OverpassError;
+      expect(error.kind).toBe("rate-limited");
+      expect(error.retryAfterS, junk).toBeUndefined();
+    }
+    const bare = mockFetch(new Response("slow down", { status: 429 }));
+    expect(
+      (
+        (await failure(
+          fetchBuildings(CENTER, 500, { fetchImpl: bare, endpoints }),
+        )) as OverpassError
+      ).retryAfterS,
+    ).toBeUndefined();
+  });
+
   test("a soft error falls back to the next endpoint", async () => {
     const fetchImpl = mockFetch(
       ok(JSON.stringify({ elements: [], remark: "runtime error: Query timed out" })),
@@ -967,9 +1266,9 @@ describe("fetchBuildings", () => {
       new TypeError("Failed to fetch"),
       new Response("", { status: 504 }),
     );
-    const error = await failure(fetchBuildings(CENTER, 500, { fetchImpl }));
+    const error = await failure(fetchBuildings(CENTER, 500, { fetchImpl, endpoints: THREE }));
     expect(error).toBeInstanceOf(OverpassError);
-    expect(error).toMatchObject({ kind: "timeout", status: 504, endpoint: OVERPASS_ENDPOINTS[2] });
+    expect(error).toMatchObject({ kind: "timeout", status: 504, endpoint: THREE[2] });
     expect(fetchImpl).toHaveBeenCalledTimes(3);
   });
 
@@ -1022,10 +1321,63 @@ describe("fetchBuildings", () => {
 
   test("timing out on every endpoint reports a timeout", async () => {
     const fetchImpl = hangingFetch();
-    const error = await failure(fetchBuildings(CENTER, 500, { fetchImpl, timeoutMs: 5 }));
+    const error = await failure(
+      fetchBuildings(CENTER, 500, { fetchImpl, timeoutMs: 5, endpoints: THREE }),
+    );
     expect(error).toBeInstanceOf(OverpassError);
-    expect(error).toMatchObject({ kind: "timeout", endpoint: OVERPASS_ENDPOINTS[2] });
+    expect(error).toMatchObject({ kind: "timeout", endpoint: THREE[2] });
     expect(fetchImpl).toHaveBeenCalledTimes(3);
+  });
+
+  test("an overall budget is shared out over the endpoints, then it is over", async () => {
+    vi.useFakeTimers();
+    try {
+      const fetchImpl = hangingFetch();
+      const pending = failure(
+        fetchBuildings(CENTER, 500, {
+          fetchImpl,
+          timeoutMs: 5_000,
+          budgetMs: 7_500,
+          endpoints: THREE,
+        }),
+      );
+      await vi.advanceTimersByTimeAsync(4_999);
+      expect(fetchImpl).toHaveBeenCalledTimes(1);
+      // The second endpoint gets what is left: 2.5 s, not its usual 5 s.
+      await vi.advanceTimersByTimeAsync(1);
+      expect(fetchImpl).toHaveBeenCalledTimes(2);
+      await vi.advanceTimersByTimeAsync(2_500);
+      const error = await pending;
+      expect(error).toBeInstanceOf(OverpassError);
+      expect(error).toMatchObject({ kind: "timeout", endpoint: THREE[1] });
+      // The third endpoint is never asked: there is no time left for it.
+      expect(fetchImpl).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  test("with a budget, fast failures still go through every endpoint", async () => {
+    const fetchImpl = mockFetch(
+      new Response("", { status: 500 }),
+      new Response("", { status: 429 }),
+      ok(),
+    );
+    const buildings = await fetchBuildings(CENTER, 500, {
+      fetchImpl,
+      budgetMs: 10_000,
+      endpoints: THREE,
+    });
+    expect(buildings.features).toHaveLength(1);
+    expect(fetchImpl).toHaveBeenCalledTimes(3);
+  });
+
+  test("a budget too small to ask anyone is a timeout, without a request", async () => {
+    const fetchImpl = mockFetch(ok());
+    const error = await failure(fetchBuildings(CENTER, 500, { fetchImpl, budgetMs: 500 }));
+    expect(error).toBeInstanceOf(OverpassError);
+    expect(error).toMatchObject({ kind: "timeout" });
+    expect(fetchImpl).not.toHaveBeenCalled();
   });
 
   test("an abort by the caller rejects with AbortError and does not fall through", async () => {

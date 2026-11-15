@@ -7,9 +7,11 @@ import {
   BUILDING_CACHE_MAX_AREAS,
   BUILDING_CACHE_STORE,
   BUILDING_CACHE_TTL_MS,
+  FALLBACK_CACHE_TTL_MS,
   clearBuildingCache,
   deleteCachedBuildings,
   getCachedBuildings,
+  getCachedBuildingsEntry,
   pruneBuildingCache,
   setCachedBuildings,
 } from "./cache";
@@ -114,19 +116,19 @@ describe("building cache", () => {
     expect(await getCachedBuildings("v1:a")).toBeNull();
   });
 
-  test("keeps at most 40 areas, evicting the oldest", async () => {
-    expect(BUILDING_CACHE_MAX_AREAS).toBe(40);
-    for (let i = 0; i < 45; i++) {
+  test("keeps at most 20 areas, evicting the oldest", async () => {
+    expect(BUILDING_CACHE_MAX_AREAS).toBe(20);
+    for (let i = 0; i < 25; i++) {
       now = T0 + i * 1000;
       await setCachedBuildings(`v1:${i}`, collection(String(i)));
     }
-    expect(await storedKeys()).toHaveLength(80);
+    expect(await storedKeys()).toHaveLength(40);
     for (let i = 0; i < 5; i++) expect(await getCachedBuildings(`v1:${i}`)).toBeNull();
-    for (let i = 5; i < 45; i++) expect(await getCachedBuildings(`v1:${i}`)).not.toBeNull();
+    for (let i = 5; i < 25; i++) expect(await getCachedBuildings(`v1:${i}`)).not.toBeNull();
   });
 
   test("eviction goes by save time, not by key or insertion order", async () => {
-    for (let i = 0; i < 40; i++) {
+    for (let i = 0; i < BUILDING_CACHE_MAX_AREAS; i++) {
       now = T0 + (i + 10) * 1000;
       await setCachedBuildings(`v1:${i}`, collection(String(i)));
     }
@@ -162,6 +164,63 @@ describe("building cache", () => {
     await set("meta:v1:b", "yesterday", rawStore);
     await set("data:v1:b", collection("b"), rawStore);
     expect(await getCachedBuildings("v1:b")).toBeNull();
+  });
+
+  test("remembers where the data came from", async () => {
+    await setCachedBuildings("v1:a", collection("a"), "tiles");
+    await setCachedBuildings("v1:b", collection("b"), "overpass");
+    await setCachedBuildings("v1:c", collection("c"));
+    expect(await getCachedBuildingsEntry("v1:a")).toEqual({
+      data: collection("a"),
+      source: "tiles",
+      savedAt: T0,
+    });
+    expect((await getCachedBuildingsEntry("v1:b"))?.source).toBe("overpass");
+    expect((await getCachedBuildingsEntry("v1:c"))?.source).toBeNull();
+    expect(await getCachedBuildingsEntry("v1:missing")).toBeNull();
+  });
+
+  test("data from a fallback source is kept for a day, from the tiles for two weeks", async () => {
+    expect(FALLBACK_CACHE_TTL_MS).toBe(24 * 60 * 60 * 1000);
+    await setCachedBuildings("v1:tiles", collection("t"), "tiles");
+    await setCachedBuildings("v1:api", collection("a"), "api");
+    await setCachedBuildings("v1:overpass", collection("o"), "overpass");
+
+    now = T0 + FALLBACK_CACHE_TTL_MS - 1;
+    expect(await getCachedBuildings("v1:api")).not.toBeNull();
+    expect(await getCachedBuildings("v1:overpass")).not.toBeNull();
+
+    now = T0 + FALLBACK_CACHE_TTL_MS;
+    expect(await getCachedBuildings("v1:api")).toBeNull();
+    expect(await getCachedBuildings("v1:overpass")).toBeNull();
+    expect(await getCachedBuildings("v1:tiles")).not.toBeNull();
+    expect(await storedKeys()).toEqual(["data:v1:tiles", "meta:v1:tiles"]);
+
+    now = T0 + BUILDING_CACHE_TTL_MS;
+    expect(await getCachedBuildings("v1:tiles")).toBeNull();
+  });
+
+  test("pruning drops fallback data that has had its day", async () => {
+    await setCachedBuildings("v1:api", collection("a"), "api");
+    now = T0 + FALLBACK_CACHE_TTL_MS + 1;
+    await setCachedBuildings("v1:tiles", collection("t"), "tiles");
+    expect(await storedKeys()).toEqual(["data:v1:tiles", "meta:v1:tiles"]);
+  });
+
+  test("entries from before sources were recorded (a bare timestamp) still read", async () => {
+    await set("meta:v1:old", T0, rawStore);
+    await set("data:v1:old", collection("old"), rawStore);
+    expect(await getCachedBuildingsEntry("v1:old")).toEqual({
+      data: collection("old"),
+      source: null,
+      savedAt: T0,
+    });
+    await set("meta:v1:odd", { savedAt: T0, source: "carrier pigeon" }, rawStore);
+    await set("data:v1:odd", collection("odd"), rawStore);
+    expect((await getCachedBuildingsEntry("v1:odd"))?.source).toBeNull();
+    await set("meta:v1:bad", { savedAt: "noon" }, rawStore);
+    await set("data:v1:bad", collection("bad"), rawStore);
+    expect(await getCachedBuildingsEntry("v1:bad")).toBeNull();
   });
 
   test("deleteCachedBuildings removes one area", async () => {
@@ -249,6 +308,152 @@ describe("building cache without a working IndexedDB", () => {
     expect(await getCachedBuildings("v1:b")).toBeNull();
     expect(await getCachedBuildings("v1:a")).not.toBeNull();
   });
+});
+
+// Safari on iOS (and the in-app browsers built on it) can leave a request
+// unanswered for good, e.g. after the page spent time in the background.
+describe("building cache: IndexedDB that does not answer", () => {
+  /** A fresh copy of the module, so no database connection is already open. */
+  async function freshCache() {
+    vi.resetModules();
+    return import("./cache");
+  }
+
+  /** Only the cache's own time limits are faked; fake-indexeddb keeps its real scheduling. */
+  const fakeTimeouts = () => vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+  const turns = async (count = 50) => {
+    for (let i = 0; i < count; i++) await new Promise((resolve) => setImmediate(resolve));
+  };
+
+  /**
+   * The real (fake-indexeddb) factory, except that an `open` is not answered
+   * until `answer()` is called.
+   */
+  function slowToOpen() {
+    const real = indexedDB;
+    const waiting: (() => void)[] = [];
+    let held = true;
+    const open = vi.fn((name: string) => {
+      const request = real.open(name);
+      const proxy: {
+        onsuccess?: () => void;
+        onupgradeneeded?: () => void;
+        onerror?: () => void;
+        readonly result: IDBDatabase;
+        readonly error: DOMException | null;
+      } = {
+        get result() {
+          return request.result;
+        },
+        get error() {
+          return request.error;
+        },
+      };
+      request.onupgradeneeded = () => proxy.onupgradeneeded?.();
+      request.onerror = () => proxy.onerror?.();
+      request.onsuccess = () => {
+        if (held) waiting.push(() => proxy.onsuccess?.());
+        else proxy.onsuccess?.();
+      };
+      return proxy;
+    });
+    vi.stubGlobal("indexedDB", { open });
+    return {
+      open,
+      answer() {
+        held = false;
+        for (const deliver of waiting.splice(0)) deliver();
+      },
+    };
+  }
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  test("a read gives up after its time limit instead of waiting for ever", async () => {
+    fakeTimeouts();
+    vi.stubGlobal("indexedDB", { open: () => ({}) }); // no event ever fires
+    const cache = await freshCache();
+    expect(cache.BUILDING_CACHE_READ_TIMEOUT_MS).toBeLessThanOrEqual(2_000);
+
+    let result: BuildingCollection | null | undefined;
+    void cache.getCachedBuildings("v1:a").then((value) => (result = value));
+    await vi.advanceTimersByTimeAsync(cache.BUILDING_CACHE_READ_TIMEOUT_MS - 1);
+    expect(result).toBeUndefined();
+    await vi.advanceTimersByTimeAsync(1);
+    expect(result).toBeNull();
+  });
+
+  test("while a request is unanswered the cache is skipped: nothing waits, nothing queues", async () => {
+    fakeTimeouts();
+    const database = slowToOpen();
+    const cache = await freshCache();
+
+    const first = cache.getCachedBuildings("v1:a");
+    await vi.advanceTimersByTimeAsync(cache.BUILDING_CACHE_READ_TIMEOUT_MS);
+    await expect(first).resolves.toBeNull();
+
+    // No timer is advanced from here on: each of these answers at once.
+    await expect(cache.getCachedBuildings("v1:a")).resolves.toBeNull();
+    await expect(cache.getCachedBuildingsEntry("v1:a")).resolves.toBeNull();
+    await expect(cache.setCachedBuildings("v1:a", collection("a"))).resolves.toBeUndefined();
+    await expect(cache.deleteCachedBuildings("v1:a")).resolves.toBeUndefined();
+    await expect(cache.pruneBuildingCache()).resolves.toBeUndefined();
+    await expect(cache.clearBuildingCache()).resolves.toBeUndefined();
+    expect(vi.getTimerCount()).toBe(0);
+    expect(database.open).toHaveBeenCalledTimes(1);
+
+    // The skipped write really was skipped.
+    database.answer();
+    await turns();
+    expect(await storedKeys()).toEqual([]);
+  });
+
+  test("once the stuck request is answered the cache is used again", async () => {
+    fakeTimeouts();
+    const database = slowToOpen();
+    const cache = await freshCache();
+
+    const first = cache.getCachedBuildings("v1:a");
+    await vi.advanceTimersByTimeAsync(cache.BUILDING_CACHE_READ_TIMEOUT_MS);
+    await expect(first).resolves.toBeNull();
+
+    database.answer();
+    await turns();
+
+    const data = collection("a", 2);
+    await cache.setCachedBuildings("v1:a", data, "tiles");
+    await expect(cache.getCachedBuildingsEntry("v1:a")).resolves.toMatchObject({
+      data,
+      source: "tiles",
+    });
+    expect(await storedKeys()).toEqual(["data:v1:a", "meta:v1:a"]);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  test("a slow answer that still comes in time is used, and leaves no timer behind", async () => {
+    fakeTimeouts();
+    await setCachedBuildings("v1:a", collection("a"));
+    const database = slowToOpen();
+    const cache = await freshCache();
+
+    const read = cache.getCachedBuildings("v1:a");
+    await vi.advanceTimersByTimeAsync(cache.BUILDING_CACHE_READ_TIMEOUT_MS - 1);
+    database.answer();
+    await expect(read).resolves.toEqual(collection("a"));
+    expect(vi.getTimerCount()).toBe(0);
+  });
+});
+
+test("a write that is refused still clears out what has expired", async () => {
+  await setCachedBuildings("v1:old", collection("old"));
+  now += BUILDING_CACHE_TTL_MS + 1;
+  // Functions cannot be structured-cloned: IndexedDB refuses this write, as it
+  // refuses one that would exceed the storage quota.
+  const uncloneable = { ...collection("b"), oops: () => {} } as unknown as BuildingCollection;
+  await expect(setCachedBuildings("v1:b", uncloneable)).resolves.toBeUndefined();
+  expect(await storedKeys()).toEqual([]);
 });
 
 test("pruneBuildingCache on an empty store is a no-op", async () => {

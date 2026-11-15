@@ -1,0 +1,53 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "osm_type": "W",
+        "osm_id": 259269865,
+        "type": "house",
+        "housenumber": "2140",
+        "street": "Pacific Avenue",
+        "city": "San Francisco",
+        "state": "California",
+        "country": "United States",
+        "postcode": "94115",
+        "countrycode": "US"
+      },
+      "geometry": { "type": "Point", "coordinates": [-122.4301, 37.7912] }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "osm_type": "W",
+        "osm_id": 463442156,
+        "type": "house",
+        "housenumber": "2140",
+        "street": "Pacific Avenue",
+        "city": "Alameda",
+        "state": "California",
+        "country": "United States",
+        "postcode": "94501",
+        "countrycode": "US"
+      },
+      "geometry": { "type": "Point", "coordinates": [-122.2460434, 37.7695587] }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "osm_type": "N",
+        "osm_id": 13617069184,
+        "type": "house",
+        "housenumber": "2140",
+        "street": "Pacific Avenue",
+        "city": "Tacoma",
+        "state": "Washington",
+        "country": "United States",
+        "postcode": "98402",
+        "countrycode": "US"
+      },
+      "geometry": { "type": "Point", "coordinates": [-122.4364026, 47.241599] }
+    }
+  ]
+}

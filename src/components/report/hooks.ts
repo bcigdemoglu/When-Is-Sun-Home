@@ -4,8 +4,6 @@
  */
 import { useEffect, useState, useSyncExternalStore } from "react";
 
-import { detectHour12 } from "./format";
-
 export interface ElementSize {
   width: number;
   height: number;
@@ -50,16 +48,8 @@ export function useElementSize<T extends Element>(): [
   return [setElement, size];
 }
 
-const subscribeNever = () => () => {};
-
-/** Whether the user's locale writes times with AM/PM (true on the server). */
-export function useHour12(): boolean {
-  return useSyncExternalStore(
-    subscribeNever,
-    () => detectHour12(),
-    () => true,
-  );
-}
+// The 12 / 24-hour preference is app-wide: one hook, shared with the shell.
+export { useHour12 } from "@/components/shared/useHour12";
 
 function subscribeColorScheme(onChange: () => void): () => void {
   if (typeof window === "undefined") return () => {};

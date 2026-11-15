@@ -18,4 +18,6 @@ Always use `pnpm` for all commands. Never use `npm`, `yarn`, or `npx`.
 - All dates and times are wall-clock values in the pinned place's time zone, never the browser's.
 - The engine (`src/lib/solar`, `horizon`, `terrain`, `analysis`) is pure TypeScript: no React, DOM or network.
 - Colours come from the design tokens in `src/app/globals.css`; do not use raw hex or palette utilities in components.
-- Overpass is often unreachable from sandboxes; browser tests mock it with `tests/fixtures/pacific-heights.overpass.json`.
+- Building data comes from OpenFreeMap vector tiles (Overpass is only a fallback and is blocked from most cloud hosts). Browser tests mock all map data with `tests/e2e/helpers/mockMapData.ts`.
+- Git hooks: pre-commit runs `pnpm build`, pre-push runs `pnpm check`. Never bypass them with `--no-verify`; every push is deployed.
+- `/dev/*` pages are development-only harnesses (404 in production).
