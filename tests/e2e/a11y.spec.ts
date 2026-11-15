@@ -290,11 +290,12 @@ test.describe("Accessibility basics", () => {
       expect(visible, `“${stops[stop]}” is focused but cannot be seen`).toBe(true);
     }
     expect(stops).toEqual([
-      "Map",
-      expect.stringMatching(/^Pin\. Drag it/),
+      // The search strip is first in the document, as it is on the screen.
       expect.stringMatching(/^Search an address\. Showing /),
       "Clear this place",
       "Saved places",
+      "Map",
+      expect.stringMatching(/^Pin\. Drag it/),
       "Use my location",
       expect.stringMatching(/Switch to (tilted 3D|flat 2D)$/),
       "Expand the sheet",
