@@ -115,12 +115,14 @@ export const SunIcon = (props: IconProps) => (
   </Icon>
 );
 
-/** Shade: a sun half hidden behind a building. */
+/** Shade: the sun behind a building. */
 export const ShadeIcon = (props: IconProps) => (
   <Icon {...props}>
-    <path d="M12.5 20.5h8v-11l-8-3v14Z" />
-    <path d="M9.5 9a4 4 0 1 0 0 7.4" />
-    <path d="M8.5 4.2v1.6M3.4 6.6l1.2 1.2M1.8 12.2h1.6" />
+    <path d="M11 20.5V8l8.5-3v15.5" />
+    <path d="M9 20.5h12.5" />
+    <path d="M14.5 10.5v.01M14.5 14v.01M14.5 17.5v.01" />
+    <path d="M7.5 9.6a3.6 3.6 0 1 0 0 5.8" />
+    <path d="M2.2 12.5h.9M3.5 8.6l.7.7M3.5 16.4l.7-.7" />
   </Icon>
 );
 

@@ -9,24 +9,52 @@ export interface KeyDates {
   septemberEquinox: string;
 }
 
+/** How far off the coarse per-day daylight figures can be, minutes (two 5-minute grid steps). */
+const COARSE_SLACK_MINUTES = 10;
+
+/** Exact length of a day (sunrise to sunset), minutes, or null when the sun does not rise and set. */
+export type DayLength = (date: string) => number | null;
+
 /**
  * Solstices are read off the year's own daylight figures, so they are right
  * for either hemisphere (and for the place's calendar); the equinoxes are the
  * usual calendar dates, which is as exact as "equal day and night" gets.
+ *
+ * The year's figures come from a coarse grid, so around a solstice two or
+ * three weeks of days tie. `exactDayLength` (sunrise to sunset, to the
+ * second) picks the true extreme among them; without it the middle of the
+ * run has to do.
  */
-export function keyDates(year: Pick<YearAnalysis, "year" | "days">): KeyDates {
+export function keyDates(
+  year: Pick<YearAnalysis, "year" | "days">,
+  exactDayLength?: DayLength,
+): KeyDates {
   const y = String(year.year).padStart(4, "0");
-  // Day lengths come from a coarse grid, so around a solstice many days tie:
-  // the middle of the run of extreme days is the solstice itself.
-  const middleOfExtreme = (sign: 1 | -1): string | null => {
+  const extremeDay = (sign: 1 | -1): string | null => {
     let extreme = -Infinity;
     for (const day of year.days) extreme = Math.max(extreme, sign * day.daylightMinutes);
     const tied = year.days.filter((day) => sign * day.daylightMinutes === extreme);
-    return tied.length > 0 ? tied[Math.floor((tied.length - 1) / 2)].date : null;
+    if (tied.length === 0) return null;
+    let best = tied[Math.floor((tied.length - 1) / 2)].date;
+    if (exactDayLength) {
+      // One grid step of slack: the true extreme can sit just outside the tied run.
+      const near = year.days.filter(
+        (day) => sign * day.daylightMinutes >= extreme - COARSE_SLACK_MINUTES,
+      );
+      let bestLength = -Infinity;
+      for (const day of near) {
+        const length = exactDayLength(day.date);
+        if (length !== null && sign * length > bestLength) {
+          bestLength = sign * length;
+          best = day.date;
+        }
+      }
+    }
+    return best;
   };
   return {
-    longest: middleOfExtreme(1) ?? `${y}-06-21`,
-    shortest: middleOfExtreme(-1) ?? `${y}-12-21`,
+    longest: extremeDay(1) ?? `${y}-06-21`,
+    shortest: extremeDay(-1) ?? `${y}-12-21`,
     marchEquinox: `${y}-03-20`,
     septemberEquinox: `${y}-09-22`,
   };

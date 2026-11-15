@@ -40,7 +40,7 @@ import { useIsDesktop } from "@/hooks/useMediaQuery";
 import { useNow } from "@/hooks/useNow";
 import { usePacedValue } from "@/hooks/usePacedValue";
 import { useSunAnalysis } from "@/hooks/useSunAnalysis";
-import { summarizeYear } from "@/lib/analysis";
+import { summarizeYear, sunTimesFor } from "@/lib/analysis";
 import { selectObserver, selectPlace, useHydrateSettings, useSettings, useUrlSync } from "@/state";
 import {
   hydratePlaces,
@@ -181,7 +181,17 @@ function Workspace() {
   const timeZone = analysis ? analysis.timeZone : null;
   const track = useMemo(() => dayTrackBackground(day), [day]);
   const sunPath = useMemo(() => (day ? sunPathModel(day, COMPASS_RADIUS) : null), [day]);
-  const keyDates = useMemo(() => (year ? findKeyDates(year) : null), [year]);
+  const placeLat = analysis ? analysis.place.lat : null;
+  const placeLng = analysis ? analysis.place.lng : null;
+  const keyDates = useMemo(() => {
+    if (!year || placeLat === null || placeLng === null || timeZone === null) return null;
+    return findKeyDates(year, (date) => {
+      const { sunriseMinute, sunsetMinute } = sunTimesFor(placeLat, placeLng, date, timeZone);
+      return sunriseMinute !== null && sunsetMinute !== null && sunsetMinute > sunriseMinute
+        ? sunsetMinute - sunriseMinute
+        : null;
+    });
+  }, [year, placeLat, placeLng, timeZone]);
   const now = useNow(timeZone);
   const zone = analysis
     ? zoneAbbreviation(analysis.timeZone, analysis.date, analysis.minuteOfDay)

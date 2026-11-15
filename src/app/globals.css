@@ -342,6 +342,9 @@ body {
   pointer-events: auto;
   scroll-snap-align: start;
   scroll-margin-top: var(--sheet-gap, 0px);
+  /* Landscape: keep the content out from under the notch. */
+  padding-right: var(--safe-right);
+  padding-left: var(--safe-left);
 }
 /* The grabber stays put at the top once the sheet is fully up. */
 .sheet-handle {

@@ -204,7 +204,8 @@ export function BottomSheet({
         <div ref={handleRef} className="sheet-handle">
           <button
             type="button"
-            className="flex h-7 w-full items-center justify-center"
+            // The hit area reaches a little above the sheet's edge: 44 px in all.
+            className="relative flex h-7 w-full items-center justify-center before:absolute before:inset-x-0 before:-top-4 before:h-4"
             aria-label={next === "peek" ? "Collapse the sheet to show the map" : "Expand the sheet"}
             aria-expanded={detent !== "peek"}
             onClick={() => snapTo(next)}

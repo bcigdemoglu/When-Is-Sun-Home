@@ -42,6 +42,21 @@ describe("keyDates", () => {
     expect(keyDates({ year: 2026, days }).longest).toBe("2026-06-21");
   });
 
+  it("breaks the tie with exact day lengths when it can", () => {
+    const days = [];
+    for (let d = 5; d <= 26; d++) days.push(day(`2026-06-${String(d).padStart(2, "0")}`, 885));
+    // A parabola peaking on the 21st, as real day lengths do.
+    const exact = (date: string) => 885 - (Number(date.slice(8)) - 21) ** 2 * 0.01;
+    expect(keyDates({ year: 2026, days }, exact).longest).toBe("2026-06-21");
+    expect(keyDates({ year: 2026, days }).longest).toBe("2026-06-15");
+    // The true longest day may even sit just outside the tied run.
+    const offCentre = [day("2026-06-20", 880), day("2026-06-21", 880)];
+    for (let d = 22; d <= 28; d++) offCentre.push(day(`2026-06-${d}`, 885));
+    expect(keyDates({ year: 2026, days: offCentre }, exact).longest).toBe("2026-06-21");
+    // Polar day: no sunrise or sunset to measure, so the middle of the run stands.
+    expect(keyDates({ year: 2026, days }, () => null).longest).toBe("2026-06-15");
+  });
+
   it("falls back to calendar dates without data", () => {
     expect(keyDates({ year: 2027, days: [] })).toMatchObject({
       longest: "2027-06-21",

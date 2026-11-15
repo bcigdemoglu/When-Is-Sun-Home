@@ -186,7 +186,11 @@ export function TimeBar({
       } ${className}`}
     >
       <div
-        className={`relative flex h-16 items-center ${docked ? "gap-1.5 pr-3 pl-[max(0.5rem,var(--safe-left))]" : "gap-2 px-3"}`}
+        className={`relative flex h-16 items-center ${
+          docked
+            ? "gap-1.5 pr-[max(0.75rem,var(--safe-right))] pl-[max(0.5rem,var(--safe-left))]"
+            : "gap-2 px-3"
+        }`}
       >
         {!docked && (
           <Button variant="ghost" iconOnly aria-label="Previous day" onClick={() => shiftDay(-1)}>
@@ -344,6 +348,27 @@ export function TimeBar({
         </div>
 
         <ul className="mt-2">
+          {!isLive && (
+            <li>
+              <button
+                type="button"
+                className="flex min-h-12 w-full items-center justify-between gap-3 rounded-xl px-3 text-left hover:bg-surface-2"
+                onClick={() => {
+                  pause();
+                  resetToNow();
+                  setMenuOpen(false);
+                }}
+              >
+                <span className="type-body flex items-center gap-2 font-medium text-accent">
+                  <ResetIcon />
+                  Back to now
+                </span>
+                <span className="type-label text-ink-2 tabular-nums">
+                  {nowMinute !== null ? formatClock(nowMinute) : ""}
+                </span>
+              </button>
+            </li>
+          )}
           {menuRows.map((row) => (
             <li key={row.label}>
               <button
