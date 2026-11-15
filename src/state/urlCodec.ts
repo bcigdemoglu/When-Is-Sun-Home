@@ -104,12 +104,13 @@ export const LEGACY_URL_KEYS = { floor: "f", zoom: "z", blockage: "bl" } as cons
 const K = URL_KEYS;
 
 const MODE_CODE: Record<ObserverMode, string> = { yard: "y", window: "w" };
-const MODE_FROM_PARAM: Record<string, ObserverMode | undefined> = {
-  y: "yard",
-  yard: "yard",
-  w: "window",
-  window: "window",
-};
+// A Map, not an object literal: `?m=toString` must not find Object.prototype.
+const MODE_FROM_PARAM = new Map<string, ObserverMode>([
+  ["y", "yard"],
+  ["yard", "yard"],
+  ["w", "window"],
+  ["window", "window"],
+]);
 
 const COORD_DECIMALS = 5;
 const HEIGHT_DECIMALS = 1;
@@ -324,7 +325,7 @@ function decode(params: URLSearchParams, options: SearchParamsToSettingsOptions)
 
   // Observer.
   const observer: Partial<Observer> = {};
-  const mode = MODE_FROM_PARAM[params.get(K.mode) ?? ""];
+  const mode = MODE_FROM_PARAM.get(params.get(K.mode) ?? "");
   if (mode !== undefined) observer.mode = mode;
   else if (legacy) observer.mode = "window";
 

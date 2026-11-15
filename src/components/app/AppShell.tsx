@@ -28,8 +28,7 @@ import { PlaceHeader } from "./PlaceHeader";
 const REPORT_PACING = { minIntervalMs: 50, loadFactor: 3, allowanceMs: 40 };
 
 /** Two columns on desktop, one scrolling page on phones. */
-const LAYOUT =
-  "lg:grid lg:h-dvh lg:grid-cols-[minmax(45%,1fr)_minmax(0,600px)] lg:overflow-hidden";
+const LAYOUT = "lg:grid lg:h-dvh lg:grid-cols-[minmax(45%,1fr)_minmax(0,600px)] lg:overflow-hidden";
 const MAP_AREA = "relative h-[45svh] min-h-72 lg:h-auto lg:min-h-0 lg:flex-1";
 const SIDE_PANEL =
   "min-w-0 space-y-3 p-3 lg:h-full lg:overflow-y-auto lg:border-l lg:border-line lg:p-4";
@@ -48,7 +47,7 @@ function ShellSkeleton() {
         <div className={`${MAP_AREA} bg-surface-2 motion-safe:animate-pulse`} />
       </div>
       <div className={SIDE_PANEL}>
-        <div className="h-44 rounded-xl border border-line bg-surface" />
+        <div className="h-32 rounded-xl border border-line bg-surface" />
         <div className="h-60 rounded-xl border border-line bg-surface" />
         <div className="h-96 rounded-xl border border-line bg-surface" />
       </div>
@@ -103,12 +102,17 @@ function Workspace() {
 
   return (
     <div className={LAYOUT}>
-      <div className="flex flex-col lg:h-full lg:min-h-0">
+      <section aria-label="Map and time" className="flex flex-col lg:h-full lg:min-h-0">
         <div className={MAP_AREA}>
           <MapPanel
             place={place}
             buildings={analysis ? analysis.buildings.buildings : null}
             buildingStatus={analysis ? analysis.buildings.status : "idle"}
+            buildingCount={
+              analysis && analysis.buildings.stats ? analysis.buildings.stats.total : null
+            }
+            buildingsFetching={analysis ? analysis.buildings.isFetching : false}
+            onRetryBuildings={analysis ? analysis.buildings.refetch : null}
             sunPath={sunPath}
             instant={analysis ? analysis.instant : null}
             blockerBuildingId={analysis ? analysis.blockerBuildingId : null}
@@ -128,17 +132,12 @@ function Workspace() {
             sunsetMinute={day ? day.sunsetMinute : null}
           />
         )}
-      </div>
+      </section>
 
       <main className={SIDE_PANEL}>
         {analysis ? (
           <>
-            <PlaceHeader
-              place={analysis.place}
-              timeZone={analysis.timeZone}
-              zoneLabel={zoneText}
-              buildings={analysis.buildings}
-            />
+            <PlaceHeader place={analysis.place} timeZone={analysis.timeZone} zoneLabel={zoneText} />
             <ObserverControls
               pinOnBuilding={analysis.pinOnBuilding}
               pinBuildingHeightM={pinBuildingHeightM}

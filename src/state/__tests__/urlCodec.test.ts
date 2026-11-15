@@ -283,6 +283,12 @@ describe("searchParamsToSettings (current format)", () => {
     expect(parse("fov=90&fov=120").observer).toEqual({ fovDeg: 90 });
   });
 
+  test("ignores a mode value that names an Object.prototype member", () => {
+    for (const m of ["toString", "constructor", "__proto__", "hasOwnProperty"]) {
+      expect(searchParamsToSettings(new URLSearchParams({ m }))).toEqual({});
+    }
+  });
+
   test("never throws and always produces a patch that merges into valid Settings", () => {
     const key = fc.constantFrom(
       "lat",

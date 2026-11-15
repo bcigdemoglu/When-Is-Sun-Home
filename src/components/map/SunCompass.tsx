@@ -37,7 +37,7 @@ const HALO = {
 function RimLabel({ mark }: { mark: RimMark }) {
   const tickFrom = rimPoint(mark.azimuthDeg, R - 5);
   const tickTo = rimPoint(mark.azimuthDeg, R + 5);
-  const text = rimPoint(mark.azimuthDeg, R + 9);
+  const text = rimPoint(mark.azimuthDeg, R + 10);
   const anchor = text.x > 12 ? "start" : text.x < -12 ? "end" : "middle";
   return (
     <g>
@@ -55,7 +55,7 @@ function RimLabel({ mark }: { mark: RimMark }) {
         y={text.y}
         dy={text.y > 12 ? 9 : text.y < -12 ? -2 : 3.5}
         textAnchor={anchor}
-        fontSize={11}
+        fontSize={13}
         fontWeight={600}
         fill="var(--ink)"
         {...HALO}
@@ -134,7 +134,7 @@ function CompassFace() {
               y={text.y}
               dy={4}
               textAnchor="middle"
-              fontSize={label === "N" ? 13 : 11}
+              fontSize={label === "N" ? 14 : 12}
               fontWeight={label === "N" ? 700 : 600}
               fill={label === "N" ? "var(--ink)" : "var(--ink-2)"}
               {...HALO}

@@ -119,7 +119,9 @@ export function TimeScrubber({
 
         <Button
           aria-pressed={isLive}
-          aria-label={isLive ? "Live: following the current time" : "Now: return to the current time"}
+          aria-label={
+            isLive ? "Live: following the current time" : "Now: return to the current time"
+          }
           className="min-w-18"
           onClick={() => {
             pause();
@@ -153,9 +155,7 @@ export function TimeScrubber({
           <Button
             aria-label={`Speed ${speed.label}. Change speed`}
             className="w-11 px-0! tabular-nums"
-            onClick={() =>
-              playback.setSpeedIndex((playback.speedIndex + 1) % PLAY_SPEEDS.length)
-            }
+            onClick={() => playback.setSpeedIndex((playback.speedIndex + 1) % PLAY_SPEEDS.length)}
           >
             {speed.label}
           </Button>

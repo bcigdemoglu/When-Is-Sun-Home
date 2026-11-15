@@ -7,8 +7,22 @@ import type { UsePlaceSearchResult } from "@/lib/geocode/usePlaceSearch";
 import { SearchBox } from "./SearchBox";
 
 const SUGGESTIONS: PlaceSuggestion[] = [
-  { id: "W1", lat: 37.79, lng: -122.43, name: "A", label: "2550 Pacific Avenue", detail: "San Francisco, CA" },
-  { id: "W2", lat: 37.8, lng: -122.44, name: "B", label: "Pacific Heights", detail: "San Francisco, CA" },
+  {
+    id: "W1",
+    lat: 37.79,
+    lng: -122.43,
+    name: "A",
+    label: "2550 Pacific Avenue",
+    detail: "San Francisco, CA",
+  },
+  {
+    id: "W2",
+    lat: 37.8,
+    lng: -122.44,
+    name: "B",
+    label: "Pacific Heights",
+    detail: "San Francisco, CA",
+  },
   { id: "W3", lat: 36.6, lng: -121.9, name: "C", label: "Pacific Grove", detail: "" },
 ];
 
@@ -31,9 +45,7 @@ function result(partial: Partial<UsePlaceSearchResult>): UsePlaceSearchResult {
 
 beforeEach(() => {
   searchResult = (query) =>
-    query.trim().length < 3
-      ? result({})
-      : result({ status: "ready", suggestions: SUGGESTIONS });
+    query.trim().length < 3 ? result({}) : result({ status: "ready", suggestions: SUGGESTIONS });
 });
 
 afterEach(() => {

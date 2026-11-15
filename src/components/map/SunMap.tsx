@@ -351,9 +351,7 @@ export default function SunMap({
         onPitchEnd={(event) => setTilted(event.viewState.pitch > 5)}
         onStyleData={(event) => {
           const map = event.target;
-          setLabelLayerId(
-            map.getLayersOrder().find((id) => map.getLayer(id)?.type === "symbol"),
-          );
+          setLabelLayerId(map.getLayersOrder().find((id) => map.getLayer(id)?.type === "symbol"));
         }}
         onLoad={(event) => {
           setReady(true);
@@ -374,7 +372,13 @@ export default function SunMap({
         <NavigationControl position="top-right" showZoom={isDesktop} visualizePitch />
         <AttributionControl position="bottom-right" compact={!isDesktop} />
 
-        <Source id="sun-shadows" type="geojson" data={shadowData}>
+        {/*
+          Both sources are cut into few, large tiles (zoom 14 / 15: 25 / 12 cm
+          precision, plenty at street level) rather than the default zoom-18
+          tiles. An update then re-tiles and redraws once or twice, not once
+          per visible tile.
+        */}
+        <Source id="sun-shadows" type="geojson" data={shadowData} maxzoom={14} tolerance={0}>
           {/*
             An extrusion 5 cm tall rather than a flat fill: extrusion layers are
             composited as a group, so overlapping shadow pieces do not add up to
@@ -394,7 +398,7 @@ export default function SunMap({
           />
         </Source>
 
-        <Source id="sun-buildings" type="geojson" data={buildingData}>
+        <Source id="sun-buildings" type="geojson" data={buildingData} maxzoom={15} tolerance={0}>
           <Layer
             id="sun-buildings-flat"
             type="fill"
@@ -446,7 +450,12 @@ export default function SunMap({
             className="sun-compass-marker"
             style={COMPASS_MARKER_STYLE}
           >
-            <SunCompass path={sunPath} instant={instant} observer={observer} dimmed={dragSpot !== null} />
+            <SunCompass
+              path={sunPath}
+              instant={instant}
+              observer={observer}
+              dimmed={dragSpot !== null}
+            />
           </Marker>
         )}
         {pin && (
@@ -487,7 +496,9 @@ export default function SunMap({
           <button
             type="button"
             aria-pressed={tilted}
-            aria-label={tilted ? "Tilted 3D view. Switch to flat 2D" : "Flat 2D view. Switch to tilted 3D"}
+            aria-label={
+              tilted ? "Tilted 3D view. Switch to flat 2D" : "Flat 2D view. Switch to tilted 3D"
+            }
             className="h-10 min-w-10 rounded-lg border border-line bg-surface px-2.5 text-sm font-semibold text-ink shadow-md hover:bg-surface-2"
             onClick={toggleTilt}
           >

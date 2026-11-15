@@ -51,7 +51,11 @@ export interface SunPathRun {
  * `stride` thins the samples: a point is kept every `stride` samples, and
  * always where a run starts or ends.
  */
-export function sunPathRuns(samples: readonly DaySample[], radius: number, stride = 4): SunPathRun[] {
+export function sunPathRuns(
+  samples: readonly DaySample[],
+  radius: number,
+  stride = 4,
+): SunPathRun[] {
   const runs: SunPathRun[] = [];
   let state: SunStateCode | null = null;
   let points: string[] = [];
@@ -160,7 +164,9 @@ export function sunPathModel(
   const { first, last } = daylightEnds(day.samples);
   return {
     runs: sunPathRuns(day.samples, radius),
-    rise: first ? { azimuthDeg: first.azimuthDeg, minute: day.sunriseMinute ?? first.minute } : null,
+    rise: first
+      ? { azimuthDeg: first.azimuthDeg, minute: day.sunriseMinute ?? first.minute }
+      : null,
     set:
       last && last !== first
         ? { azimuthDeg: last.azimuthDeg, minute: day.sunsetMinute ?? last.minute }

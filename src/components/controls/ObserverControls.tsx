@@ -53,7 +53,10 @@ export function ObserverControls({ pinOnBuilding, pinBuildingHeightM }: Observer
   const { mode, heightM, facingDeg, fovDeg } = observer;
   const roofHeightM =
     pinBuildingHeightM !== null
-      ? Math.min(SETTINGS_LIMITS.heightM.max, Math.round((pinBuildingHeightM + EYE_HEIGHT_M) * 2) / 2)
+      ? Math.min(
+          SETTINGS_LIMITS.heightM.max,
+          Math.round((pinBuildingHeightM + EYE_HEIGHT_M) * 2) / 2,
+        )
       : DEFAULT_ROOF_HEIGHT_M;
   const presets = [
     { label: "Ground", heightM: 1 },
@@ -172,7 +175,11 @@ export function ObserverControls({ pinOnBuilding, pinBuildingHeightM }: Observer
               valueText={`${facingDeg} degrees, ${compassName(facingDeg)}`}
               onChange={(value) => setObserver({ facingDeg: value })}
             />
-            <div className="grid grid-cols-8 gap-1" role="group" aria-label="Facing direction">
+            <div
+              className="grid grid-cols-4 gap-1 sm:grid-cols-8"
+              role="group"
+              aria-label="Facing direction"
+            >
               {FACINGS.map((deg) => (
                 <button
                   key={deg}
@@ -204,7 +211,8 @@ export function ObserverControls({ pinOnBuilding, pinBuildingHeightM }: Observer
               onChange={(value) => setObserver({ fovDeg: value })}
             />
             <p className="text-xs text-ink-2">
-              A flat window sees about 180°. Use less for a deep-set window, more for a bay or corner.
+              A flat window sees about 180°. Use less for a deep-set window, more for a bay or
+              corner.
             </p>
           </div>
         </div>

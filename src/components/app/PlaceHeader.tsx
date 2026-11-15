@@ -7,11 +7,9 @@ import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { CheckIcon, ResetIcon, ShareIcon } from "@/components/ui/icons";
 import { clearBuildingCache } from "@/lib/buildings/cache";
-import type { UseBuildingsResult } from "@/lib/buildings/useBuildings";
 import type { Place } from "@/lib/types";
 import { buildShareUrl, pickSettings, useSettings } from "@/state";
 import { Brand } from "./Brand";
-import { DataStatus } from "./DataStatus";
 
 const COPIED_MS = 2200;
 
@@ -49,17 +47,10 @@ interface PlaceHeaderProps {
   timeZone: string;
   /** The zone in words at the selected time: "Los Angeles time (PDT, UTC−7)". */
   zoneLabel: string;
-  /** State of the building data behind the numbers. */
-  buildings: Pick<UseBuildingsResult, "status" | "stats" | "error" | "isFetching" | "refetch">;
 }
 
 /** Which place this is, in which time zone, plus the share link and reset. */
-export function PlaceHeader({
-  place,
-  timeZone,
-  zoneLabel,
-  buildings,
-}: PlaceHeaderProps) {
+export function PlaceHeader({ place, timeZone, zoneLabel }: PlaceHeaderProps) {
   const queryClient = useQueryClient();
   const { share, copy, dismiss } = useShareLink();
   const [confirmingReset, setConfirmingReset] = useState(false);
@@ -101,9 +92,13 @@ export function PlaceHeader({
               )}
               {share.kind === "copied" ? "Copied" : "Share"}
             </Button>
-            <Button variant="ghost" onClick={() => setConfirmingReset(true)}>
+            <Button
+              variant="ghost"
+              className="max-sm:w-10 max-sm:px-0!"
+              onClick={() => setConfirmingReset(true)}
+            >
               <ResetIcon width={18} height={18} />
-              Reset
+              <span className="max-sm:sr-only">Reset</span>
             </Button>
           </div>
         )}
@@ -139,9 +134,6 @@ export function PlaceHeader({
         <span aria-hidden="true"> · </span>
         <span title={timeZone}>{zoneLabel}</span>
       </p>
-      <div className="mt-2.5 border-t border-line pt-2">
-        <DataStatus buildings={buildings} />
-      </div>
     </Card>
   );
 }

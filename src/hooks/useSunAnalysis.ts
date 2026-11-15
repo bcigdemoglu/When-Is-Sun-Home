@@ -5,7 +5,7 @@
  * shows. Each piece is memoised on exactly its own inputs:
  *
  *   grid    ← lat, lng, year, timeZone                 (≈ 25–50 ms)
- *   horizon ← lat, lng, buildings, observer.heightM    (≈ 1–20 ms)
+ *   horizon ← lat, lng, buildings, terrain, observer.heightM   (≈ 1–30 ms)
  *   year    ← grid, horizon, observer                  (≈ 1–2 ms)
  *   day     ← lat, lng, date, timeZone, horizon, observer   (≈ 0.6 ms)
  *   instant ← day's inputs + minuteOfDay               (microseconds)
@@ -29,6 +29,7 @@ import {
   yearOfDate,
 } from "@/lib/analysis";
 import { useBuildings, type UseBuildingsResult } from "@/lib/buildings/useBuildings";
+import { useTerrain } from "@/lib/terrain";
 import type {
   DayAnalysis,
   HorizonProfile,
@@ -38,13 +39,7 @@ import type {
   SunYearGrid,
   YearAnalysis,
 } from "@/lib/types";
-import {
-  selectDate,
-  selectMinuteOfDay,
-  selectObserver,
-  selectPlace,
-  useSettings,
-} from "@/state";
+import { selectDate, selectMinuteOfDay, selectObserver, selectPlace, useSettings } from "@/state";
 import { buildingIdAt, resolveDateTime, usableBuildings } from "./sunAnalysis";
 import { useNow } from "./useNow";
 import { useThrottledValue } from "./useThrottledValue";
@@ -70,6 +65,8 @@ export interface SunAnalysis {
    * available: every result then describes an unobstructed sky.
    */
   isUnobstructed: boolean;
+  /** Ground-elevation (hill) data: "ready" means slopes and hills are included. */
+  terrainStatus: "idle" | "loading" | "ready" | "error";
   grid: SunYearGrid | null;
   horizon: HorizonProfile | null;
   year: YearAnalysis | null;
@@ -106,15 +103,7 @@ export function useSunAnalysis(): SunAnalysis | null {
   // `useBuildings` hands out a fresh object per render; keep ours stable so
   // that consumers (and the throttles below them) only see real changes.
   const query = useBuildings(place);
-  const {
-    buildings: collection,
-    status,
-    error,
-    isFetching,
-    isPlaceholder,
-    refetch,
-    stats,
-  } = query;
+  const { buildings: collection, status, error, isFetching, isPlaceholder, refetch, stats } = query;
   const buildings = useMemo<UseBuildingsResult>(
     () => ({ buildings: collection, status, error, isFetching, isPlaceholder, refetch, stats }),
     [collection, status, error, isFetching, isPlaceholder, refetch, stats],
@@ -129,11 +118,20 @@ export function useSunAnalysis(): SunAnalysis | null {
     );
   }, [lat, lng, year, timeZone]);
 
+  // Ground elevations (hills). Optional: while they load, or if they fail,
+  // the skyline is computed on flat ground and refined when they arrive.
+  const { terrain, status: terrainStatus } = useTerrain(place);
+
   const heightM = observer.heightM;
   const horizon = useMemo(() => {
     if (lat === null || lng === null || measured === null) return null;
-    return computeHorizonProfile({ lat, lng }, measured, heightM);
-  }, [lat, lng, measured, heightM]);
+    return computeHorizonProfile(
+      { lat, lng },
+      measured,
+      heightM,
+      terrain ? { terrain } : undefined,
+    );
+  }, [lat, lng, measured, heightM, terrain]);
 
   const yearAnalysis = useMemo(
     () => (grid === null ? null : analyzeYear(grid, horizon, observer)),
@@ -167,6 +165,7 @@ export function useSunAnalysis(): SunAnalysis | null {
       observer,
       buildings,
       isUnobstructed: measured === null,
+      terrainStatus,
       grid,
       horizon,
       year: yearAnalysis,
@@ -185,6 +184,7 @@ export function useSunAnalysis(): SunAnalysis | null {
     observer,
     buildings,
     measured,
+    terrainStatus,
     grid,
     horizon,
     yearAnalysis,

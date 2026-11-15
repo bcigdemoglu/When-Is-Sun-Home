@@ -47,7 +47,8 @@ describe("createPacer", () => {
     // One emission per 30 ms: about 20 in 600 ms.
     expect(emits.length).toBeGreaterThanOrEqual(18);
     expect(emits.length).toBeLessThanOrEqual(21);
-    for (let i = 1; i < emits.length; i++) expect(emits[i] - emits[i - 1]).toBeGreaterThanOrEqual(30);
+    for (let i = 1; i < emits.length; i++)
+      expect(emits[i] - emits[i - 1]).toBeGreaterThanOrEqual(30);
   });
 
   it("backs off in proportion to what the consumer costs", () => {
@@ -55,7 +56,8 @@ describe("createPacer", () => {
     const pacer = createPacer({ ...base, onEmit, settle });
     stream(() => pacer.request(), 5, 3000);
     // Each cycle: 160 ms of work + 3 × 120 ms of rest = 520 ms.
-    for (let i = 1; i < emits.length; i++) expect(emits[i] - emits[i - 1]).toBeGreaterThanOrEqual(520);
+    for (let i = 1; i < emits.length; i++)
+      expect(emits[i] - emits[i - 1]).toBeGreaterThanOrEqual(520);
     expect(emits.length).toBeGreaterThanOrEqual(5);
     expect(emits.length).toBeLessThanOrEqual(6);
     // So the consumer is busy for under a third of the time.

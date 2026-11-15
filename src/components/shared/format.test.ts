@@ -5,7 +5,6 @@ import {
   formatClock,
   formatClockCompact,
   formatCoordinates,
-  formatDuration,
   formatMonthDay,
   formatShortDate,
   utcOffsetLabel,
@@ -34,14 +33,6 @@ describe("formatClock", () => {
   it("has a compact form", () => {
     expect(formatClockCompact(6 * 60 + 5)).toBe("6:05a");
     expect(formatClockCompact(17 * 60)).toBe("5:00p");
-  });
-});
-
-describe("formatDuration", () => {
-  it("formats minutes and hours", () => {
-    expect(formatDuration(45)).toBe("45 min");
-    expect(formatDuration(125)).toBe("2 h 05 min");
-    expect(formatDuration(-3)).toBe("0 min");
   });
 });
 

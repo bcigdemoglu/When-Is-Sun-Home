@@ -36,9 +36,9 @@ describe("polar projection", () => {
 
 describe("sunPathRuns", () => {
   it("returns nothing for a day without sun", () => {
-    expect(sunPathRuns([sample(0, SunState.Night, -5), sample(1, SunState.Night, -4)], 100)).toEqual(
-      [],
-    );
+    expect(
+      sunPathRuns([sample(0, SunState.Night, -5), sample(1, SunState.Night, -4)], 100),
+    ).toEqual([]);
   });
 
   it("splits the path where the state changes and keeps the runs connected", () => {
@@ -80,7 +80,8 @@ describe("sunPathRuns", () => {
     const samples: DaySample[] = [];
     for (let m = 0; m < 1440; m++) {
       const altitude = 60 * Math.sin(((m - 360) / 720) * Math.PI);
-      const state = altitude > 0 ? (m % 200 < 100 ? SunState.Sun : SunState.OutOfView) : SunState.Night;
+      const state =
+        altitude > 0 ? (m % 200 < 100 ? SunState.Sun : SunState.OutOfView) : SunState.Night;
       samples.push(sample(m, state, altitude, (m / 4) % 360));
     }
     for (const run of sunPathRuns(samples, 100)) {

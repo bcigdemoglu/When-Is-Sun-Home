@@ -39,6 +39,64 @@ function MapUnavailable({ onRetry }: { onRetry(): void }) {
   );
 }
 
+const NOTICE =
+  "mt-1.5 flex w-fit max-w-full items-center gap-2 rounded-lg border bg-surface px-2.5 py-1.5 text-xs leading-snug text-ink shadow-md";
+
+/**
+ * Says, on the map, when the shade is missing: while the buildings load or
+ * after they failed to load, nothing here (and no number in the report)
+ * accounts for them yet.
+ */
+function BuildingNotice({
+  status,
+  count,
+  fetching,
+  onRetry,
+}: {
+  status: BuildingsStatus;
+  count: number | null;
+  fetching: boolean;
+  onRetry: (() => void) | null;
+}) {
+  if (status === "loading") {
+    return (
+      <p role="status" className={`${NOTICE} border-line`}>
+        <span
+          aria-hidden="true"
+          className="h-3 w-3 shrink-0 rounded-full border-2 border-line border-t-accent motion-safe:animate-spin"
+        />
+        <span>
+          <strong className="font-semibold">Loading buildings…</strong> Sun hours are provisional
+          until they arrive.
+        </span>
+      </p>
+    );
+  }
+  if (status === "error") {
+    return (
+      <div role="alert" className={`${NOTICE} border-danger`}>
+        <span>
+          <strong className="font-semibold">Building data couldn’t be loaded.</strong> No shade is
+          shown, and the sun hours assume an open sky.
+        </span>
+        {onRetry && (
+          <Button variant="primary" onClick={onRetry} disabled={fetching}>
+            {fetching ? "Retrying…" : "Retry"}
+          </Button>
+        )}
+      </div>
+    );
+  }
+  if (status === "ready" && count === 0) {
+    return (
+      <p role="status" className={`${NOTICE} border-line`}>
+        No buildings are mapped around this spot: an open sky is assumed.
+      </p>
+    );
+  }
+  return null;
+}
+
 // Deliberately small props: nothing here changes identity on a slider tick
 // except `instant` (three numbers).
 interface MapPanelProps {
@@ -46,6 +104,10 @@ interface MapPanelProps {
   /** Buildings to draw; may be a neighbouring area's while the real ones load. */
   buildings: BuildingCollection | null;
   buildingStatus: BuildingsStatus;
+  /** How many buildings were found, once known. */
+  buildingCount: number | null;
+  buildingsFetching: boolean;
+  onRetryBuildings: (() => void) | null;
   sunPath: SunPathModel | null;
   instant: SunInstant | null;
   blockerBuildingId: string | null;
@@ -61,6 +123,9 @@ export function MapPanel({
   place,
   buildings,
   buildingStatus,
+  buildingCount,
+  buildingsFetching,
+  onRetryBuildings,
   sunPath,
   instant,
   blockerBuildingId,
@@ -94,23 +159,12 @@ export function MapPanel({
 
       <div className="absolute top-2.5 left-2.5 z-20 w-[min(22rem,calc(100%-4.25rem))]">
         <SearchBox bias={place} onSelect={pinSuggestion} />
-        {buildingStatus === "loading" && (
-          <p
-            aria-hidden="true"
-            className="mt-1.5 inline-flex items-center gap-2 rounded-lg border border-line bg-surface px-2.5 py-1.5 text-xs font-medium text-ink shadow-md"
-          >
-            <span className="h-3 w-3 rounded-full border-2 border-line border-t-accent motion-safe:animate-spin" />
-            Loading buildings…
-          </p>
-        )}
-        {buildingStatus === "error" && (
-          <p
-            aria-hidden="true"
-            className="mt-1.5 inline-flex items-center gap-2 rounded-lg border border-danger bg-surface px-2.5 py-1.5 text-xs font-medium text-ink shadow-md"
-          >
-            No building data: shade is not shown
-          </p>
-        )}
+        <BuildingNotice
+          status={buildingStatus}
+          count={buildingCount}
+          fetching={buildingsFetching}
+          onRetry={onRetryBuildings}
+        />
       </div>
     </div>
   );

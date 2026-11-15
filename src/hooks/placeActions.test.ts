@@ -114,7 +114,13 @@ describe("pinSuggestion", () => {
   it("pins a search result with its name and cancels any pending lookup", async () => {
     reverseGeocode.mockResolvedValue("Should not be used");
     pinSpot(A);
-    pinSuggestion({ id: "x", ...B, name: "Pacific Heights, San Francisco", label: "Pacific Heights", detail: "" });
+    pinSuggestion({
+      id: "x",
+      ...B,
+      name: "Pacific Heights, San Francisco",
+      label: "Pacific Heights",
+      detail: "",
+    });
     await settle();
     expect(reverseGeocode).not.toHaveBeenCalled();
     expect(place()).toEqual({ ...B, name: "Pacific Heights, San Francisco" });

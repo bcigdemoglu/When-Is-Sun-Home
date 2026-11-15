@@ -16,7 +16,13 @@ describe("stateRuns", () => {
     const day = {
       stepMinutes: 1,
       samples: samples((m) =>
-        m < 400 ? SunState.Night : m < 500 ? SunState.Blocked : m < 1000 ? SunState.Sun : SunState.Night,
+        m < 400
+          ? SunState.Night
+          : m < 500
+            ? SunState.Blocked
+            : m < 1000
+              ? SunState.Sun
+              : SunState.Night,
       ),
     };
     expect(stateRuns(day)).toEqual([

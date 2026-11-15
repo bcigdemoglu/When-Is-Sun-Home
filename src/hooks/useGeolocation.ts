@@ -4,9 +4,7 @@ import { useState } from "react";
 import type { LatLng } from "@/lib/types";
 
 export type GeolocationState =
-  | { status: "idle" }
-  | { status: "locating" }
-  | { status: "error"; message: string };
+  { status: "idle" } | { status: "locating" } | { status: "error"; message: string };
 
 /** A sentence for the person, for each way the browser can refuse. */
 export function geolocationErrorMessage(code: number | null): string {

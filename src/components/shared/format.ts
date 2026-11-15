@@ -27,16 +27,6 @@ export function formatClockCompact(minuteOfDay: number): string {
   return `${hour12}:${String(minute).padStart(2, "0")}${hour24 < 12 ? "a" : "p"}`;
 }
 
-/** "2 h 05 min" / "45 min". */
-export function formatDuration(minutes: number): string {
-  if (!Number.isFinite(minutes)) return "–";
-  const total = Math.max(0, Math.round(minutes));
-  const hours = Math.floor(total / 60);
-  const rest = total % 60;
-  if (hours === 0) return `${rest} min`;
-  return `${hours} h ${String(rest).padStart(2, "0")} min`;
-}
-
 /**
  * The real instant a wall-clock time stands for. A time skipped by a DST
  * spring-forward resolves to the moment the clocks show next (one hour on).

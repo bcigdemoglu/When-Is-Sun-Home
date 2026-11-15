@@ -183,12 +183,16 @@ body {
 .maplibregl-ctrl-group button + button {
   border-top-color: var(--line);
 }
-.maplibregl-ctrl-attrib {
-  background: color-mix(in srgb, var(--surface) 80%, transparent);
+/* Two classes each, because MapLibre's own rules are that specific. */
+.maplibregl-ctrl.maplibregl-ctrl-attrib {
+  background: color-mix(in srgb, var(--surface) 85%, transparent);
   color: var(--ink-2);
 }
-.maplibregl-ctrl-attrib a {
+.maplibregl-ctrl.maplibregl-ctrl-attrib a {
   color: var(--ink-2);
+}
+.maplibregl-ctrl.maplibregl-ctrl-attrib.maplibregl-compact {
+  background: var(--surface);
 }
 @media (prefers-color-scheme: dark) {
   .maplibregl-ctrl-group button .maplibregl-ctrl-icon,

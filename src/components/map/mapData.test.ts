@@ -70,8 +70,8 @@ describe("buildingsNear", () => {
     expect(
       ids(buildingsNear({ type: "FeatureCollection", features: [multi] }, CENTER, 250)),
     ).toEqual(["multi"]);
-    expect(buildingsNear({ type: "FeatureCollection", features: [] }, CENTER, 250).features).toEqual(
-      [],
-    );
+    expect(
+      buildingsNear({ type: "FeatureCollection", features: [] }, CENTER, 250).features,
+    ).toEqual([]);
   });
 });

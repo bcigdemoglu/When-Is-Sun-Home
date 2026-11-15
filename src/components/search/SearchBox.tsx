@@ -53,7 +53,8 @@ export function SearchBox({ bias, onSelect, className = "" }: SearchBoxProps) {
   const move = (delta: 1 | -1) => {
     if (suggestions.length === 0) return;
     const count = suggestions.length;
-    const next = activeIndex < 0 ? (delta > 0 ? 0 : count - 1) : (activeIndex + delta + count) % count;
+    const next =
+      activeIndex < 0 ? (delta > 0 ? 0 : count - 1) : (activeIndex + delta + count) % count;
     setActiveId(suggestions[next].id);
   };
 
@@ -75,7 +76,8 @@ export function SearchBox({ bias, onSelect, className = "" }: SearchBoxProps) {
         if (!showList) break;
         event.preventDefault();
         // No highlight: take the best match, but never a stale one.
-        const picked = activeIndex >= 0 ? suggestions[activeIndex] : isStale ? null : suggestions[0];
+        const picked =
+          activeIndex >= 0 ? suggestions[activeIndex] : isStale ? null : suggestions[0];
         if (picked) choose(picked);
         break;
       }
@@ -167,7 +169,9 @@ export function SearchBox({ bias, onSelect, className = "" }: SearchBoxProps) {
                     onMouseEnter={() => setActiveId(suggestion.id)}
                     onClick={() => choose(suggestion)}
                   >
-                    <span className="truncate text-sm font-medium text-ink">{suggestion.label}</span>
+                    <span className="truncate text-sm font-medium text-ink">
+                      {suggestion.label}
+                    </span>
                     {suggestion.detail && (
                       <span className="truncate text-xs text-ink-2">{suggestion.detail}</span>
                     )}

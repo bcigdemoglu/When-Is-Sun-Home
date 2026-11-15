@@ -26,8 +26,8 @@ export function EmptyState() {
         How much sun does that backyard really get?
       </h2>
       <p className="mt-3 text-sm leading-relaxed text-ink-2">
-        Drop a pin on a yard, a terrace or a window and see how many hours of direct sunlight it gets
-        on every day of the year, and at what time of day. Nearby buildings are taken from
+        Drop a pin on a yard, a terrace or a window and see how many hours of direct sunlight it
+        gets on every day of the year, and at what time of day. Nearby buildings are taken from
         OpenStreetMap to work out when they put the spot in shade.
       </p>
       <p className="mt-3 text-sm font-medium text-ink">
