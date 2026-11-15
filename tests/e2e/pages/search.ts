@@ -21,6 +21,14 @@ export class SearchPage extends PageObject {
   readonly clearPlace = this.page.getByRole("button", { name: "Clear this place" });
   /** The visible message (a screen-reader copy of it lives in a status region). */
   readonly noResults = this.page.locator("p").filter({ hasText: /^No address matches “/ });
+  /** Photon is down: suggestions no longer follow the typing. */
+  readonly submitNote = this.page.getByText(
+    "Live suggestions are unavailable right now. Press Enter to search.",
+    { exact: true },
+  );
+  /** Who the address results come from. */
+  readonly attribution = this.page.getByTestId("search-attribution");
+  /** Both geocoders failed. */
   readonly searchFailed = this.page.getByText("Couldn’t search — check your connection.");
   readonly tryAgain = this.page.getByRole("button", { name: "Try again" });
 

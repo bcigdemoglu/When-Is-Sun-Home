@@ -7,6 +7,7 @@ import {
   API_FALLBACK_TIMEOUT_MS,
   BuildingsUnavailableError,
   NETWORK_BUDGET_MS,
+  RESUME_DELAY_MS,
   loadBuildings,
 } from "./loader";
 import { OVERPASS_ENDPOINTS, OverpassError, isAbortError, parseOverpassResponse } from "./overpass";
@@ -431,7 +432,7 @@ describe("loadBuildings: a page in the background", () => {
       throw new TypeError("Load failed");
     };
 
-    const pending = loadBuildings(AREA);
+    const pending = loadBuildings(AREA, { resumeDelayMs: 0 });
     const isSettled = settled(pending);
     // Every source failed, yet there is no error: the load waits for the page.
     await vi.waitFor(() => expect(calls("overpass")).toHaveLength(OVERPASS_ENDPOINTS.length));
@@ -458,7 +459,7 @@ describe("loadBuildings: a page in the background", () => {
   test("a link opened in a background tab is treated the same", async () => {
     const page = fakePage("hidden");
     everythingCutOff();
-    const pending = loadBuildings(AREA);
+    const pending = loadBuildings(AREA, { resumeDelayMs: 0 });
     await vi.waitFor(() => expect(calls("overpass")).toHaveLength(OVERPASS_ENDPOINTS.length));
 
     everythingBack();
@@ -473,7 +474,7 @@ describe("loadBuildings: a page in the background", () => {
       page.show("hidden");
       throw new TypeError("Load failed");
     };
-    const pending = failure(loadBuildings(AREA));
+    const pending = failure(loadBuildings(AREA, { resumeDelayMs: 0 }));
     await vi.waitFor(() => expect(calls("overpass")).toHaveLength(OVERPASS_ENDPOINTS.length));
 
     tiles = cutOff; // still no network after coming back
@@ -492,7 +493,7 @@ describe("loadBuildings: a page in the background", () => {
   test("a failure with the page in view all along is final", async () => {
     const page = fakePage();
     everythingCutOff();
-    const error = await failure(loadBuildings(AREA));
+    const error = await failure(loadBuildings(AREA, { resumeDelayMs: 0 }));
     expect(error).toBeInstanceOf(BuildingsUnavailableError);
     expect(calls("overpass")).toHaveLength(OVERPASS_ENDPOINTS.length);
     expect(page.listeners.removed).toBe(page.listeners.added);
@@ -505,7 +506,9 @@ describe("loadBuildings: a page in the background", () => {
       page.show("hidden");
       return ok(url, init);
     };
-    await expect(loadBuildings(AREA)).resolves.toMatchObject({ source: "tiles" });
+    await expect(loadBuildings(AREA, { resumeDelayMs: 0 })).resolves.toMatchObject({
+      source: "tiles",
+    });
     expect(calls("tile")).toHaveLength(4);
   });
 
@@ -513,7 +516,7 @@ describe("loadBuildings: a page in the background", () => {
     const page = fakePage("hidden");
     everythingCutOff();
     const controller = new AbortController();
-    const pending = failure(loadBuildings(AREA, { signal: controller.signal }));
+    const pending = failure(loadBuildings(AREA, { signal: controller.signal, resumeDelayMs: 0 }));
     await vi.waitFor(() => expect(calls("overpass")).toHaveLength(OVERPASS_ENDPOINTS.length));
     const before = fetchMock.mock.calls.length;
 
@@ -523,6 +526,62 @@ describe("loadBuildings: a page in the background", () => {
     page.show("visible");
     await new Promise((resolve) => setTimeout(resolve, 20));
     expect(fetchMock.mock.calls).toHaveLength(before);
+    expect(page.listeners.removed).toBe(page.listeners.added);
+  });
+
+  test("the second round starts a moment after the page is back, not in the same instant", async () => {
+    expect(RESUME_DELAY_MS).toBeGreaterThanOrEqual(500);
+    vi.useFakeTimers();
+    const page = fakePage("hidden");
+    everythingCutOff();
+    // (`fresh` only to keep IndexedDB out of a fake-timer test.)
+    const pending = loadBuildings(AREA, { fresh: true });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(calls("overpass")).toHaveLength(OVERPASS_ENDPOINTS.length);
+    const before = fetchMock.mock.calls.length;
+
+    everythingBack();
+    page.show("visible");
+    await vi.advanceTimersByTimeAsync(RESUME_DELAY_MS - 1);
+    expect(fetchMock.mock.calls).toHaveLength(before);
+    await vi.advanceTimersByTimeAsync(1);
+    await expect(pending).resolves.toMatchObject({ source: "tiles" });
+  });
+
+  test("a page that is gone again before the moment is over is waited for again", async () => {
+    vi.useFakeTimers();
+    const page = fakePage("hidden");
+    everythingCutOff();
+    const pending = loadBuildings(AREA, { fresh: true });
+    await vi.advanceTimersByTimeAsync(0);
+    const before = fetchMock.mock.calls.length;
+
+    everythingBack();
+    page.show("visible");
+    await vi.advanceTimersByTimeAsync(RESUME_DELAY_MS / 2);
+    page.show("hidden");
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(fetchMock.mock.calls).toHaveLength(before);
+
+    page.show("visible");
+    await vi.advanceTimersByTimeAsync(RESUME_DELAY_MS);
+    await expect(pending).resolves.toMatchObject({ source: "tiles" });
+    expect(page.listeners.removed).toBe(page.listeners.added);
+  });
+
+  test("aborting during that moment: AbortError, and no timer is left behind", async () => {
+    vi.useFakeTimers();
+    const page = fakePage("hidden");
+    everythingCutOff();
+    const controller = new AbortController();
+    const pending = failure(loadBuildings(AREA, { fresh: true, signal: controller.signal }));
+    await vi.advanceTimersByTimeAsync(0);
+    page.show("visible");
+    await vi.advanceTimersByTimeAsync(RESUME_DELAY_MS / 2);
+
+    controller.abort();
+    expect(isAbortError(await pending)).toBe(true);
+    expect(vi.getTimerCount()).toBe(0);
     expect(page.listeners.removed).toBe(page.listeners.added);
   });
 });

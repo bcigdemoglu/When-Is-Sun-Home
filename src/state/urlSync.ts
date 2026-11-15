@@ -14,15 +14,27 @@
  *    produces ONE call, after it ends;
  *  - rate limited twice over, independently of the debounce: at least
  *    `minIntervalMs` between two calls, and at most `maxCallsPerWindow` calls
- *    per rolling `windowMs`. With the defaults that is 30 per 30 s — under a
- *    third of Safari's budget, leaving the rest to the framework's own
- *    navigation. An update that arrives too early is not lost, it is written
- *    when the limiter allows;
+ *    per rolling `windowMs`. An update that arrives too early is not lost,
+ *    it is written when the limiter allows;
  *  - skipped when the query string would not change;
  *  - wrapped in try/catch, with a pause (and a bounded number of retries)
  *    after a failure;
  *  - never made before hydration has finished (it would wipe the very URL
  *    hydration is about to read).
+ *
+ * WHAT THE BUDGET REALLY IS. Every call made here costs TWO of the browser's:
+ * Next.js patches `history.replaceState`, passes ours on, syncs its router
+ * with the new URL, and that router update writes its own state back with a
+ * second `replaceState` (`HistoryUpdater` in next/dist/client/components/
+ * app-router.js). That second call is the framework's, in a React effect and
+ * outside any try/catch of ours: if IT hit the limit, the page would crash.
+ * WebKit counts pushState and replaceState together, per page, in a window
+ * that restarts once it is over: 100 per 30 s in the WebKit of Safari 16,
+ * 100 per 10 s in recent WebKit (WebCore/page/History.cpp, releases 2.38
+ * and 2.48). With the defaults below that makes at most 60 of the 100 in any
+ * 30 s, and at most 52 in any 10 s (the minimum interval allows 26 calls).
+ * Nothing else in the app navigates or touches the history. Keep
+ * `2 × maxCallsPerWindow` well under 100 (there is a test for it).
  *
  * The whole query string belongs to the settings: it is replaced, not merged.
  * `location.pathname` and `location.hash` are preserved.

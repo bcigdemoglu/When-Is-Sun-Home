@@ -171,6 +171,38 @@ test.describe("First run", () => {
     await expect(page).not.toHaveURL(/lat=40\.7/);
   });
 
+  test("with a place open, the map’s locate button moves the pin — or says why it cannot", async ({
+    app,
+    context,
+    page,
+    isPhone,
+  }) => {
+    await app.openPlace("lat=37.76956&lng=-122.24604&n=Open+field");
+    // The map button (the start screen's big one is gone with the start screen).
+    const scope = isPhone ? app.sheet : page;
+    const locate = scope.getByRole("button", { name: "Use my location", exact: true });
+
+    // Denied: there is no room next to the button, so it is said as a toast.
+    await app.press(locate);
+    await expect(app.toast(/^Location is blocked for this site\./)).toBeVisible();
+    await expect(app.placeTitle).toHaveText("Open field");
+    await expect(locate).toBeEnabled();
+
+    await context.grantPermissions(["geolocation"]);
+    await context.setGeolocation({
+      latitude: FIXTURE_PIN.lat,
+      longitude: FIXTURE_PIN.lng,
+      accuracy: 20,
+    });
+    await app.press(locate);
+    await expect(page).toHaveURL(/lat=37\.79120&lng=-122\.43010/);
+    // A new spot: the old name is gone, the new address is looked up.
+    await expect(app.placeTitle).toHaveText(MOCK_ADDRESS);
+    await app.waitForAnswer();
+    await expect(app.includedNote).toContainText(`${FIXTURE_BUILDING_COUNT} nearby buildings`);
+    if (isPhone) await app.expectSheetAt("peek");
+  });
+
   test("“See an example” opens a real report", async ({ app, timeBar, isPhone }) => {
     await app.open();
     if (isPhone) await app.moveSheetTo("full");

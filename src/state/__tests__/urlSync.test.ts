@@ -238,6 +238,29 @@ describe("startUrlSync", () => {
     expect(href()).toBe("/?t=0059");
   });
 
+  test("counting the router's echo of every call, the worst case fits both of WebKit's limits", () => {
+    // Next.js answers each replaceState of ours with one of its own (its
+    // router writes its state back), so the browser sees two per call. WebKit
+    // allows 100 per 30 s (the Safari 16 era) or 100 per 10 s (recent releases).
+    const NATIVE_CALLS_PER_CALL = 2;
+    const NEWER_WEBKIT_WINDOW_MS = 10_000;
+    store.hydrateSettings();
+    sync.startUrlSync({ debounceMs: 0 });
+    // The most a page can ask for: a change every millisecond for two minutes.
+    for (let i = 0; i < 120_000; i++) {
+      store.useSettings.getState().setMinuteOfDay(i % 1440);
+      vi.advanceTimersByTime(1);
+    }
+    vi.advanceTimersByTime(60_000);
+
+    expect(callTimes.length).toBeGreaterThan(100);
+    const in30s = NATIVE_CALLS_PER_CALL * maxCallsInAnyWindow(callTimes, SAFARI_WINDOW_MS);
+    const in10s = NATIVE_CALLS_PER_CALL * maxCallsInAnyWindow(callTimes, NEWER_WEBKIT_WINDOW_MS);
+    // With room to spare for the router's own first write and anything unforeseen.
+    expect(in30s).toBeLessThanOrEqual(SAFARI_LIMIT - 25);
+    expect(in10s).toBeLessThanOrEqual(SAFARI_LIMIT - 25);
+  });
+
   test("any update pattern respects both limits (randomised)", () => {
     store.hydrateSettings();
     sync.startUrlSync();

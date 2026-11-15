@@ -20,7 +20,7 @@
  * off ("Load failed") and stops its clocks, so on return every source has
  * failed and the budget is long gone. That says nothing about the sources. A
  * load that failed with the page in the background is therefore run once
- * more, with a fresh budget, as soon as the page is visible again.
+ * more, with a fresh budget, shortly after the page is visible again.
  */
 import type { BuildingCollection } from "@/lib/types";
 import { fetchBuildingsFromApi } from "./api";
@@ -37,6 +37,13 @@ export const NETWORK_BUDGET_MS = 28_000;
 export const API_FALLBACK_TIMEOUT_MS = 8_000;
 /** A fallback is not started with less time than this left. */
 const MIN_STAGE_MS = 1_500;
+/**
+ * How long after the page came back to the foreground the load is run again.
+ * Not at once: Safari on iOS 18 can lose a request that starts in the very
+ * moment the page becomes visible (it fails with "Load failed" half a minute
+ * later), and the connections of a phone that just woke up need a moment.
+ */
+export const RESUME_DELAY_MS = 1_000;
 
 export interface LoadedBuildings {
   buildings: BuildingCollection;
@@ -79,6 +86,8 @@ export interface LoadBuildingsOptions {
   fresh?: boolean;
   fetchImpl?: typeof fetch;
   budgetMs?: number;
+  /** See `RESUME_DELAY_MS`. */
+  resumeDelayMs?: number;
 }
 
 /**
@@ -96,6 +105,7 @@ function watchPage() {
   page?.addEventListener("visibilitychange", note);
 
   return {
+    isHidden,
     wasHidden: () => wasHidden,
     stop: () => page?.removeEventListener("visibilitychange", note),
     /** Resolves once the page is visible; rejects with an AbortError if `signal` fires first. */
@@ -129,6 +139,25 @@ function watchPage() {
   };
 }
 
+/** Resolves after `ms`; rejects with an AbortError as soon as `signal` fires. */
+function pause(ms: number, signal: AbortSignal | undefined): Promise<void> {
+  return new Promise<void>((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(abortErrorFrom(signal));
+      return;
+    }
+    const onAbort = () => {
+      clearTimeout(timer);
+      reject(abortErrorFrom(signal as AbortSignal));
+    };
+    const timer = setTimeout(() => {
+      signal?.removeEventListener("abort", onAbort);
+      resolve();
+    }, ms);
+    signal?.addEventListener("abort", onAbort, { once: true });
+  });
+}
+
 /**
  * The buildings for one fetch area, from the first source that has them.
  *
@@ -139,7 +168,7 @@ export async function loadBuildings(
   area: FetchArea,
   options: LoadBuildingsOptions = {},
 ): Promise<LoadedBuildings> {
-  const { signal, fresh = false } = options;
+  const { signal, fresh = false, resumeDelayMs = RESUME_DELAY_MS } = options;
 
   if (!fresh) {
     const cached = await getCachedBuildingsEntry(area.key);
@@ -155,7 +184,10 @@ export async function loadBuildings(
       // the page being suspended may be what made them fail.
       if (!(error instanceof BuildingsUnavailableError) || !page.wasHidden()) throw error;
     }
-    await page.visible(signal);
+    do {
+      await page.visible(signal);
+      await pause(resumeDelayMs, signal);
+    } while (page.isHidden());
     return await loadFromNetwork(area, options);
   } finally {
     page.stop();

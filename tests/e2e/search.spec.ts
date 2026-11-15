@@ -1,9 +1,17 @@
 /**
  * Journey 2 — search: opening it (takeover on phones, inline with "/" on
- * desktop), suggestions, keyboard, the empty / failed states, coordinates,
- * "Choose on the map" and clearing the place.
+ * desktop), suggestions, keyboard, the empty state, what happens when one or
+ * both geocoders are down, coordinates, "Choose on the map" and clearing the
+ * place.
  */
-import { FIXTURE_BUILDING_COUNT, FIXTURE_QUERY, MOCK_ADDRESS, expect, test } from "./fixtures";
+import {
+  FIXTURE_BUILDING_COUNT,
+  FIXTURE_QUERY,
+  MOCK_ADDRESS,
+  NOMINATIM_MOCK_ADDRESS,
+  expect,
+  test,
+} from "./fixtures";
 
 const SF = "2140 Pacific Avenue, San Francisco, California, United States";
 
@@ -166,19 +174,124 @@ test.describe("Search", () => {
     await expect(search.noResults).toHaveCount(0);
   });
 
-  test("a failed search says so, and “Try again” recovers", async ({ app, search, mocks }) => {
+  test("Photon down: search waits for Enter, then asks Nominatim exactly once", async ({
+    app,
+    search,
+    page,
+    mocks,
+  }) => {
     await app.open();
-    mocks.photon.failSearches();
+    mocks.photon.down();
     await search.open();
     await search.type("pacific");
 
-    await expect(search.searchFailed).toBeVisible();
-    await expect(search.chooseOnMap).toBeVisible();
-
-    mocks.photon.searchWorks();
-    await app.press(search.tryAgain);
-    await expect(search.option(SF)).toBeVisible();
+    // The live search failed (one try, one retry): submit mode takes over.
+    await expect(search.submitNote).toBeVisible();
+    const submit = search.option("Search for pacific");
+    await expect(submit).toBeVisible();
+    await expect(submit).toContainText("Look this address up");
     await expect(search.searchFailed).toHaveCount(0);
+    expect(mocks.photon.searches).toEqual(["pacific", "pacific"]);
+
+    // From here on typing asks nobody: Photon is resting, Nominatim only answers a submit.
+    await search.type(" ave");
+    await expect(search.option("Search for pacific ave")).toBeVisible();
+    await page.keyboard.press("Backspace");
+    await expect(search.option("Search for pacific av")).toBeVisible();
+    await search.type("e");
+    await expect(search.option("Search for pacific ave")).toBeVisible();
+    expect(mocks.photon.searches).toHaveLength(2);
+    expect(mocks.nominatim.searches).toEqual([]);
+
+    // Enter: one request, for the text as it stands.
+    await page.keyboard.press("Enter");
+    const first = search.option(/^2550 Pacific Avenue, San Francisco/);
+    await expect(first).toBeVisible();
+    await expect(
+      search.list.getByRole("group", { name: "Addresses" }).getByRole("option"),
+    ).toHaveCount(2);
+    await expect(search.attribution).toHaveText(
+      "Search by Photon / Nominatim · © OpenStreetMap contributors",
+    );
+    expect(mocks.nominatim.searches).toEqual(["pacific ave"]);
+    // Still open, still in the field: nothing was picked yet.
+    await expect(search.field).toBeFocused();
+
+    await search.press(first);
+    await search.expectClosed();
+    await app.waitForAnswer();
+    await expect(app.placeTitle).toContainText("2550 Pacific Avenue");
+    await expect(app.includedNote).toContainText(`${FIXTURE_BUILDING_COUNT} nearby buildings`);
+    // Exactly one Nominatim search in the whole journey; Photon was not asked again.
+    expect(mocks.nominatim.searches).toEqual(["pacific ave"]);
+    expect(mocks.photon.searches).toHaveLength(2);
+  });
+
+  test("Photon down: the “Search for …” row works by pointer, and nothing found says so", async ({
+    app,
+    search,
+    mocks,
+  }) => {
+    await app.open();
+    mocks.photon.down();
+    mocks.nominatim.nothingFound();
+    await search.open();
+    await search.type("pacific");
+
+    await search.press(search.option("Search for pacific"));
+    await expect(search.noResults).toBeVisible();
+    await expect(search.noResults).toContainText("pacific");
+    await expect(search.chooseOnMap).toBeVisible();
+    expect(mocks.nominatim.searches).toEqual(["pacific"]);
+  });
+
+  test("both geocoders down: says so, keeps the other ways in, and “Try again” recovers", async ({
+    app,
+    search,
+    page,
+    mocks,
+  }) => {
+    await app.open();
+    mocks.photon.down();
+    mocks.nominatim.down();
+    await search.open();
+    await search.type("pacific");
+    await expect(search.option("Search for pacific")).toBeVisible();
+    await page.keyboard.press("Enter");
+
+    await expect(search.searchFailed).toBeVisible();
+    await expect(search.tryAgain).toBeVisible();
+    // Never a dead end.
+    await expect(search.useCurrentLocation).toBeVisible();
+    await expect(search.chooseOnMap).toBeVisible();
+    expect(mocks.nominatim.searches).toEqual(["pacific"]);
+
+    mocks.nominatim.up();
+    await search.press(search.tryAgain);
+    await expect(search.option(/^2550 Pacific Avenue, San Francisco/)).toBeVisible();
+    await expect(search.searchFailed).toHaveCount(0);
+    expect(mocks.nominatim.searches).toEqual(["pacific", "pacific"]);
+  });
+
+  test("Photon down: a pin dropped on the map gets its address from Nominatim", async ({
+    app,
+    page,
+    mocks,
+  }) => {
+    await app.open();
+    mocks.photon.down();
+    await expect(app.map).toBeVisible();
+    const box = await app.map.boundingBox();
+    if (!box) throw new Error("no map");
+    await page.mouse.click(box.x + box.width / 2, box.y + box.height * 0.3);
+
+    await expect(app.pin).toBeVisible();
+    await expect(app.placeTitle).toHaveText(NOMINATIM_MOCK_ADDRESS);
+    await expect(page).toHaveURL(/&n=2698\+Pacific\+Avenue/);
+    // Photon was tried once, found down, and Nominatim asked once — rounded to about 11 m.
+    expect(mocks.photon.reverseLookups).toHaveLength(1);
+    expect(mocks.nominatim.reverseLookups).toEqual(mocks.photon.reverseLookups);
+    expect(mocks.nominatim.reverseLookups[0]).toMatch(/^-?\d+\.\d{4},-?\d+\.\d{4}$/);
   });
 
   test("coordinates typed by hand go straight to that spot, without a lookup", async ({
@@ -201,6 +314,69 @@ test.describe("Search", () => {
     await expect(app.includedNote).toContainText(`${FIXTURE_BUILDING_COUNT} nearby buildings`);
     await expect(page).toHaveURL(/lat=37\.79120&lng=-122\.43010/);
     expect(mocks.photon.searches).toEqual([]);
+  });
+
+  test("“Use my current location” in search pins the spot, or says why it cannot", async ({
+    app,
+    search,
+    context,
+    page,
+  }) => {
+    // Not allowed (the default in these tests): the row itself explains, and search stays open.
+    await app.open();
+    await search.open();
+    await app.press(search.useCurrentLocation);
+    await expect(search.useCurrentLocation).toContainText("Location is off for this site");
+    await expect(search.useCurrentLocation).toContainText("site settings");
+    await expect(search.list).toBeVisible();
+    await expect(search.chooseOnMap).toBeVisible();
+    await app.expectStartScreen();
+
+    // Allowed: the same row pins the spot and search closes.
+    await context.grantPermissions(["geolocation"]);
+    await context.setGeolocation({ latitude: 37.7912, longitude: -122.4301, accuracy: 15 });
+    await app.press(search.useCurrentLocation);
+    await search.expectClosed();
+    await app.waitForAnswer();
+    await expect(app.placeTitle).toHaveText(MOCK_ADDRESS);
+    await expect(page).toHaveURL(/lat=37\.79120&lng=-122\.43010/);
+  });
+
+  test("a location that arrives after search was closed pins nothing", async ({
+    app,
+    search,
+    page,
+    isPhone,
+  }) => {
+    interface SlowGeolocation {
+      __answerLocation?: (latitude: number, longitude: number) => void;
+    }
+    await page.addInitScript(() => {
+      navigator.geolocation.getCurrentPosition = (onSuccess) => {
+        (window as unknown as SlowGeolocation).__answerLocation = (latitude, longitude) =>
+          onSuccess({
+            coords: { latitude, longitude, accuracy: 10 },
+            timestamp: Date.now(),
+          } as GeolocationPosition);
+      };
+    });
+    await app.open();
+    await search.open();
+    await app.press(search.useCurrentLocation);
+    await expect(search.useCurrentLocation).toContainText("Finding you…");
+
+    // The person gives up waiting and closes search.
+    if (isPhone) await search.back.tap();
+    else {
+      await page.keyboard.press("Escape");
+      await page.keyboard.press("Escape");
+    }
+    await search.expectClosed();
+
+    await page.evaluate(() => (window as unknown as SlowGeolocation).__answerLocation?.(40.7, -74));
+    await app.expectStartScreen();
+    await expect(page).not.toHaveURL(/lat=/);
+    await expect(app.pin).toHaveCount(0);
   });
 
   test("“Choose on the map” closes search; a tap on the map then drops the pin", async ({
