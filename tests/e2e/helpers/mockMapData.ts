@@ -38,8 +38,8 @@ export const TERRAIN_TILE_URL = /elevation-tiles-prod/;
  *  - The fallback sources, `/api/buildings` and Overpass, fail at once, so a
  *    test can never pass by quietly reaching the real services.
  *
- * With these fixtures the area around 37.7912, -122.4301 has 1600 buildings
- * (1245 with a tagged height, 355 without).
+ * With these fixtures the area around 37.7912, -122.4301 has 3632 buildings
+ * (2834 with a tagged height, 798 without).
  */
 export async function mockBuildingData(page: Page): Promise<void> {
   await page.route(TILEJSON_URL, (route) =>

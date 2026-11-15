@@ -10,7 +10,7 @@ import {
 } from "./api";
 import { isAbortError, parseOverpassResponse } from "./overpass";
 
-const KEY = "v3:37.791:-122.4300";
+const KEY = "v4:37.791:-122.4300";
 
 function feature(id: string, overrides: Record<string, unknown> = {}) {
   return {
@@ -172,25 +172,26 @@ describe("parseBuildingCollection", () => {
 });
 
 describe("fetchBuildingsFromApi", () => {
-  test("GETs the same-origin route with the encoded key and nothing else", async () => {
+  test("GETs the same-origin route with the key, unencoded, and nothing else", async () => {
     const fetchImpl = fetchReturning(collection(feature("way/1")));
     const result = await fetchBuildingsFromApi(KEY, { fetchImpl });
     expect(result.features.map((f) => f.properties.id)).toEqual(["way/1"]);
 
     expect(fetchImpl).toHaveBeenCalledTimes(1);
     const [url, init] = fetchImpl.mock.calls[0];
-    expect(url).toBe("/api/buildings?area=v3%3A37.791%3A-122.4300");
+    expect(url).toBe("/api/buildings?area=v4:37.791:-122.4300");
     expect(Object.keys(init ?? {})).toEqual(["signal"]);
     expect(init?.signal).toBeInstanceOf(AbortSignal);
   });
 
   test("buildingsApiUrl: base URL for scripts, trailing slashes ignored", () => {
-    expect(buildingsApiUrl(KEY)).toBe("/api/buildings?area=v3%3A37.791%3A-122.4300");
+    expect(buildingsApiUrl(KEY)).toBe("/api/buildings?area=v4:37.791:-122.4300");
     expect(buildingsApiUrl(KEY, "https://preview.example.app///")).toBe(
-      "https://preview.example.app/api/buildings?area=v3%3A37.791%3A-122.4300",
+      "https://preview.example.app/api/buildings?area=v4:37.791:-122.4300",
     );
-    // The key the server sees is the key we sent.
-    expect(new URL(buildingsApiUrl(KEY, "https://x.test")).searchParams.get("area")).toBe(KEY);
+    // The one spelling the route accepts: the raw query string is `area=<key>`.
+    expect(new URL(buildingsApiUrl(KEY, "https://x.test")).search).toBe(`?area=${KEY}`);
+    expect(buildingsApiUrl(KEY)).not.toContain("%");
   });
 
   test("baseUrl and reload are passed on", async () => {
@@ -201,7 +202,7 @@ describe("fetchBuildingsFromApi", () => {
       reload: true,
     });
     const [url, init] = fetchImpl.mock.calls[0];
-    expect(url).toBe("https://preview.example.app/api/buildings?area=v3%3A37.791%3A-122.4300");
+    expect(url).toBe("https://preview.example.app/api/buildings?area=v4:37.791:-122.4300");
     expect(init?.cache).toBe("reload");
   });
 

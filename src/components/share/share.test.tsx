@@ -60,9 +60,10 @@ describe("describe", () => {
   });
 
   test.each<[Partial<Observer>, string]>([
-    [{ mode: "yard", heightM: 1 }, "Backyard · ground level"],
-    [{ mode: "yard", heightM: 2.9 }, "Backyard · ground level"],
-    [{ mode: "yard", heightM: 10.5 }, "Terrace · 4th floor"],
+    // One wording app-wide (components/shared/viewpoint): a yard by its height.
+    [{ mode: "yard", heightM: 1 }, "Yard · ground"],
+    [{ mode: "yard", heightM: 2.9 }, "Yard · 2.9 m up"],
+    [{ mode: "yard", heightM: 10.5 }, "Yard · 10.5 m up"],
     [{ mode: "window", heightM: 1.5, facingDeg: 0 }, "Window · ground floor · facing N"],
     [{ mode: "window", heightM: 4.5, facingDeg: 180 }, "Window · 2nd floor · facing S"],
     [{ mode: "window", heightM: 7.5, facingDeg: 225 }, "Window · 3rd floor · facing SW"],

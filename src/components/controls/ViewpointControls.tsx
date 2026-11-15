@@ -1,6 +1,7 @@
 "use client";
 
-import { compassName, compassPoint } from "@/components/shared/format";
+import { compassPoint, compassWords } from "@/components/shared/format";
+import { floorName, formatMeters } from "@/components/shared/viewpoint";
 import { Button } from "@/components/ui/Button";
 import { MinusIcon, PlusIcon, ResetIcon, WarningIcon } from "@/components/ui/icons";
 import { Segmented } from "@/components/ui/Segmented";
@@ -21,8 +22,6 @@ import { FacingPicker } from "./FacingPicker";
 import {
   FOV_PRESETS,
   YARD_HEIGHT_MAX_M,
-  floorName,
-  formatMeters,
   fovPreset,
   roofHeightM,
   viewConeSentence,
@@ -194,7 +193,7 @@ export function ViewpointControls({ pinOnBuilding, pinBuildingHeightM }: Viewpoi
               min={SETTINGS_LIMITS.facingDeg.min}
               max={SETTINGS_LIMITS.facingDeg.max}
               step={1}
-              valueText={`${facingDeg} degrees, ${compassName(facingDeg)}`}
+              valueText={`${facingDeg} degrees, ${compassWords(facingDeg)}`}
               onChange={(value) => setObserver({ facingDeg: value })}
             />
           </div>

@@ -6,6 +6,7 @@ import { buildReportModel } from "./model";
 import {
   bestAndWorstMonths,
   daylightSplit,
+  dayTotals,
   hemisphereOf,
   median,
   modalStates,
@@ -16,7 +17,7 @@ import {
   summarizeSeasons,
   typicalSunTimes,
 } from "./summary";
-import { syntheticHorizon, syntheticYear } from "./testing";
+import { syntheticDay, syntheticHorizon, syntheticYear } from "./testing";
 
 describe("hemisphere and seasons", () => {
   it("splits the globe at the equator", () => {
@@ -205,5 +206,63 @@ describe("year summaries", () => {
     expect(model.seasons).toHaveLength(4);
     expect(model.best?.month).toBe(5);
     expect(model.clockShifts).toEqual([]);
+  });
+});
+
+describe("dayTotals", () => {
+  // The grid says 12 h of sun every day; the day analysis of 15 June says 5 h 10 m.
+  const { year } = syntheticYear();
+  const day = syntheticDay("2026-06-15", [
+    [360, 550, SunState.Blocked],
+    [550, 860, SunState.Sun],
+    [860, 1080, SunState.Blocked],
+  ]);
+  const june15 = 165;
+
+  it("reads the selected day from its own 1-minute analysis", () => {
+    expect(dayTotals(year, day, "2026-06-15", june15)).toEqual({
+      sunMinutes: 310,
+      daylightMinutes: 720,
+      precise: true,
+    });
+    // Without a day index the selected date itself is meant; the year is not needed.
+    expect(dayTotals(null, day, "2026-06-15", null)).toMatchObject({
+      sunMinutes: 310,
+      precise: true,
+    });
+    expect(dayTotals(year, day, "2026-06-15", null)).toMatchObject({ precise: true });
+  });
+
+  it("reads every other day from the grid", () => {
+    expect(dayTotals(year, day, "2026-06-15", june15 + 1)).toEqual({
+      sunMinutes: 720,
+      daylightMinutes: 720,
+      precise: false,
+    });
+    expect(dayTotals(year, day, "2026-06-15", 0)).toMatchObject({
+      sunMinutes: 720,
+      precise: false,
+    });
+  });
+
+  it("reads the grid for the selected day too while the analysis is stale or missing", () => {
+    // The selection moved to 16 June; `day` is still for the 15th: never show its number.
+    expect(dayTotals(year, day, "2026-06-16", june15 + 1)).toMatchObject({
+      sunMinutes: 720,
+      precise: false,
+    });
+    expect(dayTotals(year, null, "2026-06-15", june15)).toMatchObject({
+      sunMinutes: 720,
+      precise: false,
+    });
+    // Hovering the 15th while the 16th is selected is a preview of another day.
+    expect(dayTotals(year, day, "2026-06-16", june15)).toMatchObject({ precise: false });
+  });
+
+  it("returns null when neither source has the day", () => {
+    expect(dayTotals(null, null, "2026-06-15", june15)).toBeNull();
+    expect(dayTotals(null, day, "2026-06-16", null)).toBeNull();
+    expect(dayTotals(null, day, "2026-06-15", june15)).toBeNull();
+    expect(dayTotals(year, null, "2026-06-15", null)).toBeNull();
   });
 });

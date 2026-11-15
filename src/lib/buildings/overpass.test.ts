@@ -1025,6 +1025,8 @@ describe("parseOverpassResponse: Pacific Heights fixture", () => {
 // ─── Network ───────────────────────────────────────────────────────────────
 
 const CENTER = { lat: 37.791, lng: -122.4297 };
+/** Stand-in servers, for tests of the fallback mechanics whatever the real list is. */
+const THREE = ["https://a.test/i", "https://b.test/i", "https://c.test/i"];
 const OK_BODY = JSON.stringify(response(way(1, SQUARE, { building: "yes" })));
 
 function ok(body: string = OK_BODY, init: ResponseInit = {}) {
@@ -1089,10 +1091,11 @@ describe("fetchBuildings", () => {
   });
 
   test("the default endpoint list", () => {
+    // Two servers, as a last resort. Each one learns the user's IP address
+    // and rough position, so the list is kept as short as it can be.
     expect(OVERPASS_ENDPOINTS).toEqual([
       "https://overpass-api.de/api/interpreter",
       "https://overpass.private.coffee/api/interpreter",
-      "https://maps.mail.ru/osm/tools/overpass/api/interpreter",
     ]);
   });
 
@@ -1102,8 +1105,14 @@ describe("fetchBuildings", () => {
       new TypeError("Failed to fetch"),
       ok(),
     );
-    const buildings = await fetchBuildings(CENTER, 500, { fetchImpl });
+    const buildings = await fetchBuildings(CENTER, 500, { fetchImpl, endpoints: THREE });
     expect(buildings.features).toHaveLength(1);
+    expect(fetchImpl.mock.calls.map(([url]) => url)).toEqual(THREE);
+  });
+
+  test("the default list is tried in its order", async () => {
+    const fetchImpl = mockFetch(new Response("slow down", { status: 429 }), ok());
+    await fetchBuildings(CENTER, 500, { fetchImpl });
     expect(fetchImpl.mock.calls.map(([url]) => url)).toEqual([...OVERPASS_ENDPOINTS]);
   });
 
@@ -1257,9 +1266,9 @@ describe("fetchBuildings", () => {
       new TypeError("Failed to fetch"),
       new Response("", { status: 504 }),
     );
-    const error = await failure(fetchBuildings(CENTER, 500, { fetchImpl }));
+    const error = await failure(fetchBuildings(CENTER, 500, { fetchImpl, endpoints: THREE }));
     expect(error).toBeInstanceOf(OverpassError);
-    expect(error).toMatchObject({ kind: "timeout", status: 504, endpoint: OVERPASS_ENDPOINTS[2] });
+    expect(error).toMatchObject({ kind: "timeout", status: 504, endpoint: THREE[2] });
     expect(fetchImpl).toHaveBeenCalledTimes(3);
   });
 
@@ -1312,9 +1321,11 @@ describe("fetchBuildings", () => {
 
   test("timing out on every endpoint reports a timeout", async () => {
     const fetchImpl = hangingFetch();
-    const error = await failure(fetchBuildings(CENTER, 500, { fetchImpl, timeoutMs: 5 }));
+    const error = await failure(
+      fetchBuildings(CENTER, 500, { fetchImpl, timeoutMs: 5, endpoints: THREE }),
+    );
     expect(error).toBeInstanceOf(OverpassError);
-    expect(error).toMatchObject({ kind: "timeout", endpoint: OVERPASS_ENDPOINTS[2] });
+    expect(error).toMatchObject({ kind: "timeout", endpoint: THREE[2] });
     expect(fetchImpl).toHaveBeenCalledTimes(3);
   });
 
@@ -1323,7 +1334,12 @@ describe("fetchBuildings", () => {
     try {
       const fetchImpl = hangingFetch();
       const pending = failure(
-        fetchBuildings(CENTER, 500, { fetchImpl, timeoutMs: 5_000, budgetMs: 7_500 }),
+        fetchBuildings(CENTER, 500, {
+          fetchImpl,
+          timeoutMs: 5_000,
+          budgetMs: 7_500,
+          endpoints: THREE,
+        }),
       );
       await vi.advanceTimersByTimeAsync(4_999);
       expect(fetchImpl).toHaveBeenCalledTimes(1);
@@ -1333,7 +1349,7 @@ describe("fetchBuildings", () => {
       await vi.advanceTimersByTimeAsync(2_500);
       const error = await pending;
       expect(error).toBeInstanceOf(OverpassError);
-      expect(error).toMatchObject({ kind: "timeout", endpoint: OVERPASS_ENDPOINTS[1] });
+      expect(error).toMatchObject({ kind: "timeout", endpoint: THREE[1] });
       // The third endpoint is never asked: there is no time left for it.
       expect(fetchImpl).toHaveBeenCalledTimes(2);
     } finally {
@@ -1347,7 +1363,11 @@ describe("fetchBuildings", () => {
       new Response("", { status: 429 }),
       ok(),
     );
-    const buildings = await fetchBuildings(CENTER, 500, { fetchImpl, budgetMs: 10_000 });
+    const buildings = await fetchBuildings(CENTER, 500, {
+      fetchImpl,
+      budgetMs: 10_000,
+      endpoints: THREE,
+    });
     expect(buildings.features).toHaveLength(1);
     expect(fetchImpl).toHaveBeenCalledTimes(3);
   });

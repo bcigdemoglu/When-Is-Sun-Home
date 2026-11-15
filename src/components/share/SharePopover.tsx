@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { formatClock, formatShortDate } from "@/components/shared/format";
+import { formatClock, formatDate } from "@/components/shared/format";
+import { useHour12 } from "@/components/shared/useHour12";
 import { Button } from "@/components/ui/Button";
 import { CheckIcon, CloseIcon } from "@/components/ui/icons";
 import type { Place, PlaceSummary } from "@/lib/types";
@@ -55,6 +56,7 @@ export function SharePopover({ getAnchor, place, label, summary, onClose }: Shar
   const titleId = useId();
   const checkboxId = useId();
   const hintId = useId();
+  const hour12 = useHour12();
 
   const date = useSettings((s) => s.date);
   const minuteOfDay = useSettings((s) => s.minuteOfDay);
@@ -278,7 +280,7 @@ export function SharePopover({ getAnchor, place, label, summary, onClose }: Shar
         </label>
         <p id={hintId} className="-mt-1 pl-[28px] text-xs text-ink-2">
           {includeDateTime
-            ? `Opens on ${formatShortDate(viewed.date)} at ${formatClock(viewed.minuteOfDay)}.`
+            ? `Opens on ${formatDate(viewed.date, { weekday: true })} at ${formatClock(viewed.minuteOfDay, hour12)}.`
             : "Opens on the current day and time."}
         </p>
       </div>

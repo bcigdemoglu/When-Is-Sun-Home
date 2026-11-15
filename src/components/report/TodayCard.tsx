@@ -1,6 +1,12 @@
 import { useId, useMemo, useRef, useState, type KeyboardEvent, type PointerEvent } from "react";
 
-import { SunState, type DayAnalysis, type Observer, type SunStateCode } from "@/lib/types";
+import {
+  SunState,
+  type DayAnalysis,
+  type Observer,
+  type SunStateCode,
+  type YearAnalysis,
+} from "@/lib/types";
 
 import {
   formatClock,
@@ -28,14 +34,17 @@ import {
   useReport,
 } from "./parts";
 import { REPORT_SECTION_IDS } from "./sections";
+import { dayIndexInYear } from "./heatmap";
 import { blockedLabel, legendStates, stateMeta } from "./states";
-import { stateRuns, type StateRun } from "./summary";
+import { dayTotals, stateRuns, type StateRun } from "./summary";
 import type { SunReportProps } from "./types";
 
 interface TodayCardProps {
   date: string;
   minuteOfDay: number;
   day: DayAnalysis | null;
+  /** Only for the day's total while `day` is stale (see `dayTotals`). */
+  year: YearAnalysis | null;
   observer: Observer;
   hasTerrain: boolean;
   onSelectDateTime: SunReportProps["onSelectDateTime"];
@@ -84,6 +93,7 @@ export function TodayCard({
   date,
   minuteOfDay,
   day,
+  year,
   observer,
   hasTerrain,
   onSelectDateTime,
@@ -107,9 +117,14 @@ export function TodayCard({
   const probed =
     probe !== null ? runs.find((run) => probe >= run.startMinute && probe < run.endMinute) : null;
 
+  // The same figure every other card shows for this day (see `dayTotals`).
+  const totals =
+    dayTotals(year, day, date, year ? dayIndexInYear(year, date) : null) ??
+    (day ? { sunMinutes: day.sunMinutes, daylightMinutes: day.daylightMinutes } : null);
+
   let value;
   let detail;
-  if (!day) {
+  if (!day || !totals) {
     value = <SkeletonText width="9rem" />;
     detail = <SkeletonText width="12rem" />;
   } else if (probe !== null) {
@@ -118,13 +133,13 @@ export function TodayCard({
   } else {
     value = (
       <>
-        {formatDuration(day.sunMinutes)}
+        {formatDuration(totals.sunMinutes)}
         <ValueUnit>of direct sun</ValueUnit>
       </>
     );
     detail =
-      day.daylightMinutes > 0
-        ? `${formatPercent(day.sunMinutes / day.daylightMinutes)} of the day’s ${formatDuration(day.daylightMinutes)} of daylight`
+      totals.daylightMinutes > 0
+        ? `${formatPercent(totals.sunMinutes / totals.daylightMinutes)} of the day’s ${formatDuration(totals.daylightMinutes)} of daylight`
         : "The sun does not rise on this day";
   }
 

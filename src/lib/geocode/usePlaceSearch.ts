@@ -22,8 +22,9 @@ export interface UsePlaceSearchResult {
 
 /**
  * Round the bias point to ~10 km. Close enough to rank nearby places first,
- * coarse enough that moving the pin does not refetch, and the exact pin is
- * never sent to the geocoder.
+ * coarse enough that moving the pin does not refetch, and a search never
+ * tells the geocoder where the pin is. (Reverse geocoding, which has to know
+ * the place, sends it rounded to about 11 m; see `reverseGeocode`.)
  */
 function coarseBias(bias: LatLng | null | undefined): LatLng | undefined {
   if (!bias || !Number.isFinite(bias.lat) || !Number.isFinite(bias.lng)) return undefined;

@@ -1,10 +1,12 @@
 "use client";
 
 import { formatDate, formatDuration } from "./format";
+import { dayIndexInYear } from "./heatmap";
 import { useElementSize, useHour12 } from "./hooks";
 import { Glyph, SkeletonText, type GlyphName } from "./parts";
 import "./report.css";
 import { describeLiveStatus, type StatusIcon } from "./status";
+import { dayTotals } from "./summary";
 import type { SunSummaryHeaderProps } from "./types";
 
 /** Average advance of the status line's 15 px medium text, for fitting the wording. */
@@ -26,6 +28,7 @@ export function SunSummaryHeader({
   isLive,
   day,
   instant,
+  year,
   buildingsStatus,
   className = "",
 }: SunSummaryHeaderProps) {
@@ -39,6 +42,11 @@ export function SunSummaryHeader({
   const checking = buildingsStatus === "loading" || buildingsStatus === "idle";
   const unshaded = checking || buildingsStatus === "error";
   const when = isLive ? "today" : `on ${formatDate(date, { weekday: true })}`;
+
+  // The same figure every card of the report shows for this day (see `dayTotals`).
+  const totals =
+    dayTotals(year, day, date, year ? dayIndexInYear(year, date) : null) ??
+    (day ? { sunMinutes: day.sunMinutes } : null);
 
   let status: { icon: GlyphName; badge: StatusIcon | null; text: string } | null = null;
   if (checking) {
@@ -57,14 +65,14 @@ export function SunSummaryHeader({
     >
       <div className="flex min-w-0 items-center gap-3">
         <p className="text-[34px]/[40px] font-semibold tracking-[-0.02em] whitespace-nowrap text-ink tabular-nums">
-          {day ? (
+          {day && totals ? (
             <>
               {unshaded && (
                 <span className="font-medium text-ink-2" title="Before shading">
                   {"≈ "}
                 </span>
               )}
-              {formatDuration(day.sunMinutes)}
+              {formatDuration(totals.sunMinutes)}
             </>
           ) : (
             <SkeletonText width="8.5rem" />

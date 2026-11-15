@@ -52,7 +52,7 @@ describe("ogCardFromParams", () => {
     const expected = {
       kind: "place",
       label: "2550 Pacific Ave",
-      viewpoint: "Backyard · ground level",
+      viewpoint: "Yard · ground",
       summary: null,
     };
     expect(card(PLACE_QUERY)).toEqual(expected);

@@ -92,8 +92,13 @@ export interface FetchBuildingsFromApiOptions {
   reload?: boolean;
 }
 
+/**
+ * The route's URL for an area. The key goes in as it is, not percent-encoded:
+ * its characters are all legal in a query string, and the route accepts only
+ * this one spelling so that every area has exactly one cacheable URL.
+ */
 export function buildingsApiUrl(areaKey: string, baseUrl = ""): string {
-  return `${baseUrl.replace(/\/+$/, "")}${BUILDINGS_API_PATH}?area=${encodeURIComponent(areaKey)}`;
+  return `${baseUrl.replace(/\/+$/, "")}${BUILDINGS_API_PATH}?area=${areaKey}`;
 }
 
 /** The route's `{ error, message }` body, if that is what `text` is. */

@@ -330,6 +330,26 @@ describe("reverseGeocode", () => {
     expect(init).toEqual({ signal: controller.signal });
   });
 
+  test("sends the position rounded to four decimals (about 11 m), never the exact fix", async () => {
+    const fetchImpl = fetchReturning(captured("photon-reverse.json"));
+    // A GPS fix as the browser reports it, and a pin dropped on the map.
+    for (const [place, lat, lon] of [
+      [{ lat: 37.790612345678901, lng: -122.42943987654321 }, "37.7906", "-122.4294"],
+      [{ lat: 52.37305999999999, lng: 4.892249999999 }, "52.3731", "4.8922"],
+      [{ lat: -33.85678, lng: 151.21534 }, "-33.8568", "151.2153"],
+      [{ lat: 1, lng: 2 }, "1.0000", "2.0000"],
+    ] as const) {
+      fetchImpl.mockClear();
+      await reverseGeocode(place, { fetchImpl });
+      const sent = String(fetchImpl.mock.calls[0][0]);
+      const params = new URL(sent).searchParams;
+      expect(params.get("lat")).toBe(lat);
+      expect(params.get("lon")).toBe(lon);
+      // Nothing else in the request carries more digits.
+      expect(sent).not.toMatch(/\d\.\d{5,}/);
+    }
+  });
+
   test.each([
     [
       { name: "Golden Gate Park", city: "San Francisco", state: "California" },

@@ -2,58 +2,19 @@
  * Wording and small calculations shared by the saved-places list, the
  * compare view and the search rows. Pure.
  */
-import type { Observer, PlaceSummary } from "@/lib/types";
-import { heightMToFloor } from "@/state/selectors";
+import { MONTHS_SHORT, formatHours, formatHoursUnit } from "@/components/shared/format";
+import type { PlaceSummary } from "@/lib/types";
 
-export const MONTHS_SHORT = [
-  "Jan",
-  "Feb",
-  "Mar",
-  "Apr",
-  "May",
-  "Jun",
-  "Jul",
-  "Aug",
-  "Sep",
-  "Oct",
-  "Nov",
-  "Dec",
-] as const;
-
-export const MONTHS_LONG = [
-  "January",
-  "February",
-  "March",
-  "April",
-  "May",
-  "June",
-  "July",
-  "August",
-  "September",
-  "October",
-  "November",
-  "December",
-] as const;
-
-export const MONTH_INITIALS = ["J", "F", "M", "A", "M", "J", "J", "A", "S", "O", "N", "D"] as const;
-
-/** Hours with one decimal: 6.4 → "6.4", 10 → "10.0", 0 → "0". No unit. */
-export function formatHours(hours: number): string {
-  if (!Number.isFinite(hours)) return "–";
-  const rounded = Math.round(Math.max(0, hours) * 10) / 10;
-  return rounded === 0 ? "0" : rounded.toFixed(1);
-}
-
-/** "6.4 h" */
-export function formatHoursUnit(hours: number): string {
-  return `${formatHours(hours)} h`;
-}
-
-/** 0.52 → "52%" */
-export function formatShare(fraction: number): string {
-  if (!Number.isFinite(fraction)) return "–";
-  return `${Math.round(Math.min(1, Math.max(0, fraction)) * 100)}%`;
-}
+// Months, hours, percentages and the viewpoint wording are the app-wide ones.
+export {
+  MONTHS_LONG,
+  MONTHS_SHORT,
+  MONTH_INITIALS,
+  formatHours,
+  formatHoursUnit,
+  formatPercent as formatShare,
+} from "@/components/shared/format";
+export { viewpointLabel } from "@/components/shared/viewpoint";
 
 function monthAt(summary: PlaceSummary, month: number): { name: string; hours: number } {
   const index = Number.isInteger(month) && month >= 0 && month < 12 ? month : 0;
@@ -114,38 +75,6 @@ export function seasonAverages(summary: PlaceSummary, lat: number): SeasonAverag
   return south
     ? { summer: decFeb, winter: junAug, summerMonths: "Dec–Feb", winterMonths: "Jun–Aug" }
     : { summer: junAug, winter: decFeb, summerMonths: "Jun–Aug", winterMonths: "Dec–Feb" };
-}
-
-const COMPASS_POINTS = ["N", "NE", "E", "SE", "S", "SW", "W", "NW"] as const;
-
-function compassPoint(deg: number): string {
-  const normalized = ((deg % 360) + 360) % 360;
-  return COMPASS_POINTS[Math.round(normalized / 45) % 8];
-}
-
-function ordinal(n: number): string {
-  const tens = n % 100;
-  if (tens >= 11 && tens <= 13) return `${n}th`;
-  switch (n % 10) {
-    case 1:
-      return `${n}st`;
-    case 2:
-      return `${n}nd`;
-    case 3:
-      return `${n}rd`;
-    default:
-      return `${n}th`;
-  }
-}
-
-/** "Yard · ground", "Window · 2nd floor · facing S". Floor 1 is the ground floor. */
-export function viewpointLabel(observer: Observer): string {
-  const floor = heightMToFloor(observer.heightM);
-  if (observer.mode === "window") {
-    const level = floor <= 1 ? "ground floor" : `${ordinal(floor)} floor`;
-    return `Window · ${level} · facing ${compassPoint(observer.facingDeg)}`;
-  }
-  return `Yard · ${floor <= 1 ? "ground" : `${ordinal(floor)} floor`}`;
 }
 
 /** The largest monthly value across summaries (at least 1, so empty bars stay empty). */

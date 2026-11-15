@@ -419,7 +419,7 @@ describe("popover (desktop)", () => {
   test("follows the settings while open", async () => {
     await click(renderButton());
     act(() => useSettings.getState().setObserver({ mode: "yard", heightM: 1 }));
-    expect(screen.getByTestId("share-preview")).toHaveTextContent("Backyard · ground level");
+    expect(screen.getByTestId("share-preview")).toHaveTextContent("Yard · ground");
     expect(paramsOf(urlField().value).has("m")).toBe(false);
   });
 

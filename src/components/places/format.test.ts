@@ -36,12 +36,14 @@ function summary(monthlySunHours: number[], overrides: Partial<PlaceSummary> = {
 const NORTHERN = summary([1.2, 2.5, 4.4, 6.8, 8.6, 9.8, 9.5, 8.1, 6.2, 4.1, 2, 1.2]);
 
 describe("hours and shares", () => {
-  it("writes hours with one decimal, and a plain 0", () => {
+  // The formatters themselves are the app-wide ones (tested in
+  // components/shared/format.test.ts); this pins what a saved-place row shows.
+  it("writes hours with one decimal, zero included, like the report does", () => {
     expect(formatHours(6.4)).toBe("6.4");
     expect(formatHours(10)).toBe("10.0");
-    expect(formatHours(0)).toBe("0");
-    expect(formatHours(0.04)).toBe("0");
-    expect(formatHours(-3)).toBe("0");
+    expect(formatHours(0)).toBe("0.0");
+    expect(formatHours(0.04)).toBe("0.0");
+    expect(formatHours(-3)).toBe("0.0");
     expect(formatHours(Number.NaN)).toBe("–");
     expect(formatHoursUnit(9.84)).toBe("9.8 h");
   });
@@ -101,8 +103,9 @@ describe("viewpointLabel", () => {
     expect(viewpointLabel({ mode: "yard", heightM: 1, facingDeg: 180, fovDeg: 180 })).toBe(
       "Yard · ground",
     );
+    // A yard is described by its height (what its control sets), not by a floor.
     expect(viewpointLabel({ mode: "yard", heightM: 7, facingDeg: 180, fovDeg: 180 })).toBe(
-      "Yard · 3rd floor",
+      "Yard · 7 m up",
     );
     expect(viewpointLabel({ mode: "window", heightM: 4.5, facingDeg: 180, fovDeg: 120 })).toBe(
       "Window · 2nd floor · facing S",

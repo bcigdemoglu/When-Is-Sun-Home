@@ -1,4 +1,4 @@
-import { useId, useState } from "react";
+import { useId, useState, type ReactNode } from "react";
 
 import type { Observer } from "@/lib/types";
 
@@ -21,11 +21,32 @@ interface AboutCardProps {
   timeZone: string;
 }
 
-/** "384 buildings nearby — heights: 321 surveyed, 8 from floor counts, 55 estimated". */
+/**
+ * How many buildings were used and how their heights are known, worded so it
+ * holds for both building sources:
+ *  - "384 buildings nearby — 329 with a mapped height, 55 estimated from their neighbours"
+ *  - "384 buildings nearby — 329 with a mapped height (8 of them from floor counts), 55 estimated"
+ *
+ * `tagged` and `levels` both mean the map data carries a height (vector tiles
+ * cannot tell the two apart and report every one as `tagged`); `default` means
+ * it carries none and the height was estimated.
+ */
 export function buildingStatsText(stats: NonNullable<BuildingDataStatus["stats"]>): string {
   if (stats.total === 0) return "No buildings found nearby";
   const noun = stats.total === 1 ? "building" : "buildings";
-  return `${formatCount(stats.total)} ${noun} nearby — heights: ${formatCount(stats.tagged)} surveyed, ${formatCount(stats.levels)} from floor counts, ${formatCount(stats.default)} estimated`;
+  const head = `${formatCount(stats.total)} ${noun} nearby`;
+  const mapped = stats.tagged + stats.levels;
+  if (stats.default === 0) return `${head}, all with a mapped height`;
+  if (mapped === 0) return `${head}, all with an estimated height`;
+  const floors =
+    stats.levels > 0 ? ` (${formatCount(stats.levels)} of them from floor counts)` : "";
+  // Without floor counts the data comes from map tiles, where a missing height
+  // is filled in from the buildings around it.
+  const estimated =
+    stats.levels > 0
+      ? `${formatCount(stats.default)} estimated`
+      : `${formatCount(stats.default)} estimated from their neighbours`;
+  return `${head} \u2014 ${formatCount(mapped)} with a mapped height${floors}, ${estimated}`;
 }
 
 /** What the ground-height data means for the numbers, in one sentence. */
@@ -103,7 +124,7 @@ export function AboutCard({
           </li>
           <li>
             <strong className="font-semibold text-ink">Buildings from OpenStreetMap.</strong>{" "}
-            {buildingLine} Estimated heights can be off by a floor or two, which shifts shadow
+            {buildingLine} An estimated height can be off by a floor or two, which shifts shadow
             times.
           </li>
           <li>
@@ -127,7 +148,30 @@ export function AboutCard({
           </li>
         </ul>
       </div>
+
+      {/* Attribution the data sources require: always visible, not behind the toggle. */}
+      <p className="mt-2 border-t border-line pt-3 text-xs/4 text-ink-3">
+        Building data {"\u00a9"}{" "}
+        <SourceLink href="https://www.openstreetmap.org/copyright">
+          OpenStreetMap contributors
+        </SourceLink>
+        , via <SourceLink href="https://openmaptiles.org/">OpenMapTiles</SourceLink> /{" "}
+        <SourceLink href="https://openfreemap.org/">OpenFreeMap</SourceLink>; terrain from
+        Mapzen/AWS Terrain Tiles.
+      </p>
     </section>
+  );
+}
+
+function SourceLink({ href, children }: { href: string; children: ReactNode }) {
+  return (
+    <a
+      href={href}
+      rel="noreferrer"
+      className="rounded-sm text-ink-2 underline decoration-line underline-offset-2 hover:text-ink focus-visible:outline-2 focus-visible:outline-accent"
+    >
+      {children}
+    </a>
   );
 }
 

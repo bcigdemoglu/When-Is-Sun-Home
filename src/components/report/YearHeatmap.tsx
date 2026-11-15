@@ -3,6 +3,7 @@ import { useEffect, useId, useRef, useState, type KeyboardEvent, type PointerEve
 import { horizonBinFor } from "@/lib/analysis";
 import {
   SunState,
+  type DayAnalysis,
   type HorizonProfile,
   type Observer,
   type SunStateCode,
@@ -60,6 +61,7 @@ import {
   statePhrase,
   stateShort,
 } from "./states";
+import { dayTotals } from "./summary";
 import type { SunReportProps } from "./types";
 
 const MARGIN = { left: 44, right: 1, top: 20, bottom: 22 };
@@ -67,6 +69,8 @@ const MARGIN = { left: 44, right: 1, top: 20, bottom: 22 };
 interface YearHeatmapProps {
   year: YearAnalysis | null;
   model: ReportModel | null;
+  /** The selected day's 1-minute analysis: only for that day's total (see `dayTotals`). */
+  day: DayAnalysis | null;
   /** Sun positions and skyline: only used to say WHAT shades a hovered cell. */
   grid: SunYearGrid | null;
   horizon: HorizonProfile | null;
@@ -84,6 +88,7 @@ type HoverCell = HeatmapCell & { x: number; y: number; floating: boolean };
 export function YearHeatmap({
   year,
   model,
+  day,
   grid,
   horizon,
   hasTerrain,
@@ -180,6 +185,9 @@ export function YearHeatmap({
         ]
       : null;
 
+  // A day's total: the selected day reads like every other card (see `dayTotals`).
+  const sunOf = (dayIndex: number) => dayTotals(year, day, date, dayIndex)?.sunMinutes ?? 0;
+
   // The value line reads the cell under the pointer, else the selection.
   const shown: HeatmapCell | null =
     hover ??
@@ -224,7 +232,7 @@ export function YearHeatmap({
               {stateShort(shownState, blockerAt(grid, horizon, shown.dayIndex, shown.slot))}
             </span>
             <span className="block truncate" data-testid="heatmap-day-total">
-              {formatDuration(year.days[shown.dayIndex].sunMinutes)} of direct sun that day
+              {formatDuration(sunOf(shown.dayIndex))} of direct sun that day
             </span>
           </>
         ) : (
@@ -322,7 +330,7 @@ export function YearHeatmap({
                 </div>
                 <div className="mt-1 tabular-nums">
                   <strong className="font-semibold text-ink">
-                    {formatDuration(year.days[hover.dayIndex].sunMinutes)}
+                    {formatDuration(sunOf(hover.dayIndex))}
                   </strong>{" "}
                   of direct sun that day
                 </div>
@@ -336,7 +344,7 @@ export function YearHeatmap({
         {year && selectedDay !== null && selectedState !== null
           ? `Selected ${formatDate(date, { weekday: true })}, ${formatClock(minuteOfDay, hour12)}: ${
               stateMeta(selectedState).phrase
-            }. ${formatDuration(year.days[selectedDay].sunMinutes)} of direct sun that day.`
+            }. ${formatDuration(sunOf(selectedDay))} of direct sun that day.`
           : ""}
       </p>
 

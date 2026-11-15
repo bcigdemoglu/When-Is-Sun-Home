@@ -34,6 +34,13 @@ export const BUILDINGS_CACHE_CONTROL =
  * at the CDN for a week.
  */
 export const EMPTY_BUILDINGS_CACHE_CONTROL = "public, max-age=300, s-maxage=3600";
+/**
+ * When Overpass could not be had (429/502/504): shared caches may repeat the
+ * failure for half a minute, browsers not at all. A burst of requests for an
+ * area whose upstream is down then does not cost 25 s of function time each.
+ */
+export const UPSTREAM_FAILURE_CACHE_CONTROL = "public, max-age=0, s-maxage=30";
+export const UPSTREAM_FAILURE_TTL_MS = 30_000;
 
 /** Total time allowed for Overpass, all endpoints together. */
 export const BUILDINGS_BUDGET_MS = 25_000;
@@ -51,6 +58,9 @@ export interface BuildingsRouteOptions {
   budgetMs?: number;
   endpointTimeoutMs?: number;
 }
+
+/** How the query string must start; the rest of it is the key. */
+const AREA_QUERY = "?area=";
 
 const STATUS_BY_KIND: Record<BuildingsRouteErrorKind, number> = {
   "bad-area": 400,
@@ -71,11 +81,43 @@ function errorResponse(
     status: STATUS_BY_KIND[kind],
     headers: {
       "content-type": "application/json; charset=utf-8",
-      // Failures must never be cached, by the browser or by the CDN.
+      // Unless said otherwise, a failure is cached by nobody.
       "cache-control": "no-store",
       ...extraHeaders,
     },
   });
+}
+
+/**
+ * Upstream failures of the last half minute, by area key, in this server
+ * instance. Not every CDN caches error responses whatever their headers say,
+ * so the instance also remembers them itself.
+ */
+interface RememberedFailure {
+  until: number;
+  kind: BuildingsRouteErrorKind;
+  message: string;
+  headers: Record<string, string>;
+}
+const recentFailures = new Map<string, RememberedFailure>();
+const MAX_REMEMBERED_FAILURES = 500;
+
+/** Forget remembered upstream failures (tests). */
+export function resetUpstreamFailures(): void {
+  recentFailures.clear();
+}
+
+function rememberFailure(key: string, failure: RememberedFailure): void {
+  if (recentFailures.size >= MAX_REMEMBERED_FAILURES) {
+    const now = Date.now();
+    for (const [k, f] of recentFailures) if (f.until <= now) recentFailures.delete(k);
+    // Still full of live entries: drop the oldest (Maps keep insertion order).
+    for (const k of recentFailures.keys()) {
+      if (recentFailures.size < MAX_REMEMBERED_FAILURES) break;
+      recentFailures.delete(k);
+    }
+  }
+  recentFailures.set(key, failure);
 }
 
 function hostOf(endpoint: string): string {
@@ -98,15 +140,30 @@ export async function handleBuildingsRequest(
   options: BuildingsRouteOptions = {},
 ): Promise<Response> {
   try {
-    // Exactly one parameter: anything else would be a way to mint unlimited
-    // distinct URLs for the same area and bypass the CDN cache.
-    const params = [...new URL(request.url).searchParams];
-    const area = params.length === 1 && params[0][0] === "area" ? areaFromKey(params[0][1]) : null;
+    // The query string must be, byte for byte, `area=<key>`. Looked at before
+    // any decoding: `area=v3%3A…`, `area=%76…`, a trailing `&`, a second
+    // parameter and so on would all reach the same area through a different
+    // URL, i.e. a different CDN cache entry and a fresh Overpass query each.
+    const search = new URL(request.url).search;
+    const area = search.startsWith(AREA_QUERY)
+      ? areaFromKey(search.slice(AREA_QUERY.length))
+      : null;
     if (!area) {
       return errorResponse(
         "bad-area",
-        "Expected exactly one query parameter, `area`, holding a current building area key.",
+        "The query string must be exactly `area=<key>`, with a current building area key, unencoded.",
       );
+    }
+
+    const remembered = recentFailures.get(area.key);
+    if (remembered) {
+      if (remembered.until > Date.now()) {
+        return errorResponse(remembered.kind, remembered.message, {
+          ...remembered.headers,
+          "x-buildings-replayed": "1",
+        });
+      }
+      recentFailures.delete(area.key);
     }
 
     const {
@@ -171,11 +228,20 @@ export async function handleBuildingsRequest(
         "No Overpass endpoint could be tried within the time budget.",
       );
     }
-    const extra: Record<string, string> = { "x-buildings-attempts": attempts.join(", ") };
+    const extra: Record<string, string> = {
+      "cache-control": UPSTREAM_FAILURE_CACHE_CONTROL,
+      "x-buildings-attempts": attempts.join(", "),
+    };
     if (lastError.endpoint) extra["x-buildings-source"] = hostOf(lastError.endpoint);
     if (lastError.kind === "rate-limited" && lastError.retryAfterS !== undefined) {
       extra["retry-after"] = String(lastError.retryAfterS);
     }
+    rememberFailure(area.key, {
+      until: Date.now() + UPSTREAM_FAILURE_TTL_MS,
+      kind: lastError.kind,
+      message: lastError.message,
+      headers: extra,
+    });
     return errorResponse(lastError.kind, lastError.message, extra);
   } catch (error) {
     if (isAbortError(error)) {

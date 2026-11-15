@@ -3,8 +3,8 @@
  * month. Used by the share popover and by the link-preview card (`/og`), so
  * both say the same thing. Pure and server-safe.
  */
-import type { Observer, Place, PlaceSummary } from "@/lib/types";
-import { heightMToFloor } from "@/state/selectors";
+import { formatCoordinates } from "@/components/shared/format";
+import type { Place, PlaceSummary } from "@/lib/types";
 import { MONTH_NAMES, formatSunHours } from "@/state/urlCodec";
 
 /** `text` cut to `max` characters (code points), with an ellipsis if it was longer. */
@@ -19,9 +19,7 @@ export function truncate(text: string, max: number): string {
 
 /** "37.7912° N, 122.4301° W". */
 export function coordinatesLabel(place: Place): string {
-  const ns = place.lat >= 0 ? "N" : "S";
-  const ew = place.lng >= 0 ? "E" : "W";
-  return `${Math.abs(place.lat).toFixed(4)}° ${ns}, ${Math.abs(place.lng).toFixed(4)}° ${ew}`;
+  return formatCoordinates(place.lat, place.lng);
 }
 
 /**
@@ -33,23 +31,8 @@ export function shortPlaceName(place: Place): string | null {
   return first === "" ? null : first;
 }
 
-const COMPASS = ["N", "NE", "E", "SE", "S", "SW", "W", "NW"] as const;
-
-function ordinal(n: number): string {
-  const tens = n % 100;
-  if (tens >= 11 && tens <= 13) return `${n}th`;
-  return `${n}${["th", "st", "nd", "rd"][n % 10] ?? "th"}`;
-}
-
-/** "Backyard · ground level" / "Terrace · 4th floor" / "Window · 2nd floor · facing S". */
-export function viewpointLabel(observer: Observer): string {
-  const floor = heightMToFloor(observer.heightM);
-  if (observer.mode === "window") {
-    const facing = COMPASS[Math.round((((observer.facingDeg % 360) + 360) % 360) / 45) % 8];
-    return `Window · ${floor === 1 ? "ground floor" : `${ordinal(floor)} floor`} · facing ${facing}`;
-  }
-  return floor === 1 ? "Backyard · ground level" : `Terrace · ${ordinal(floor)} floor`;
-}
+// The viewpoint wording is the app-wide one ("Yard · ground", "Window · 2nd floor · facing S").
+export { viewpointLabel } from "@/components/shared/viewpoint";
 
 /** "12.7 h in May · none in January", or null when every month is the same. */
 export function bestWorstLine(summary: PlaceSummary, separator = " · "): string | null {

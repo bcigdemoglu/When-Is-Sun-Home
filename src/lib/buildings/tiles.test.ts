@@ -1,9 +1,13 @@
 import fc from "fast-check";
 import { describe, expect, test } from "vitest";
 import {
+  AREA_CELL_REACH_M,
   AREA_LAT_STEP_DEG,
   AREA_MIN_MARGIN_M,
   AREA_RADIUS_M,
+  TILE_COVER_RADIUS_M,
+  TILE_KEEP_RADIUS_M,
+  TILE_MIN_MARGIN_M,
   AREA_SCHEMA_VERSION,
   areAreasAdjacent,
   areaFromKey,
@@ -31,7 +35,7 @@ describe("fetchAreaFor", () => {
   test("Pacific Heights", () => {
     const area = fetchAreaFor({ lat: 37.7906, lng: -122.4294 });
     expect(area.radiusM).toBe(500);
-    expect(area.key).toBe("v3:37.791:-122.4300");
+    expect(area.key).toBe("v4:37.791:-122.4300");
     expect(area.center.lat).toBeCloseTo(37.791, 9);
     expect(distanceM(area.center, { lat: 37.7906, lng: -122.4294 })).toBeLessThan(160);
   });
@@ -81,6 +85,27 @@ describe("fetchAreaFor", () => {
     );
   });
 
+  test("no pin is further from its cell's centre than the cell's reach", () => {
+    fc.assert(
+      fc.property(anyPlace, (place) => {
+        const clamped = { lat: Math.max(-90, Math.min(90, place.lat)), lng: place.lng };
+        expect(distanceM(fetchAreaFor(place).center, clamped)).toBeLessThanOrEqual(
+          AREA_CELL_REACH_M,
+        );
+      }),
+      { numRuns: 3000 },
+    );
+  });
+
+  test("the stated guarantees follow from the radii", () => {
+    // Overpass fallbacks: 500 m around the centre → at least 340 m around a pin.
+    expect(AREA_RADIUS_M - AREA_CELL_REACH_M).toBeGreaterThanOrEqual(AREA_MIN_MARGIN_M);
+    // Tiles: 760 m around the centre → at least 600 m around a pin.
+    expect(TILE_COVER_RADIUS_M - AREA_CELL_REACH_M).toBeGreaterThanOrEqual(TILE_MIN_MARGIN_M);
+    expect(TILE_MIN_MARGIN_M).toBe(600);
+    expect(TILE_KEEP_RADIUS_M).toBeGreaterThanOrEqual(TILE_COVER_RADIUS_M);
+  });
+
   test("cells are about 220 m on a side at any inhabited latitude", () => {
     for (const lat of [0, 37.79, -33.9, 51.5, 64.1, -54.8, 78.2]) {
       const area = fetchAreaFor({ lat, lng: 10 });
@@ -106,7 +131,7 @@ describe("fetchAreaFor", () => {
         const area = fetchAreaFor(place);
         expect(fetchAreaFor(place)).toEqual(area);
         expect(fetchAreaFor(area.center).key).toBe(area.key);
-        expect(area.key).toMatch(/^v3:-?\d{1,2}\.\d{3}:-?\d{1,3}\.\d{4}$/);
+        expect(area.key).toMatch(/^v4:-?\d{1,2}\.\d{3}:-?\d{1,3}\.\d{4}$/);
         expect(area.radiusM).toBe(AREA_RADIUS_M);
         expect(Math.abs(area.center.lat)).toBeLessThanOrEqual(90);
         expect(area.center.lng).toBeGreaterThanOrEqual(-180);
@@ -146,8 +171,8 @@ describe("fetchAreaFor", () => {
       fetchAreaFor({ lat: -e, lng: -e }),
     ].map((area) => area.key);
     expect(new Set(keys).size).toBe(4);
-    expect(keys).toContain("v3:0.001:0.0010");
-    expect(keys).toContain("v3:-0.001:-0.0010");
+    expect(keys).toContain("v4:0.001:0.0010");
+    expect(keys).toContain("v4:-0.001:-0.0010");
   });
 
   test("negative coordinates", () => {
@@ -249,23 +274,23 @@ describe("areaFromKey", () => {
     ["an older schema version", "v1:37.791:-122.4300"],
     ["a future schema version", `v${AREA_SCHEMA_VERSION + 1}:37.791:-122.4300`],
     ["no version", "37.791:-122.4300"],
-    ["a point that is not a cell centre", "v3:37.790:-122.4300"],
-    ["a longitude that is not a cell centre", "v3:37.791:-122.4290"],
-    ["extra precision", "v3:37.7910:-122.4300"],
-    ["too little precision", "v3:37.791:-122.43"],
-    ["arbitrary coordinates", "v3:37.7906:-122.4294"],
-    ["a leading plus", "v3:+37.791:-122.4300"],
-    ["leading zeros", "v3:037.791:-122.4300"],
-    ["surrounding whitespace", " v3:37.791:-122.4300"],
-    ["a trailing newline", "v3:37.791:-122.4300\n"],
-    ["latitude out of range", "v3:91.001:0.0010"],
-    ["longitude out of range", "v3:0.001:181.0010"],
-    ["negative zero", "v3:-0.001:-0.0000"],
-    ["exponent notation", "v3:3e1:1e1"],
-    ["text", "v3:abc:def"],
+    ["a point that is not a cell centre", "v4:37.790:-122.4300"],
+    ["a longitude that is not a cell centre", "v4:37.791:-122.4290"],
+    ["extra precision", "v4:37.7910:-122.4300"],
+    ["too little precision", "v4:37.791:-122.43"],
+    ["arbitrary coordinates", "v4:37.7906:-122.4294"],
+    ["a leading plus", "v4:+37.791:-122.4300"],
+    ["leading zeros", "v4:037.791:-122.4300"],
+    ["surrounding whitespace", " v4:37.791:-122.4300"],
+    ["a trailing newline", "v4:37.791:-122.4300\n"],
+    ["latitude out of range", "v4:91.001:0.0010"],
+    ["longitude out of range", "v4:0.001:181.0010"],
+    ["negative zero", "v4:-0.001:-0.0000"],
+    ["exponent notation", "v4:3e1:1e1"],
+    ["text", "v4:abc:def"],
     ["the placeholder key", "none"],
     ["nothing", ""],
-    ["something enormous", `v3:${"1".repeat(500)}:0.0010`],
+    ["something enormous", `v4:${"1".repeat(500)}:0.0010`],
   ])("rejects %s", (_, key) => {
     expect(areaFromKey(key)).toBeNull();
   });

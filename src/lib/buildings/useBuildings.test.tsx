@@ -376,10 +376,10 @@ describe("useBuildings", () => {
     };
     const { result } = renderBuildings(PIN);
     await waitFor(() => expect(result.current.status).toBe("ready"));
-    expect(result.current.stats).toEqual({ total: 1600, tagged: 1245, levels: 0, default: 355 });
+    expect(result.current.stats).toEqual({ total: 3632, tagged: 2834, levels: 0, default: 798 });
     expect(result.current.source).toBe("tiles");
     await waitForCached(AREA.key);
-    expect((await getCachedBuildingsEntry(AREA.key))?.data.features).toHaveLength(1600);
+    expect((await getCachedBuildingsEntry(AREA.key))?.data.features).toHaveLength(3632);
   });
 });
 

@@ -13,6 +13,7 @@ import {
 import { dayIndexInYear } from "./heatmap";
 import type { ReportModel } from "./model";
 import { Eyebrow, Glyph, SkeletonText, useReport } from "./parts";
+import { dayTotals } from "./summary";
 import type { BuildingDataStatus, SunReportProps } from "./types";
 import { composeVerdict, verdictFacts } from "./verdict";
 
@@ -68,14 +69,8 @@ export function Hero({
 
   const annual = year?.annual ?? null;
   const anySun = annual ? annual.totalSunHours > 0 : false;
-  // The selected day: the 1-minute analysis when it is for this date, else the year grid's row.
-  const dayIndex = year ? dayIndexInYear(year, date) : null;
-  const daySun =
-    day && day.date === date
-      ? { sun: day.sunMinutes, daylight: day.daylightMinutes }
-      : year && dayIndex !== null
-        ? { sun: year.days[dayIndex].sunMinutes, daylight: year.days[dayIndex].daylightMinutes }
-        : null;
+  // The selected day's total, from the one source every card uses.
+  const daySun = dayTotals(year, day, date, year ? dayIndexInYear(year, date) : null);
 
   return (
     <section
@@ -188,7 +183,7 @@ export function Hero({
         />
         <Tile
           label={formatDate(date)}
-          value={daySun && !checking ? formatDuration(daySun.sun) : null}
+          value={daySun && !checking ? formatDuration(daySun.sunMinutes) : null}
           note="direct sun"
           ready={Boolean(daySun) && !checking}
           divided

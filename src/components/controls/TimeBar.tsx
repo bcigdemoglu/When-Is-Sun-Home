@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState, type CSSProperties } from "react";
-import { formatClock, formatShortDate } from "@/components/shared/format";
+import { formatClock, formatDate } from "@/components/shared/format";
+import { useHour12 } from "@/components/shared/useHour12";
 import { Button } from "@/components/ui/Button";
 import { Dialog } from "@/components/ui/Dialog";
 import {
@@ -132,10 +133,14 @@ export function TimeBar({
   const scrubbing = held || lingering;
 
   const isToday = today !== null && date === today;
+  const hour12 = useHour12();
   const dayLabel = isToday
     ? "Today"
-    : formatShortDate(date, today !== null && date.slice(0, 4) !== today.slice(0, 4));
-  const clock = formatClock(minuteOfDay);
+    : formatDate(date, {
+        weekday: true,
+        year: today !== null && date.slice(0, 4) !== today.slice(0, 4),
+      });
+  const clock = formatClock(minuteOfDay, hour12);
   const state = sunStateLabel(sunState);
   const ratio = minuteRatio(minuteOfDay);
 
@@ -159,7 +164,12 @@ export function TimeBar({
 
   const docked = variant === "docked";
   const menuRows: { label: string; detail: string; date: string | null; current: boolean }[] = [
-    { label: "Today", detail: today ? formatShortDate(today) : "", date: null, current: isToday },
+    {
+      label: "Today",
+      detail: today ? formatDate(today, { weekday: true }) : "",
+      date: null,
+      current: isToday,
+    },
   ];
   if (keyDates) {
     menuRows.push(
@@ -170,7 +180,7 @@ export function TimeBar({
     );
     for (const row of menuRows) {
       if (row.date !== null) {
-        row.detail = formatShortDate(row.date);
+        row.detail = formatDate(row.date, { weekday: true });
         row.current = row.date === date;
       }
     }
@@ -340,7 +350,7 @@ export function TimeBar({
             <ChevronLeftIcon />
           </Button>
           <span className="type-card-title text-ink tabular-nums" aria-live="polite">
-            {formatShortDate(date, true)}
+            {formatDate(date, { weekday: true, year: true })}
           </span>
           <Button variant="ghost" iconOnly aria-label="Next day" onClick={() => shiftDay(1)}>
             <ChevronRightIcon />
@@ -364,7 +374,7 @@ export function TimeBar({
                   Back to now
                 </span>
                 <span className="type-label text-ink-2 tabular-nums">
-                  {nowMinute !== null ? formatClock(nowMinute) : ""}
+                  {nowMinute !== null ? formatClock(nowMinute, hour12) : ""}
                 </span>
               </button>
             </li>

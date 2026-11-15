@@ -1,4 +1,5 @@
 import { formatClockCompact } from "@/components/shared/format";
+import { useHour12 } from "@/components/shared/useHour12";
 import { SunState, type Observer, type SunInstant } from "@/lib/types";
 import {
   COMPASS_RADIUS,
@@ -35,6 +36,7 @@ const HALO = {
 };
 
 function RimLabel({ mark }: { mark: RimMark }) {
+  const hour12 = useHour12();
   const tickFrom = rimPoint(mark.azimuthDeg, R - 5);
   const tickTo = rimPoint(mark.azimuthDeg, R + 5);
   const text = rimPoint(mark.azimuthDeg, R + 10);
@@ -60,7 +62,7 @@ function RimLabel({ mark }: { mark: RimMark }) {
         fill="var(--ink)"
         {...HALO}
       >
-        {formatClockCompact(mark.minute)}
+        {formatClockCompact(mark.minute, hour12)}
       </text>
     </g>
   );

@@ -56,10 +56,15 @@ export function isAbortError(error: unknown): boolean {
 
 // ─── Query ─────────────────────────────────────────────────────────────────
 
+/**
+ * Public Overpass servers, in the order they are asked. A last resort only:
+ * the building tiles are the source (see `loader.ts`), and both servers
+ * restrict automated use. No others are listed on purpose: every server here
+ * learns the user's IP address and roughly where they are looking.
+ */
 export const OVERPASS_ENDPOINTS: readonly string[] = [
   "https://overpass-api.de/api/interpreter",
   "https://overpass.private.coffee/api/interpreter",
-  "https://maps.mail.ru/osm/tools/overpass/api/interpreter",
 ];
 
 /** Server-side limit sent in the query (`[timeout:…]`), seconds. */

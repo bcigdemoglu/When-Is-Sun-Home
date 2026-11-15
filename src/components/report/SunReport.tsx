@@ -82,6 +82,7 @@ export function SunReport({
           date={date}
           minuteOfDay={minuteOfDay}
           day={day}
+          year={year}
           observer={observer}
           hasTerrain={hasTerrain}
           onSelectDateTime={onSelectDateTime}
@@ -90,6 +91,7 @@ export function SunReport({
         <YearHeatmap
           year={year}
           model={model}
+          day={day}
           grid={grid}
           horizon={horizon}
           hasTerrain={hasTerrain}
@@ -98,7 +100,13 @@ export function SunReport({
           observer={observer}
           onSelectDateTime={onSelectDateTime}
         />
-        <SunHoursCard year={year} model={model} date={date} onSelectDateTime={onSelectDateTime} />
+        <SunHoursCard
+          year={year}
+          model={model}
+          day={day}
+          date={date}
+          onSelectDateTime={onSelectDateTime}
+        />
         <SkylineChart
           grid={grid}
           horizon={horizon}

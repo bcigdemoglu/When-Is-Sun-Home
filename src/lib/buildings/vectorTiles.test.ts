@@ -696,11 +696,20 @@ describe("decodeBuildingTiles: real OpenFreeMap tiles (Pacific Heights)", () => 
   const bounds = boundsOfCircle(AREA.center, AREA.radiusM);
 
   test("reproduces the parsed fixture", () => {
-    // Regenerate both with `pnpm fetch-fixture` when the conversion changes.
+    // tests/fixtures/pacific-heights.buildings.json is these tiles in our own
+    // format, for the 350 m around the area's centre. Regenerate both with
+    // `pnpm fetch-fixture` when the conversion changes.
     const expected = JSON.parse(
       readFileSync(new URL("pacific-heights.buildings.json", FIXTURES), "utf8"),
     );
-    expect(JSON.parse(JSON.stringify(collection))).toEqual(expected);
+    const middle = decodeBuildingTiles(
+      AREA_TILES.map((tile) => ({ tile, data: fixtureTile(tile) })),
+      { bounds: boundsOfCircle(AREA.center, 350) },
+    );
+    expect(JSON.parse(JSON.stringify(middle))).toEqual(expected);
+    expect(middle.features).toHaveLength(expected.features.length);
+    expect(middle.features.length).toBeGreaterThan(500);
+    expect(middle.features.length).toBeLessThan(1600);
   });
 
   test("every building of the area, once, as valid geometry", () => {
@@ -1092,6 +1101,28 @@ describe("fetchBuildingsFromTiles", () => {
       fetchImpl: fixtureFetch([{ match: /\.pbf$/, reply: slow }]),
     });
     expect(most).toBe(4);
+  });
+
+  test("`keepRadiusM` keeps what the same tiles hold further out, without fetching more", async () => {
+    const fetchImpl = fixtureFetch();
+    const wide = await fetchBuildingsFromTiles(AREA.center, 500, { fetchImpl, keepRadiusM: 800 });
+    expect(tileCalls(fetchImpl)).toHaveLength(4);
+    expect(wide.features.length).toBeGreaterThan(3000);
+    expect(wide).toEqual(
+      decodeBuildingTiles(
+        AREA_TILES.map((tile) => ({ tile, data: fixtureTile(tile) })),
+        { bounds: boundsOfCircle(AREA.center, 800) },
+      ),
+    );
+    // A superset of the plain 500 m result.
+    const shapes = new Set(wide.features.map((f) => JSON.stringify(f.geometry)));
+    for (const feature of decodeArea().features) {
+      expect(shapes.has(JSON.stringify(feature.geometry))).toBe(true);
+    }
+    // A smaller keep radius never shrinks the result below the fetch radius.
+    resetTileTemplate();
+    const narrow = await fetchBuildingsFromTiles(AREA.center, 500, { fetchImpl, keepRadiusM: 100 });
+    expect(narrow.features).toHaveLength(1600);
   });
 
   test("the TileJSON is fetched once for many areas", async () => {

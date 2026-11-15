@@ -17,16 +17,40 @@ import type { LatLng } from "@/lib/types";
  *         neighbourhood-aware default heights; coordinates rounded to 7 places.
  *  2 → 3: buildings come from OpenFreeMap vector tiles (other ids, heights
  *         and feature count than the Overpass-derived data).
+ *  3 → 4: tile data reaches 800 m from the cell centre instead of 500 m.
  */
-export const AREA_SCHEMA_VERSION = 3;
+export const AREA_SCHEMA_VERSION = 4;
 
 /** Cell height in degrees of latitude (~222 m). */
 export const AREA_LAT_STEP_DEG = 0.002;
-/** Radius fetched around each cell centre, metres. */
+/** Half the diagonal of a cell, rounded up: no pin is further than this from its cell's centre. */
+export const AREA_CELL_REACH_M = 160;
+
+/**
+ * Coverage from the vector tiles (the primary source). Every z14 tile that
+ * the bounding box of a circle of `TILE_COVER_RADIUS_M` around the cell
+ * centre touches is fetched, so:
+ *
+ *   every pin has ALL buildings within at least 600 m (`TILE_MIN_MARGIN_M`)
+ *   in every direction: 760 m minus the 160 m a pin can be from the centre.
+ *
+ * Buildings further out are kept as far as the fetched tiles happen to hold
+ * them, up to `TILE_KEEP_RADIUS_M` from the centre (the skyline looks out to
+ * 1 km, and what was downloaded anyway should not be thrown away).
+ */
+export const TILE_COVER_RADIUS_M = 760;
+export const TILE_KEEP_RADIUS_M = 800;
+export const TILE_MIN_MARGIN_M = 600;
+
+/**
+ * Radius asked of the Overpass fallbacks around each cell centre, metres.
+ * Smaller than the tile coverage: an Overpass query costs the server real
+ * work, and it is only a stand-in.
+ */
 export const AREA_RADIUS_M = 500;
 /**
- * Every pin has buildings at least this far out in all directions:
- * the fetch radius minus the half-diagonal of a cell (~158 m).
+ * With Overpass data, every pin has buildings at least this far out in all
+ * directions: the fetch radius minus the reach of a cell.
  */
 export const AREA_MIN_MARGIN_M = 340;
 
@@ -35,9 +59,10 @@ const MIN_COS_LAT = 0.01;
 const ROWS = Math.round(180 / AREA_LAT_STEP_DEG);
 
 export interface FetchArea {
-  /** Stable identifier, e.g. "v3:37.791:-122.4300". Also the cache key. */
+  /** Stable identifier, e.g. "v4:37.791:-122.4300". Also the cache key. */
   key: string;
   center: LatLng;
+  /** Radius for the Overpass fallbacks (`AREA_RADIUS_M`). Tiles reach further. */
   radiusM: number;
 }
 

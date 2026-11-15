@@ -12,7 +12,6 @@ import {
 import { keyDates as findKeyDates } from "@/components/controls/dayMenu";
 import { dayTrackBackground } from "@/components/controls/dayTrack";
 import { TimeBar } from "@/components/controls/TimeBar";
-import { viewpointSummary } from "@/components/controls/viewpoint";
 import { ViewpointControls } from "@/components/controls/ViewpointControls";
 import { COMPASS_RADIUS, sunPathModel } from "@/components/map/compassGeometry";
 import { MapControls } from "@/components/map/MapControls";
@@ -26,7 +25,9 @@ import type { BuildingDataStatus } from "@/components/report/types";
 import { SearchExperience } from "@/components/search/SearchExperience";
 import type { PlaceSelection } from "@/components/search/types";
 import { ShareButton } from "@/components/share/ShareButton";
-import { formatCoordinates, zoneAbbreviation, zoneLabel } from "@/components/shared/format";
+import { formatCoordinates } from "@/components/shared/format";
+import { viewpointLabel } from "@/components/shared/viewpoint";
+import { zoneAbbreviation, zoneLabel } from "@/components/shared/zone";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Dialog } from "@/components/ui/Dialog";
@@ -458,7 +459,7 @@ function Workspace() {
                   <div className="mt-3 flex flex-wrap gap-2">{actions("pill")}</div>
                 </header>
                 {summaryHeader}
-                <ViewpointSection summary={viewpointSummary(liveObserver)}>
+                <ViewpointSection summary={viewpointLabel(liveObserver)}>
                   {viewpoint}
                 </ViewpointSection>
                 {sunReport}
@@ -506,11 +507,11 @@ function Workspace() {
                     <Button
                       variant="tonal"
                       aria-haspopup="dialog"
-                      aria-label={`Viewpoint: ${viewpointSummary(liveObserver)}. Change`}
+                      aria-label={`Viewpoint: ${viewpointLabel(liveObserver)}. Change`}
                       onClick={() => setViewpointOpen(true)}
                     >
                       <ViewpointIcon />
-                      {viewpointSummary(liveObserver)}
+                      {viewpointLabel(liveObserver)}
                     </Button>
                   </div>
                 </div>

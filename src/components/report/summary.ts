@@ -2,7 +2,13 @@
  * Numbers the report derives from a `YearAnalysis`: seasons, typical sun
  * times, the split of daylight, month rankings. Pure functions.
  */
-import { SunState, type DaySummary, type MonthSummary, type YearAnalysis } from "@/lib/types";
+import {
+  SunState,
+  type DayAnalysis,
+  type DaySummary,
+  type MonthSummary,
+  type YearAnalysis,
+} from "@/lib/types";
 
 import { MONTHS_LONG, MONTHS_SHORT } from "./format";
 import { monthSpans } from "./heatmap";
@@ -223,4 +229,49 @@ export function daylightSplit(days: readonly DaySummary[]): DaylightSplit {
     outOfViewHours: out / 60,
     daylightHours: daylight / 60,
   };
+}
+
+// ─── One day's totals, the same on every card ──────────────────────────────
+
+export interface DayTotals {
+  sunMinutes: number;
+  daylightMinutes: number;
+  /** True when the figures come from the 1-minute analysis of the selected day. */
+  precise: boolean;
+}
+
+/**
+ * Direct sun and daylight of the day at `dayIndex` of the year — THE way every
+ * card gets a day's total, so that one screen never shows two numbers for the
+ * same day. (`dayIndex` null means "the selected date itself".)
+ *
+ * The year grid counts in 5-minute steps and the selected day's own analysis
+ * in 1-minute steps, so the two can differ by a few minutes. The rule:
+ *  - the SELECTED day (`date`) reads from its 1-minute analysis whenever that
+ *    is available for this very date (`day.date === date`);
+ *  - every other day — a hover or scrub preview — reads from the grid;
+ *  - while `day` is stale (still for another date), the selected day reads
+ *    from the grid as well: never another day's number. All cards then switch
+ *    to the precise figure together when the analysis arrives.
+ * Returns null when neither source has the day.
+ */
+export function dayTotals(
+  year: Pick<YearAnalysis, "days"> | null,
+  day: DayAnalysis | null,
+  date: string,
+  dayIndex: number | null,
+): DayTotals | null {
+  const gridDay = year && dayIndex !== null ? year.days[dayIndex] : undefined;
+  const isSelectedDay = dayIndex === null ? true : gridDay?.date === date;
+  if (day && day.date === date && isSelectedDay) {
+    return { sunMinutes: day.sunMinutes, daylightMinutes: day.daylightMinutes, precise: true };
+  }
+  if (gridDay) {
+    return {
+      sunMinutes: gridDay.sunMinutes,
+      daylightMinutes: gridDay.daylightMinutes,
+      precise: false,
+    };
+  }
+  return null;
 }

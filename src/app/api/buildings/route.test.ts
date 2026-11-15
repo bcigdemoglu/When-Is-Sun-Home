@@ -197,7 +197,7 @@ describe("GET /api/buildings: invalid requests", () => {
     ["an older schema version", `?area=${AREA.key.replace(/^v\d+/, "v1")}`],
     ["a newer schema version", `?area=${AREA.key.replace(/^v\d+/, "v99")}`],
     ["raw coordinates", "?area=37.7906,-122.4294"],
-    ["coordinates that are not a cell centre", "?area=v3:37.7906:-122.4294"],
+    ["coordinates that are not a cell centre", "?area=v4:37.7906:-122.4294"],
     ["a centre with extra digits", `?area=${AREA.key}0`],
     ["a latitude between rows", `?area=${AREA.key.replace("37.791", "37.792")}`],
     ["the key twice", `?area=${AREA.key}&area=${AREA.key}`],
@@ -206,8 +206,8 @@ describe("GET /api/buildings: invalid requests", () => {
     ["lat/lng/radius parameters", "?lat=37.79&lng=-122.43&radius=5000"],
     ["an Overpass query", `?data=${encodeURIComponent("[out:json];node(1);out;")}`],
     ["a key with a query smuggled in", `?area=${encodeURIComponent(`${AREA.key});node(1);out;(`)}`],
-    ["a very long key", `?area=v3:${"9".repeat(5000)}:1`],
-    ["out-of-range coordinates", "?area=v3:95.001:200.0010"],
+    ["a very long key", `?area=v4:${"9".repeat(5000)}:1`],
+    ["out-of-range coordinates", "?area=v4:95.001:200.0010"],
   ])("%s → 400, uncached, and Overpass is never contacted", async (_, query) => {
     const response = await get(query);
     expect(response.status).toBe(400);

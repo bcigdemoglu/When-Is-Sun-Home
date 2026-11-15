@@ -5,7 +5,7 @@ import { bestWorstLine } from "./describe";
 interface LinkPreviewCardProps {
   /** Short place label. */
   label: string;
-  /** "Backyard · ground level". */
+  /** "Yard · ground", "Window · 2nd floor · facing S". */
   viewpoint: string;
   summary: PlaceSummary | null;
 }

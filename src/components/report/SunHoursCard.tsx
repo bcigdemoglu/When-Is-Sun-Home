@@ -1,7 +1,7 @@
 import { useMemo, useRef, useState, type KeyboardEvent, type PointerEvent } from "react";
 
 import { Segmented } from "@/components/ui/Segmented";
-import type { YearAnalysis } from "@/lib/types";
+import type { DayAnalysis, YearAnalysis } from "@/lib/types";
 
 import {
   daysInMonth,
@@ -33,7 +33,7 @@ import {
   useReport,
 } from "./parts";
 import { REPORT_SECTION_IDS } from "./sections";
-import type { MonthDetail } from "./summary";
+import { dayTotals, type MonthDetail } from "./summary";
 import type { SunReportProps } from "./types";
 
 type View = "months" | "days";
@@ -46,6 +46,8 @@ const VIEW_OPTIONS: readonly { value: View; label: string }[] = [
 interface SunHoursCardProps {
   year: YearAnalysis | null;
   model: ReportModel | null;
+  /** The selected day's 1-minute analysis: only for that day's total (see `dayTotals`). */
+  day: DayAnalysis | null;
   date: string;
   onSelectDateTime: SunReportProps["onSelectDateTime"];
 }
@@ -67,7 +69,7 @@ export function hoursAxisMax(maxHours: number): number {
  * averages (bars against that month's daylight) or every single day (a line
  * against the daylight curve). One axis either way: hours.
  */
-export function SunHoursCard({ year, model, date, onSelectDateTime }: SunHoursCardProps) {
+export function SunHoursCard({ year, model, day, date, onSelectDateTime }: SunHoursCardProps) {
   const { hour12 } = useReport();
   const [view, setView] = useState<View>("months");
   const [sizeRef, size] = useElementSize<HTMLDivElement>();
@@ -93,16 +95,18 @@ export function SunHoursCard({ year, model, date, onSelectDateTime }: SunHoursCa
     );
     detail = monthDetailText(month, hour12);
   } else {
-    const day = year.days[hoverDay?.day ?? selectedDay ?? 0];
+    // The selected day reads like every other card; a previewed day reads from the grid.
+    const shownIndex = hoverDay?.day ?? selectedDay ?? 0;
+    const totals = dayTotals(year, day, date, shownIndex) ?? year.days[shownIndex];
     value = (
       <>
-        {formatDuration(day.sunMinutes)}
-        <ValueUnit>on {formatDate(day.date, { weekday: true })}</ValueUnit>
+        {formatDuration(totals.sunMinutes)}
+        <ValueUnit>on {formatDate(year.days[shownIndex].date, { weekday: true })}</ValueUnit>
       </>
     );
     detail =
-      day.daylightMinutes > 0
-        ? `${formatPercent(day.sunMinutes / day.daylightMinutes)} of ${formatDuration(day.daylightMinutes)} of daylight`
+      totals.daylightMinutes > 0
+        ? `${formatPercent(totals.sunMinutes / totals.daylightMinutes)} of ${formatDuration(totals.daylightMinutes)} of daylight`
         : "The sun does not rise";
   }
 
@@ -149,6 +153,7 @@ export function SunHoursCard({ year, model, date, onSelectDateTime }: SunHoursCa
             months={model.months}
             size={size}
             date={date}
+            day={day}
             selectedDay={selectedDay}
             hover={hoverDay}
             onHover={setHoverDay}
@@ -341,6 +346,7 @@ const MARGIN = { left: 24, right: 1, top: 10, bottom: 22 };
 
 interface DayLineProps {
   year: YearAnalysis;
+  day: DayAnalysis | null;
   months: MonthSpan[];
   size: ElementSize;
   date: string;
@@ -352,6 +358,7 @@ interface DayLineProps {
 
 function DayLine({
   year,
+  day,
   months,
   size,
   date,
@@ -448,6 +455,8 @@ function DayLine({
   };
 
   const hovered = hover ? year.days[hover.day] : null;
+  // In the tooltip the selected day reads like every other card.
+  const hoveredTotals = (hover && dayTotals(year, day, date, hover.day)) || hovered || year.days[0];
   const selected = selectedDay !== null ? year.days[selectedDay] : null;
 
   return (
@@ -593,7 +602,7 @@ function DayLine({
             <LineKey color="var(--report-sun-line)" />
             <span>
               <strong className="font-semibold text-ink">
-                {formatDuration(hovered.sunMinutes)}
+                {formatDuration(hoveredTotals.sunMinutes)}
               </strong>{" "}
               direct sun
             </span>
@@ -602,7 +611,7 @@ function DayLine({
             <LineKey color="var(--ink-3)" width={1.25} />
             <span>
               <strong className="font-semibold text-ink">
-                {formatDuration(hovered.daylightMinutes)}
+                {formatDuration(hoveredTotals.daylightMinutes)}
               </strong>{" "}
               daylight
             </span>

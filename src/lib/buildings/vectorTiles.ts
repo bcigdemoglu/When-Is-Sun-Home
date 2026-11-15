@@ -752,6 +752,11 @@ export function decodeBuildingTiles(
 // ─── Network ───────────────────────────────────────────────────────────────
 
 export interface FetchBuildingsFromTilesOptions extends TileRequestOptions {
+  /**
+   * Also keep buildings beyond `radiusM`, up to this far from the centre,
+   * where the tiles fetched for `radiusM` happen to contain them.
+   */
+  keepRadiusM?: number;
   /** Per tile, including its one retry. */
   timeoutMs?: number;
   /** Ask for the TileJSON again even if the remembered one is recent. */
@@ -820,7 +825,8 @@ async function fetchTile(
  * Fetch and decode the buildings within `radiusM` of `center` (strictly: in
  * the bounding box of that circle) from OpenFreeMap's z14 tiles.
  *
- * The 1–4 tiles involved are fetched in parallel. If any of them fails the
+ * The tiles involved (1–4 below 50° latitude for a radius under 800 m, up to
+ * 9 further north where tiles are smaller) are fetched in parallel. If any of them fails the
  * whole call fails with a `BuildingTilesError`: half the neighbourhood would
  * be worse than an error the caller can react to. Aborting rejects with an
  * AbortError.
@@ -835,6 +841,7 @@ export async function fetchBuildingsFromTiles(
     fetchImpl = globalThis.fetch,
     timeoutMs = TILE_TIMEOUT_MS,
     refresh = false,
+    keepRadiusM = radiusM,
   } = options;
   if (signal?.aborted) throw abortErrorFrom(signal);
 
@@ -856,7 +863,7 @@ export async function fetchBuildingsFromTiles(
     );
     return decodeBuildingTiles(
       tiles.map((tile, i) => ({ tile, data: data[i] })),
-      { bounds: boundsOfCircle(center, radiusM) },
+      { bounds: boundsOfCircle(center, Math.max(radiusM, keepRadiusM)) },
     );
   } catch (error) {
     if (signal?.aborted) throw abortErrorFrom(signal);

@@ -8,6 +8,11 @@ import type { LatLng, Place } from "@/lib/types";
 
 export const PHOTON_BASE_URL = "https://photon.komoot.io";
 export const DEFAULT_SEARCH_LIMIT = 6;
+/**
+ * Decimal places of the position sent for reverse geocoding: 4 places is
+ * about 11 m, enough to find the address and no more exact than that.
+ */
+export const REVERSE_GEOCODE_DECIMALS = 4;
 
 export type PlaceSuggestion = Place & {
   /** Stable within one result list, e.g. "W259269865" or "coord:37.79000,-122.43000". */
@@ -227,8 +232,10 @@ export async function reverseGeocode(
     if (!Number.isFinite(place.lat) || !Number.isFinite(place.lng)) return null;
     const { signal, fetchImpl = globalThis.fetch } = options;
     const url = new URL("/reverse", PHOTON_BASE_URL);
-    url.searchParams.set("lat", String(place.lat));
-    url.searchParams.set("lon", String(place.lng));
+    // Only as precise as an address needs: the service never sees the exact
+    // pin or GPS fix.
+    url.searchParams.set("lat", place.lat.toFixed(REVERSE_GEOCODE_DECIMALS));
+    url.searchParams.set("lon", place.lng.toFixed(REVERSE_GEOCODE_DECIMALS));
     url.searchParams.set("lang", "en");
     for (const feature of await photonFeatures(url, signal, fetchImpl)) {
       const parsed = photonFeatureSchema.safeParse(feature);

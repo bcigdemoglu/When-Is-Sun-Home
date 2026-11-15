@@ -1,6 +1,6 @@
 "use client";
 
-import { compassName, compassPoint } from "@/components/shared/format";
+import { compassPoint, compassWords } from "@/components/shared/format";
 
 const DIRECTIONS = [0, 45, 90, 135, 180, 225, 270, 315] as const;
 /** Diameter of the dial and the radius its buttons sit on, px. */
@@ -68,7 +68,7 @@ export function FacingPicker({ facingDeg, fovDeg, onChange }: FacingPickerProps)
           <button
             key={deg}
             type="button"
-            aria-label={`Face ${compassName(deg)}`}
+            aria-label={`Face ${compassWords(deg)}`}
             aria-pressed={selected}
             className={`absolute flex h-11 w-11 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full text-[13px] font-semibold transition-colors ${
               selected ? "bg-ink text-surface" : "text-ink-2 hover:bg-surface-2 hover:text-ink"

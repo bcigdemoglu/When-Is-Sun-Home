@@ -11,10 +11,18 @@ import {
 } from "./loader";
 import { OVERPASS_ENDPOINTS, OverpassError, isAbortError, parseOverpassResponse } from "./overpass";
 import { tileWithBuildings } from "./testing";
-import { fetchAreaFor } from "./tiles";
+import {
+  AREA_CELL_REACH_M,
+  TILE_COVER_RADIUS_M,
+  TILE_KEEP_RADIUS_M,
+  TILE_MIN_MARGIN_M,
+  fetchAreaFor,
+} from "./tiles";
 import {
   BuildingTilesError,
   OPENFREEMAP_TILEJSON_URL,
+  boundsOfCircle,
+  decodeBuildingTiles,
   resetTileTemplate,
   tilesForCircle,
 } from "./vectorTiles";
@@ -130,7 +138,7 @@ describe("loadBuildings: the usual path", () => {
     expect(loaded.buildings.features.map((f) => f.properties.heightM)).toEqual([10, 20, 30]);
 
     expect(calls("tilejson")).toHaveLength(1);
-    expect(calls("tile")).toHaveLength(tilesForCircle(AREA.center, AREA.radiusM).length);
+    expect(calls("tile")).toHaveLength(tilesForCircle(AREA.center, TILE_COVER_RADIUS_M).length);
     expect(calls("tile")).toHaveLength(4);
     expect(calls("api")).toHaveLength(0);
     expect(calls("overpass")).toHaveLength(0);
@@ -162,7 +170,56 @@ describe("loadBuildings: the usual path", () => {
     };
     const loaded = await loadBuildings(AREA);
     expect(loaded.source).toBe("tiles");
-    expect(loaded.buildings.features).toHaveLength(1600);
+    // Everything the four tiles hold within 800 m of the cell centre: more
+    // than twice what a 500 m radius would give (1600).
+    expect(loaded.buildings.features).toHaveLength(3632);
+    expect(loaded.buildings).toEqual(
+      decodeBuildingTiles(
+        tilesForCircle(AREA.center, TILE_COVER_RADIUS_M).map((tile) => ({
+          tile,
+          data: readFileSync(new URL(`openfreemap/14/${tile.x}/${tile.y}.pbf`, FIXTURES)),
+        })),
+        { bounds: boundsOfCircle(AREA.center, TILE_KEEP_RADIUS_M) },
+      ),
+    );
+  });
+
+  test("every pin of the cell has all buildings within 600 m, in every direction", async () => {
+    tiles = (url) => {
+      const [, x, y] = /\/14\/(\d+)\/(\d+)\.pbf$/.exec(url)!;
+      return new Response(
+        new Uint8Array(readFileSync(new URL(`openfreemap/14/${x}/${y}.pbf`, FIXTURES))),
+      );
+    };
+    const { buildings } = await loadBuildings(AREA);
+    // Everything the area's tiles contain, without any distance filter.
+    const everything = decodeBuildingTiles(
+      tilesForCircle(AREA.center, TILE_COVER_RADIUS_M).map((tile) => ({
+        tile,
+        data: readFileSync(new URL(`openfreemap/14/${tile.x}/${tile.y}.pbf`, FIXTURES)),
+      })),
+    );
+    const loadedShapes = new Set(buildings.features.map((f) => JSON.stringify(f.geometry)));
+    const metres = (lng: number, lat: number) =>
+      Math.hypot(
+        (lat - AREA.center.lat) * 110_574,
+        (lng - AREA.center.lng) * 111_320 * Math.cos((AREA.center.lat * Math.PI) / 180),
+      );
+    // The corners of the cell are the pins furthest from its centre (< 160 m).
+    const reach = TILE_MIN_MARGIN_M + AREA_CELL_REACH_M;
+    let near = 0;
+    for (const feature of everything.features) {
+      const ring = (
+        feature.geometry.type === "Polygon"
+          ? feature.geometry.coordinates
+          : feature.geometry.coordinates[0]
+      )[0];
+      if (!ring.some(([lng, lat]) => metres(lng, lat) <= reach)) continue;
+      near++;
+      expect(loadedShapes.has(JSON.stringify(feature.geometry)), feature.properties.id).toBe(true);
+    }
+    expect(near).toBeGreaterThan(2000);
+    expect(reach).toBeLessThanOrEqual(TILE_COVER_RADIUS_M);
   });
 });
 
@@ -179,7 +236,7 @@ describe("loadBuildings: fallbacks", () => {
     expect(loaded.origin).toBe("api");
     expect(loaded.buildings.features).toHaveLength(2);
     expect(calls("api")).toHaveLength(1);
-    expect(calls("api")[0][0]).toBe(`/api/buildings?area=${encodeURIComponent(AREA.key)}`);
+    expect(calls("api")[0][0]).toBe(`/api/buildings?area=${AREA.key}`);
     expect(calls("overpass")).toHaveLength(0);
     expect((await cached()).source).toBe("api");
   });

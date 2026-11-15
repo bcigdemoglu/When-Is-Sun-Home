@@ -8,8 +8,9 @@
  *       plus one neighbouring tile that shares a building with them (for the
  *       tile-edge tests). Only the `building` layer of each tile is kept, byte
  *       for byte; the other layers (roads, POIs, …) would triple the size.
- *       Then regenerates tests/fixtures/pacific-heights.buildings.json, the
- *       parsed collection for that pin's fetch area.
+ *       Then regenerates tests/fixtures/pacific-heights.buildings.json: the
+ *       tiles parsed into our own format, for the 350 m around the centre of
+ *       that pin's fetch area (the app itself keeps 800 m).
  *
  *   pnpm fetch-fixture --overpass [lat] [lng] [output file]
  *       Straight from Overpass. Saves the RAW Overpass response
@@ -35,7 +36,12 @@ import {
   fetchOverpassJson,
   parseOverpassResponse,
 } from "../src/lib/buildings/overpass";
-import { fetchAreaFor, type FetchArea } from "../src/lib/buildings/tiles";
+import {
+  TILE_COVER_RADIUS_M,
+  TILE_KEEP_RADIUS_M,
+  fetchAreaFor,
+  type FetchArea,
+} from "../src/lib/buildings/tiles";
 import {
   BUILDING_TILE_LAYER,
   OPENFREEMAP_TILEJSON_URL,
@@ -53,6 +59,8 @@ const DEFAULT_RAW_OUTPUT = "tests/fixtures/pacific-heights.overpass.json";
 const DEFAULT_VIA_OUTPUT = "tests/fixtures/pacific-heights.api.json";
 const TILE_FIXTURE_DIR = "tests/fixtures/openfreemap";
 const PARSED_TILES_OUTPUT = "tests/fixtures/pacific-heights.buildings.json";
+/** The parsed fixture covers the bounding box of this radius around the area's centre. */
+const PARSED_FIXTURE_RADIUS_M = 350;
 /**
  * Not needed for the default pin's area, but it shares two large buildings
  * with its western neighbour 14/2620/6332, each cut by both tiles: the real
@@ -157,7 +165,7 @@ async function fetchTiles(area: FetchArea): Promise<void> {
   await writeFile(path.join(dir, "planet.json"), tileJsonBytes);
   console.log(`TileJSON → ${template}`);
 
-  const areaTiles = tilesForCircle(area.center, area.radiusM);
+  const areaTiles = tilesForCircle(area.center, TILE_COVER_RADIUS_M);
   const loaded: { tile: TileRef; data: Uint8Array }[] = [];
   for (const tile of [...areaTiles, ...EXTRA_TILES]) {
     const full = await get(tileUrl(template, tile));
@@ -171,12 +179,19 @@ async function fetchTiles(area: FetchArea): Promise<void> {
     if (areaTiles.includes(tile)) loaded.push({ tile, data });
   }
 
+  const all = decodeBuildingTiles(loaded, {
+    bounds: boundsOfCircle(area.center, TILE_KEEP_RADIUS_M),
+  });
+  console.log(`The app would load ${summary(all)} for this area`);
+
+  // The parsed fixture holds the middle of the area only: the whole of it
+  // would be a file of nearly 2 MB.
   const buildings = decodeBuildingTiles(loaded, {
-    bounds: boundsOfCircle(area.center, area.radiusM),
+    bounds: boundsOfCircle(area.center, PARSED_FIXTURE_RADIUS_M),
   });
   const output = path.resolve(process.cwd(), PARSED_TILES_OUTPUT);
   await save(output, buildings);
-  console.log(`Wrote ${summary(buildings)} to ${output}`);
+  console.log(`Wrote ${summary(buildings)} (within ${PARSED_FIXTURE_RADIUS_M} m) to ${output}`);
 }
 
 /** The parsed collection, as served by a deployment's /api/buildings route. */

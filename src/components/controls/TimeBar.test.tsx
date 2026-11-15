@@ -1,10 +1,14 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SunState } from "@/lib/types";
 import { useSettings } from "@/state";
 import { TimeBar, sunStateLabel, type TimeBarProps } from "./TimeBar";
+
+// Pin the clock style so expectations do not depend on the machine's locale.
+const clockStyle = vi.hoisted(() => ({ hour12: true }));
+vi.mock("@/components/shared/useHour12", () => ({ useHour12: () => clockStyle.hour12 }));
 
 const KEY_DATES = {
   longest: "2026-06-21",
@@ -30,6 +34,7 @@ const BASE: TimeBarProps = {
 };
 
 beforeEach(() => {
+  clockStyle.hour12 = true;
   useSettings.getState().reset();
   useSettings.getState().setDateTime("2026-10-05", 15 * 60 + 40);
 });
@@ -65,6 +70,17 @@ describe("TimeBar", () => {
     expect(slider).toHaveAttribute("max", "1439");
     expect(slider).toHaveValue("940");
     expect(slider).toHaveAttribute("aria-valuetext", "3:40 PM PDT, in sun");
+  });
+
+  it("uses a 24-hour clock for readers whose locale does — everywhere at once", () => {
+    clockStyle.hour12 = false;
+    setup();
+    const slider = screen.getByRole("slider", { name: "Time of day" });
+    expect(slider).toHaveAttribute("aria-valuetext", "15:40 PDT, in sun");
+    expect(screen.getByRole("button", { name: /Mon, Oct 5, 15:40 PDT/ })).toBeInTheDocument();
+    fireEvent.pointerDown(slider);
+    expect(screen.getByRole("status")).toHaveTextContent("15:40");
+    expect(screen.queryByText(/PM/)).not.toBeInTheDocument();
   });
 
   it("writes the time to the store as the slider moves", () => {

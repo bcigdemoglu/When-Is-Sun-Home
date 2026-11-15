@@ -417,9 +417,9 @@ describe("SavedPlaces — compare", () => {
     expect(cells("Share of daylight")).toEqual(["65%(best)", "3%", "30%"]);
     expect(cells("Sunniest month")).toEqual(["Jun · 10.9 h(best)", "Jun · 1.4 h", "Jun · 5.2 h"]);
     // "Best" in the least-sun row is the place that keeps the most.
-    expect(cells("Least sun")).toEqual(["Dec · 4.5 h(best)", "Jan · 0 h", "Dec · 1.9 h"]);
+    expect(cells("Least sun")).toEqual(["Dec · 4.5 h(best)", "Jan · 0.0 h", "Dec · 1.9 h"]);
     expect(cells("Summer average (Jun–Aug)")).toEqual(["10.4 h(best)", "1.0 h", "4.9 h"]);
-    expect(cells("Winter average (Dec–Feb)")).toEqual(["5.1 h(best)", "0 h", "2.3 h"]);
+    expect(cells("Winter average (Dec–Feb)")).toEqual(["5.1 h(best)", "0.0 h", "2.3 h"]);
     expect(cells("Viewpoint")).toEqual([
       "Yard · ground",
       "Window · 2nd floor · facing N",

@@ -19,7 +19,7 @@ import type { BuildingCollection } from "@/lib/types";
 import { fetchBuildingsFromApi } from "./api";
 import { getCachedBuildingsEntry, setCachedBuildings, type BuildingDataSource } from "./cache";
 import { abortErrorFrom, fetchBuildings, isAbortError } from "./overpass";
-import type { FetchArea } from "./tiles";
+import { TILE_COVER_RADIUS_M, TILE_KEEP_RADIUS_M, type FetchArea } from "./tiles";
 import { fetchBuildingsFromTiles } from "./vectorTiles";
 
 export type { BuildingDataSource } from "./cache";
@@ -98,7 +98,12 @@ export async function loadBuildings(
   const stages: { source: BuildingDataSource; run: () => Promise<BuildingCollection> }[] = [
     {
       source: "tiles",
-      run: () => fetchBuildingsFromTiles(area.center, area.radiusM, { ...common, refresh: fresh }),
+      run: () =>
+        fetchBuildingsFromTiles(area.center, TILE_COVER_RADIUS_M, {
+          ...common,
+          keepRadiusM: TILE_KEEP_RADIUS_M,
+          refresh: fresh,
+        }),
     },
     {
       source: "api",

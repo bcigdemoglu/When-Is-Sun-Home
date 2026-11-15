@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SunState, type SunInstant } from "@/lib/types";
 
 import { drawHeatmapBase } from "./heatmapCanvas";
+import { SunSummaryHeader } from "./SummaryHeader";
 import { REPORT_SECTIONS, SunReport } from "./SunReport";
 import { syntheticDay, syntheticHorizon, syntheticYear, YARD } from "./testing";
 import type { SunReportProps } from "./types";
@@ -329,6 +330,87 @@ describe("selected day", () => {
   });
 });
 
+describe("one day, one total", () => {
+  // The toy year's grid says 9 h for every day; the selected day's own
+  // (1-minute) analysis says 5 h 10 m. A real pair differs by a few minutes.
+  const heroDayTile = () => within(card(/average day/i)).getAllByRole("definition")[2].textContent;
+  const todayValue = () => card("Mon, Jun 15").querySelector("p")?.textContent;
+  const heatmapTotal = () => screen.getByTestId("heatmap-day-total").textContent;
+  const daysValue = () => card("Sun hours").querySelector("p")?.textContent;
+
+  it("shows the selected day's precise total in every card", () => {
+    render(
+      <>
+        <div data-testid="header">
+          <SunSummaryHeader
+            date="2026-06-15"
+            minuteOfDay={600}
+            isLive
+            day={props().day}
+            instant={sunny}
+            year={year}
+            buildingsStatus="ready"
+          />
+        </div>
+        <SunReport {...props()} />
+      </>,
+    );
+    fireEvent.click(screen.getByRole("radio", { name: "Days" }));
+    expect(screen.getByTestId("header").textContent).toMatch(/^5 h 10 mof direct sun/);
+    expect(heroDayTile()).toBe("5 h 10 mdirect sun");
+    expect(todayValue()).toBe("5 h 10 m of direct sun");
+    expect(heatmapTotal()).toBe("5 h 10 m of direct sun that day");
+    expect(daysValue()).toBe("5 h 10 m on Mon, Jun 15");
+    expect(screen.getByText(/Selected Mon, Jun 15, 10:00 AM/).textContent).toMatch(
+      /5 h 10 m of direct sun that day\.$/,
+    );
+  });
+
+  it("keeps the grid's figure for any other day that is previewed", () => {
+    render(<SunReport {...props()} />);
+    fireEvent.click(screen.getByRole("radio", { name: "Days" }));
+    // Hover another day on the heat map and on the days line.
+    fireEvent.pointerMove(screen.getByTestId("heatmap-hit"), { clientX: 141, clientY: 100 });
+    expect(heatmapTotal()).toBe("9 h of direct sun that day");
+    expect(screen.getByTestId("chart-tooltip").textContent).toMatch(/9 h of direct sun that day/);
+    fireEvent.pointerLeave(screen.getByTestId("heatmap-hit"));
+    fireEvent.pointerMove(screen.getByTestId("daily-hit"), { clientX: 0 });
+    expect(daysValue()).toBe("9 h on Thu, Jan 1");
+    fireEvent.pointerLeave(screen.getByTestId("daily-hit"));
+    // Hovering the selected day itself still reads the precise figure.
+    const selectedX = ((165 + 0.5) / 365) * 515;
+    fireEvent.pointerMove(screen.getByTestId("heatmap-hit"), { clientX: selectedX, clientY: 100 });
+    expect(heatmapTotal()).toBe("5 h 10 m of direct sun that day");
+    expect(screen.getByTestId("chart-tooltip").textContent).toMatch(/5 h 10 m of direct sun/);
+  });
+
+  it("reads the grid everywhere while the day analysis is still for another date", () => {
+    // The date has moved on to 16 June; `day` is still the analysis of the 15th.
+    render(
+      <>
+        <div data-testid="header">
+          <SunSummaryHeader
+            date="2026-06-16"
+            minuteOfDay={600}
+            isLive={false}
+            day={props().day}
+            instant={sunny}
+            year={year}
+            buildingsStatus="ready"
+          />
+        </div>
+        <SunReport {...props({ date: "2026-06-16" })} />
+      </>,
+    );
+    fireEvent.click(screen.getByRole("radio", { name: "Days" }));
+    expect(screen.getByTestId("header").textContent).toMatch(/^9 hof direct sun/);
+    expect(heroDayTile()).toBe("9 hdirect sun");
+    expect(card("Tue, Jun 16").querySelector("p")?.textContent).toBe("9 h of direct sun");
+    expect(heatmapTotal()).toBe("9 h of direct sun that day");
+    expect(card("Sun hours").querySelector("p")?.textContent).toBe("9 h on Tue, Jun 16");
+  });
+});
+
 describe("seasons", () => {
   const seasonOf = (month: string) => {
     const tile = within(card("Seasons"))
@@ -382,7 +464,10 @@ describe("year heat map", () => {
     const year = within(card("Through the year"));
     expect(year.getByText("Mon, Jun 15 · 10:00 AM")).toBeTruthy();
     expect(year.getByTestId("heatmap-readout").textContent).toBe("In direct sun");
-    expect(year.getByTestId("heatmap-day-total").textContent).toBe("9 h of direct sun that day");
+    // The selected day's total is the day analysis's own figure, as on every other card.
+    expect(year.getByTestId("heatmap-day-total").textContent).toBe(
+      "5 h 10 m of direct sun that day",
+    );
   });
 
   it("moves the selection with the arrow keys", () => {
@@ -692,9 +777,9 @@ describe("sun hours", () => {
       sunHours().queryAllByRole("button", { name: /hours of direct sun per day/ }),
     ).toHaveLength(0);
     const chart = screen.getByRole("group", { name: /line chart of hours of direct sun/i });
-    expect(sunHours().getByText("9 h")).toBeTruthy();
+    expect(sunHours().getByText("5 h 10 m")).toBeTruthy();
     expect(sunHours().getByText("on Mon, Jun 15")).toBeTruthy();
-    expect(sunHours().getByText("75% of 12 h of daylight")).toBeTruthy();
+    expect(sunHours().getByText("43% of 12 h of daylight")).toBeTruthy();
     expect(sunHours().getByText(/on every day of the year/)).toBeTruthy();
 
     fireEvent.keyDown(chart, { key: "ArrowRight" });
@@ -821,7 +906,7 @@ describe("about these numbers", () => {
     expect(about().getByRole("button", { name: "Hide the details" })).toBeTruthy();
     expect(
       within(region).getByText(
-        /384 buildings nearby — heights: 321 surveyed, 8 from floor counts, 55 estimated/,
+        /384 buildings nearby — 329 with a mapped height \(8 of them from floor counts\), 55 estimated\./,
       ),
     ).toBeTruthy();
     expect(within(region).getByText(/local clock times at this place \(Etc\/UTC\)/)).toBeTruthy();
@@ -835,6 +920,38 @@ describe("about these numbers", () => {
   ] as const)("words the terrain status: %s", (terrain, text) => {
     const { container } = render(<SunReport {...props({ terrain })} />);
     expect(container.textContent).toMatch(text);
+  });
+
+  it("words the building heights so it holds for map tiles too", () => {
+    // Tiles cannot tell a surveyed height from one derived from floors: no "levels".
+    const tiles = { total: 384, tagged: 329, levels: 0, default: 55 };
+    const { container } = render(
+      <SunReport {...props({ buildings: { status: "ready", stats: tiles, onRetry: vi.fn() } })} />,
+    );
+    expect(container.textContent).toContain(
+      "384 buildings nearby — 329 with a mapped height, 55 estimated from their neighbours.",
+    );
+    expect(container.textContent).not.toMatch(/surveyed|from floor counts/);
+  });
+
+  it("credits the data sources, visibly, with links", () => {
+    render(<SunReport {...props()} />);
+    const credit = about().getByText(/Building data ©/);
+    expect(credit.textContent).toBe(
+      "Building data © OpenStreetMap contributors, via OpenMapTiles / OpenFreeMap; terrain from Mapzen/AWS Terrain Tiles.",
+    );
+    // Not inside the collapsed details.
+    expect(credit.closest("[hidden]")).toBeNull();
+    const links = within(credit).getAllByRole("link");
+    expect(links.map((a) => [a.textContent, a.getAttribute("href")])).toEqual([
+      ["OpenStreetMap contributors", "https://www.openstreetmap.org/copyright"],
+      ["OpenMapTiles", "https://openmaptiles.org/"],
+      ["OpenFreeMap", "https://openfreemap.org/"],
+    ]);
+    for (const link of links) {
+      expect(link.getAttribute("rel")).toBe("noreferrer");
+      expect(link.hasAttribute("target")).toBe(false);
+    }
   });
 
   it("defaults to flat ground when no terrain status is given", () => {
