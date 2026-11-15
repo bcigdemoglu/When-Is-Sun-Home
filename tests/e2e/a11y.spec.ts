@@ -274,7 +274,7 @@ test.describe("Accessibility basics", () => {
     });
 
     const stops: string[] = [];
-    for (let stop = 0; stop < 15; stop++) {
+    for (let stop = 0; stop < 16; stop++) {
       await page.keyboard.press("Tab");
       stops.push(await focused(page));
       // Whatever has the focus can be seen: on screen, and not underneath something else.
@@ -303,6 +303,7 @@ test.describe("Accessibility basics", () => {
       "© OpenMapTiles",
       "© OpenStreetMap",
       "Use my location",
+      "Map. Switch to satellite photo",
       expect.stringMatching(/Switch to (tilted 3D|flat 2D)$/),
       "Expand the sheet",
       "Save this place",

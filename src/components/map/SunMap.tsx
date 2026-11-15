@@ -1,6 +1,6 @@
 "use client";
 
-import type { Marker as MapLibreMarker } from "maplibre-gl";
+import { addProtocol, type Marker as MapLibreMarker } from "maplibre-gl";
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import MapGL, {
   AttributionControl,
@@ -25,6 +25,18 @@ import { selectLayers, selectObserver, useSettings } from "@/state";
 import type { SunPathModel } from "./compassGeometry";
 import { createContextLossWatch } from "./contextLoss";
 import {
+  IMAGERY_ATTRIBUTION,
+  IMAGERY_BASE,
+  IMAGERY_BASE_SOURCE_ID,
+  IMAGERY_DETAIL,
+  IMAGERY_DETAIL_PROTOCOL,
+  IMAGERY_DETAIL_SOURCE_ID,
+  cameraPitch,
+  hasAerialPhotos,
+  loadImageryDetail,
+  showsImagery,
+} from "./imagery";
+import {
   CITY_BUILDING_FILTER,
   CITY_MIN_ZOOM,
   CITY_SOURCE_ID,
@@ -48,6 +60,13 @@ import {
 import { SunCompass } from "./SunCompass";
 import { createTileRefreshWatch, type TileRefreshWatch } from "./tileRefresh";
 import { useMapTheme } from "./useMapTheme";
+
+// The detail photos come through our own loader, which asks again when the
+// service times out (MapLibre itself never does). Registered once, for good:
+// this module only ever runs in the browser.
+addProtocol(IMAGERY_DETAIL_PROTOCOL, (request, abortController) =>
+  loadImageryDetail(request.url, { signal: abortController.signal }),
+);
 
 const LIGHT_STYLE = "https://basemaps.cartocdn.com/gl/positron-gl-style/style.json";
 const DARK_STYLE = "https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json";
@@ -76,8 +95,22 @@ const TILE_REFRESH_DELAY_MS = 1000;
  */
 const MAX_CACHED_TILES = 6;
 
+/**
+ * Over a photo a shadow has to be told from dark roofs, trees and the shade
+ * already in the picture: it is drawn at least this strong.
+ */
+const MIN_SHADOW_OPACITY_ON_PHOTO = 0.45;
+
+/**
+ * How high the lids sit that keep shadows off the roofs of a photo (see the
+ * "sun-roofs" layer). Well clear of the 5 cm shadow slabs: the two are told
+ * apart by the depth buffer, which on some devices is coarse.
+ */
+const ROOF_LID_HEIGHT_M = 1.5;
+
 const EMPTY_SHADOWS = { type: "FeatureCollection" as const, features: [] };
 const PIN_BUILDING_FILTER = ["==", ["get", "pin"], true];
+const BLOCKER_FILTER = ["==", ["get", "blocker"], true];
 const MAP_STYLE = { width: "100%", height: "100%" };
 const COMPASS_MARKER_STYLE = { pointerEvents: "none" as const };
 
@@ -138,14 +171,14 @@ export default function SunMap({
   // Only the view the map OPENS with comes from React; after that the camera
   // belongs to MapLibre (uncontrolled), so panning never re-renders anything.
   const [initialViewState] = useState(() => {
-    const { insets, wantsTilt } = useMapUi.getState();
+    const { insets, wantsTilt, satellite: wantsPhotos } = useMapUi.getState();
     const padding = { top: insets.top, bottom: insets.bottom, left: 0, right: 0 };
     return hasPlace
       ? {
           longitude: lng,
           latitude: lat,
           zoom: PLACE_ZOOM,
-          pitch: wantsTilt ? PLACE_PITCH : 0,
+          pitch: cameraPitch(wantsTilt, showsImagery(wantsPhotos, { lat, lng }, null)),
           bearing: 0,
           padding,
         }
@@ -160,6 +193,12 @@ export default function SunMap({
   const [labelLayerId, setLabelLayerId] = useState<string | undefined>(undefined);
   /** Where the pin is while it is being dragged. */
   const [dragSpot, setDragSpot] = useState<LatLng | null>(null);
+
+  // The Satellite view: aerial photos instead of the drawn buildings, where
+  // there are any — at the pinned place, or with no pin, where the map looks.
+  const satellite = useMapUi((state) => state.satellite);
+  const [centerHasPhotos, setCenterHasPhotos] = useState(false);
+  const imagery = satellite && (hasPlace ? hasAerialPhotos({ lat, lng }) : centerHasPhotos);
 
   /** The place the camera has already been pointed at. */
   const handledPlace = useRef<LatLng | null>(hasPlace ? { lat, lng } : null);
@@ -203,7 +242,8 @@ export default function SunMap({
     if (!next || move.type === "none") return;
 
     const center: [number, number] = [next.lng, next.lat];
-    const pitch = useMapUi.getState().wantsTilt ? PLACE_PITCH : 0;
+    const { wantsTilt, satellite: wantsPhotos } = useMapUi.getState();
+    const pitch = cameraPitch(wantsTilt, showsImagery(wantsPhotos, next, null));
     // Every move carries the current padding, so it ends with the pin centred
     // in the part of the map that is actually visible.
     const covered = useMapUi.getState().insets;
@@ -278,6 +318,37 @@ export default function SunMap({
     }
     // Runs once per command: `commandSeq` changes with each one.
   }, [ready, commandSeq, reducedMotion]);
+
+  // ── Camera: the photos are taken from straight above ────────────────────
+  // Entering the Satellite view lays the camera flat; leaving it gives the
+  // person's own 2D / 3D choice back.
+  const shownImagery = useRef(imagery);
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!ready || !map || shownImagery.current === imagery) return;
+    shownImagery.current = imagery;
+    const pitch = cameraPitch(useMapUi.getState().wantsTilt, imagery);
+    // On its way to a place? Then that is where it is still going, at the new tilt.
+    const target = flight.current ?? {
+      center: map.getCenter().toArray(),
+      zoom: map.getZoom(),
+      pitch: map.getPitch(),
+    };
+    if (Math.abs(target.pitch - pitch) < 0.5) return;
+    const next = { ...target, pitch };
+    if (reducedMotion) {
+      map.jumpTo(next);
+      flight.current = null;
+    } else if (flight.current) {
+      map.flyTo({ ...next, duration: 1200, essential: true });
+      flight.current = next;
+    } else {
+      map.easeTo({ pitch, duration: 500, essential: true });
+      // Remembered like a journey, so that a change of padding meanwhile
+      // (which starts a move of its own) carries the tilt on to its end.
+      flight.current = next;
+    }
+  }, [ready, imagery, reducedMotion]);
 
   useEffect(() => () => useMapUi.getState().report({ ready: false }), []);
 
@@ -383,6 +454,16 @@ export default function SunMap({
     });
   }, [showShadows, nearby, lat, lng, sunAzimuth, sunAltitude]);
 
+  // Over a photo, shadows are kept off the roofs (see the "sun-roofs" layer):
+  // every building a shadow can reach, i.e. twice as far out as those casting one.
+  const roofs = useMemo(
+    () =>
+      imagery && buildings && lat !== null && lng !== null
+        ? buildingsNear(buildings, { lat, lng }, 2 * SHADOW_RADIUS_M)
+        : EMPTY_SHADOWS,
+    [imagery, buildings, lat, lng],
+  );
+
   // Analysed buildings have just arrived: if the map's own tiles failed
   // earlier (the same host, the same outage), now is the time to ask again.
   useEffect(() => {
@@ -399,7 +480,8 @@ export default function SunMap({
     () => ["case", ["==", ["get", "blocker"], true], theme.blocked, theme.pinBuilding],
     [theme.blocked, theme.pinBuilding],
   );
-  const extruded = layers.buildings3d;
+  // Over the photos nothing stands up: the roofs are in the picture.
+  const extruded = layers.buildings3d && !imagery;
 
   // ── Interaction ─────────────────────────────────────────────────────────
   const placePin = (spot: LatLng) => {
@@ -452,10 +534,16 @@ export default function SunMap({
     if (!target) onFatalError(event.error);
     // Missing building tiles are not worth a word either: they get one more
     // try when the page is next looked at (see tileRefresh.ts).
+    // (Only those: MapLibre cannot reload a failed PHOTO tile in place — it
+    // would draw it before it has a picture. The detail photos are asked for
+    // again by their own loader instead: see imagery.ts.)
     else if (sourceId === CITY_SOURCE_ID) tileRefresh.current?.failed();
   };
 
   const pin = dragSpot ?? (hasPlace ? { lat, lng } : null);
+  const imageryVisibility = imagery ? "visible" : "none";
+  // (A layer that is not drawn makes its source load nothing.)
+  const cityFlatVisibility = imagery || extruded ? "none" : "visible";
   const flatVisibility = extruded ? "none" : "visible";
   const extrudedVisibility = extruded ? "visible" : "none";
 
@@ -483,9 +571,11 @@ export default function SunMap({
             ),
           );
         }}
-        onMoveEnd={() => {
+        onMoveEnd={(event) => {
           // The journey is over (arrived, or the user took the map elsewhere).
           flight.current = null;
+          const center = event.target.getCenter();
+          setCenterHasPhotos(hasAerialPhotos({ lat: center.lat, lng: center.lng }));
         }}
         onLoad={(event) => {
           setReady(true);
@@ -540,9 +630,71 @@ export default function SunMap({
 
         {/*
           Layers stack in the order they are created (each goes right below
-          the basemap's labels): shadows, then every building in view, then
-          the highlights.
+          the basemap's labels): the photos, the shadows, every building in
+          view, then the highlights.
         */}
+
+        {/*
+          The Satellite view. Always part of the map, drawn only when chosen:
+          a hidden layer costs nothing and asks for no tiles, and being
+          created first keeps the photos under everything else of ours. The
+          cached base shows at once; the detail sharpens it as it arrives
+          (see imagery.ts). The credit shows while the photos do.
+        */}
+        <Source
+          id={IMAGERY_BASE_SOURCE_ID}
+          type="raster"
+          tiles={IMAGERY_BASE.tiles}
+          tileSize={IMAGERY_BASE.tileSize}
+          maxzoom={IMAGERY_BASE.maxzoom}
+          attribution={IMAGERY_ATTRIBUTION}
+        >
+          <Layer
+            id={IMAGERY_BASE_SOURCE_ID}
+            type="raster"
+            beforeId={labelLayerId}
+            layout={{ visibility: imageryVisibility }}
+          />
+        </Source>
+        <Source
+          id={IMAGERY_DETAIL_SOURCE_ID}
+          type="raster"
+          tiles={IMAGERY_DETAIL.tiles}
+          tileSize={IMAGERY_DETAIL.tileSize}
+          minzoom={IMAGERY_DETAIL.minzoom}
+          maxzoom={IMAGERY_DETAIL.maxzoom}
+        >
+          <Layer
+            id={IMAGERY_DETAIL_SOURCE_ID}
+            type="raster"
+            minzoom={IMAGERY_DETAIL.minzoom}
+            beforeId={labelLayerId}
+            layout={{ visibility: imageryVisibility }}
+          />
+        </Source>
+
+        {/*
+          Over a photo, shade is shown on the ground only: the roofs are in
+          the picture as they were lit that day. The shadows are thin slabs
+          (below), and so are these: all but invisible lids on the nearby
+          buildings, higher up and drawn first, so that the shadow slabs lie
+          hidden beneath them.
+        */}
+        <Source id="sun-roofs" type="geojson" data={roofs} maxzoom={14} tolerance={0}>
+          <Layer
+            id="sun-roofs"
+            type="fill-extrusion"
+            beforeId={labelLayerId}
+            layout={{ visibility: imageryVisibility }}
+            paint={{
+              "fill-extrusion-color": theme.shadow,
+              "fill-extrusion-height": ROOF_LID_HEIGHT_M,
+              "fill-extrusion-base": 0,
+              "fill-extrusion-opacity": 0.01,
+              "fill-extrusion-vertical-gradient": false,
+            }}
+          />
+        </Source>
 
         {/*
           Cut into few, large tiles (zoom 14: 25 cm precision, plenty at
@@ -563,7 +715,9 @@ export default function SunMap({
               "fill-extrusion-color": theme.shadow,
               "fill-extrusion-height": 0.05,
               "fill-extrusion-base": 0,
-              "fill-extrusion-opacity": theme.shadowOpacity,
+              "fill-extrusion-opacity": imagery
+                ? Math.max(theme.shadowOpacity, MIN_SHADOW_OPACITY_ON_PHOTO)
+                : theme.shadowOpacity,
               "fill-extrusion-vertical-gradient": false,
             }}
           />
@@ -590,7 +744,7 @@ export default function SunMap({
               minzoom={CITY_MIN_ZOOM}
               beforeId={labelLayerId}
               filter={CITY_BUILDING_FILTER}
-              layout={{ visibility: flatVisibility }}
+              layout={{ visibility: cityFlatVisibility }}
               paint={{
                 "fill-color": cityColor,
                 "fill-opacity": 0.75,
@@ -635,7 +789,11 @@ export default function SunMap({
             type="fill"
             beforeId={labelLayerId}
             layout={{ visibility: flatVisibility }}
-            paint={{ "fill-color": highlightColor as never, "fill-opacity": 0.9 }}
+            paint={{
+              "fill-color": highlightColor as never,
+              // Over a photo only a tint: the building itself stays visible.
+              "fill-opacity": imagery ? 0.22 : 0.9,
+            }}
           />
           <Layer
             id="sun-highlight-3d"
@@ -649,12 +807,29 @@ export default function SunMap({
               "fill-extrusion-opacity": 0.8,
             }}
           />
+          {/* Over a photo the marked buildings are outlines, on a light or dark edge that shows on any roof. */}
+          <Layer
+            id="sun-highlight-edge"
+            type="line"
+            beforeId={labelLayerId}
+            layout={{ visibility: imageryVisibility, "line-join": "round" }}
+            paint={{ "line-color": theme.surface, "line-width": 6, "line-opacity": 0.85 }}
+          />
+          <Layer
+            id="sun-blocker-outline"
+            type="line"
+            beforeId={labelLayerId}
+            filter={BLOCKER_FILTER as never}
+            layout={{ visibility: imageryVisibility, "line-join": "round" }}
+            paint={{ "line-color": theme.blocked, "line-width": 3 }}
+          />
           <Layer
             id="sun-pin-building"
             type="line"
             beforeId={labelLayerId}
             filter={PIN_BUILDING_FILTER as never}
-            paint={{ "line-color": theme.accent, "line-width": 2.5 }}
+            layout={{ "line-join": "round" }}
+            paint={{ "line-color": theme.accent, "line-width": imagery ? 3 : 2.5 }}
           />
         </Source>
 
@@ -674,6 +849,7 @@ export default function SunMap({
               instant={instant}
               observer={observer}
               dimmed={dragSpot !== null}
+              overPhoto={imagery}
             />
           </Marker>
         )}

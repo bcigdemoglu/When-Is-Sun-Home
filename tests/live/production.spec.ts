@@ -138,6 +138,40 @@ test("moving the map away from the pin loads the buildings there", async ({ page
   expect(errors).toEqual([]);
 });
 
+test("the Satellite view shows real aerial photos", async ({ page }) => {
+  // Two public USGS services, no key: a cached base that answers at once, and
+  // the detailed photos, cut to order — a piece nobody asked for lately can
+  // take half a minute, so only the asking is checked for those.
+  const errors = collectPageErrors(page);
+  await page.goto(PLACE);
+  await expect(page.getByText(/of direct sun/).first()).toBeVisible();
+  const satellite = page.getByRole("button", { name: "Map. Switch to satellite photo" });
+  await expect(satellite).toBeEnabled({ timeout: 30_000 });
+
+  const basePicture = page.waitForResponse(
+    (response) => response.url().startsWith("https://basemap.nationalmap.gov/"),
+    { timeout: 30_000 },
+  );
+  const detailAsked = page.waitForRequest(
+    (request) => request.url().startsWith("https://imagery.nationalmap.gov/"),
+    { timeout: 30_000 },
+  );
+  await satellite.click();
+  const picture = await basePicture;
+  expect(picture.status()).toBe(200);
+  expect(picture.headers()["content-type"]).toMatch(/^image\//);
+  expect((await detailAsked).url()).toContain("/USGSNAIPPlus/ImageServer/exportImage?bbox=");
+
+  await expect(
+    page.getByRole("button", { name: "Satellite photo. Switch to map" }),
+  ).toHaveAttribute("aria-pressed", "true");
+  await expect(page.locator(".maplibregl-ctrl-attrib")).toContainText(
+    "Imagery: USGS The National Map",
+  );
+  await expect(page.getByText("The map can’t be shown")).toHaveCount(0);
+  expect(errors).toEqual([]);
+});
+
 test("a shared link shows the answer in its preview", async ({ request }) => {
   const summary = "1.1t1i401u9.00011p3a3j3h3i3f2e0d0000.2p2z3a3n3x423z3q3f322s2m";
   const page = await request.get(`${PLACE}&n=Pacific+Ave+backyard&s=${summary}`, {
