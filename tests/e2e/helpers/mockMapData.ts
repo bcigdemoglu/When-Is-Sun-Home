@@ -11,7 +11,7 @@
  */
 import fs from "node:fs";
 import path from "node:path";
-import type { Page } from "@playwright/test";
+import type { Page, Route } from "@playwright/test";
 
 const OPENFREEMAP_FIXTURES = path.join(__dirname, "..", "..", "fixtures", "openfreemap");
 
@@ -29,6 +29,12 @@ export const BUILDINGS_API_URL = /\/api\/buildings(\?|$)/;
 export const OVERPASS_URL = /\/api\/interpreter(\?|$)/;
 /** The elevation tiles (AWS Terrain Tiles). */
 export const TERRAIN_TILE_URL = /elevation-tiles-prod/;
+/** The cached aerial photos (USGS), `…/USGSImageryOnly/MapServer/tile/<z>/<y>/<x>`. */
+export const IMAGERY_BASE_URL =
+  /^https:\/\/basemap\.nationalmap\.gov\/arcgis\/rest\/services\/USGSImageryOnly\/MapServer\/tile\/(\d+)\/(\d+)\/(\d+)$/;
+/** The detailed aerial photos (USGS), cut to order: `…/USGSNAIPPlus/ImageServer/exportImage?bbox=…`. */
+export const IMAGERY_DETAIL_URL =
+  /^https:\/\/imagery\.nationalmap\.gov\/arcgis\/rest\/services\/USGSNAIPPlus\/ImageServer\/exportImage\?bbox=/;
 
 /**
  * Serve building data from `tests/fixtures/openfreemap`.
@@ -96,4 +102,23 @@ export async function mockFlatTerrain(page: Page): Promise<void> {
 /** Terrain that cannot be had: every elevation tile request fails, and the app carries on on flat ground. */
 export async function mockTerrain(page: Page): Promise<void> {
   await page.route(TERRAIN_TILE_URL, (route) => route.abort());
+}
+
+/** A 4 × 4 px grey PNG: every aerial photo of the Satellite view, in tests. */
+const TINY_IMAGE = Buffer.from(
+  "iVBORw0KGgoAAAANSUhEUgAAAAQAAAAECAIAAAAmkwkpAAAAGUlEQVR4nGOoaMpLyAqDkAxwVkVTHgNOGQAPchRBAJMKtwAAAABJRU5ErkJggg==",
+  "base64",
+);
+
+/**
+ * The Satellite view's two picture services (see `src/components/map/imagery.ts`)
+ * answer at once with the same tiny picture. Only their exact tile and export
+ * addresses are served: any other request to those hosts stays unmocked, and
+ * an unmocked request fails the test (see `fixtures.ts`).
+ */
+export async function mockImagery(page: Page): Promise<void> {
+  const picture = (route: Route) =>
+    route.fulfill({ body: TINY_IMAGE, contentType: "image/png", headers: CORS });
+  await page.route(IMAGERY_BASE_URL, picture);
+  await page.route(IMAGERY_DETAIL_URL, picture);
 }

@@ -192,3 +192,16 @@ export const PinIcon = (props: IconProps) => (
     <circle cx="12" cy="10" r="2.25" />
   </Icon>
 );
+
+/** A satellite: body, two solar panels, a dish. For the aerial-photo view of the map. */
+export const SatelliteIcon = (props: IconProps) => (
+  <Icon {...props}>
+    <g transform="rotate(-45 12 12)">
+      <rect x="9.25" y="9.25" width="5.5" height="5.5" rx="0.75" />
+      <rect x="2.75" y="10" width="4.75" height="4" rx="0.5" />
+      <rect x="16.5" y="10" width="4.75" height="4" rx="0.5" />
+      <path d="M7.5 12h1.75M14.75 12h1.75M12 14.75v2" />
+      <path d="M9.5 19.25a2.5 2.5 0 0 1 5 0" />
+    </g>
+  </Icon>
+);

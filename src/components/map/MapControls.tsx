@@ -1,16 +1,26 @@
 "use client";
 
 import { useEffect } from "react";
-import { CrosshairIcon, LocateIcon, MinusIcon, PlusIcon } from "@/components/ui/icons";
+import {
+  CrosshairIcon,
+  LocateIcon,
+  MinusIcon,
+  PlusIcon,
+  SatelliteIcon,
+} from "@/components/ui/icons";
 import { showToast } from "@/components/ui/toast";
 import { pinSpot } from "@/hooks/placeActions";
 import { impreciseMessage, IMPRECISE_ACCURACY_M, useGeolocation } from "@/hooks/useGeolocation";
-import { useSettings } from "@/state";
+import { selectPlace, useSettings } from "@/state";
+import { NO_AERIAL_PHOTOS_MESSAGE, hasAerialPhotos, showsImagery } from "./imagery";
 import { useMapUi } from "./mapUi";
 
 /** A floating map button: 48 px, opaque, hairline and shadow so it reads over any map. */
 const FAB =
   "flex h-12 w-12 items-center justify-center rounded-full border border-line bg-surface text-ink shadow-float transition-colors hover:bg-surface-2 disabled:opacity-60";
+
+/** A floating button that is switched on. */
+const FAB_ON = "border-ink! bg-ink! text-surface!";
 
 /** Where the pin is, as a value: a new name for the same spot is not a new choice. */
 const currentSpot = () => {
@@ -19,7 +29,10 @@ const currentSpot = () => {
 };
 
 interface MapControlsProps {
-  /** "fabs": locate + 2D/3D (+ north when rotated), for phones. "full": also zoom, for desktop. */
+  /**
+   * "fabs": locate + satellite + 2D/3D (+ north when rotated), for phones.
+   * "full": also zoom and re-centre, for desktop.
+   */
   variant: "fabs" | "full";
   /**
    * Whether a place is pinned. Without one only zooming makes sense here: the
@@ -39,6 +52,16 @@ export function MapControls({ variant, hasPlace, className = "" }: MapControlsPr
   const tilted = useMapUi((state) => state.tilted);
   const bearing = useMapUi((state) => state.bearing);
   const send = useMapUi((state) => state.send);
+  // The photos are shown only where there are any: the button says what the map does.
+  const place = useSettings(selectPlace);
+  const satellite = useMapUi((state) => state.satellite);
+  const imagery = showsImagery(satellite, place, null);
+  const toggleSatellite = () => {
+    const { setSatellite } = useMapUi.getState();
+    if (imagery) setSatellite(false);
+    else if (place && hasAerialPhotos(place)) setSatellite(true);
+    else showToast(NO_AERIAL_PHOTOS_MESSAGE);
+  };
 
   const { state, locate } = useGeolocation(
     (spot, accuracyM) => {
@@ -136,12 +159,24 @@ export function MapControls({ variant, hasPlace, className = "" }: MapControlsPr
       {hasPlace && (
         <button
           type="button"
+          aria-pressed={imagery}
+          aria-label={imagery ? "Satellite photo. Switch to map" : "Map. Switch to satellite photo"}
+          disabled={!ready}
+          className={`${FAB} ${imagery ? FAB_ON : ""}`}
+          onClick={toggleSatellite}
+        >
+          <SatelliteIcon width={22} height={22} />
+        </button>
+      )}
+      {hasPlace && (
+        <button
+          type="button"
           aria-pressed={tilted}
           aria-label={
             tilted ? "Tilted 3D view. Switch to flat 2D" : "Flat 2D view. Switch to tilted 3D"
           }
           disabled={!ready}
-          className={`${FAB} text-[13px] font-semibold ${tilted ? "border-ink! bg-ink! text-surface!" : ""}`}
+          className={`${FAB} text-[13px] font-semibold ${tilted ? FAB_ON : ""}`}
           onClick={() => send({ type: "tilt", tilted: !tilted })}
         >
           3D

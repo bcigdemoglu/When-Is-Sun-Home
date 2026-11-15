@@ -101,10 +101,14 @@ function SunPath({ path }: { path: SunPathModel }) {
   );
 }
 
-function CompassFace() {
+function CompassFace({ overPhoto }: { overPhoto: boolean }) {
   return (
     <g>
-      <circle r={R} fill="var(--surface)" fillOpacity={0.55} />
+      {/* Over a photo the face is all but clear (the yard is what is being looked at), and the rim gets an edge. */}
+      <circle r={R} fill="var(--surface)" fillOpacity={overPhoto ? 0.08 : 0.55} />
+      {overPhoto && (
+        <circle r={R} fill="none" stroke="var(--surface)" strokeOpacity={0.8} strokeWidth={4} />
+      )}
       <circle r={R} fill="none" stroke="var(--ink-2)" strokeOpacity={0.7} strokeWidth={1.5} />
       {[60, 30].map((altitude) => (
         <circle
@@ -216,6 +220,8 @@ interface SunCompassProps {
   observer: Observer;
   /** Fade the diagram, e.g. while the pin is being dragged somewhere else. */
   dimmed?: boolean;
+  /** The map under it is an aerial photo: keep the ground visible. */
+  overPhoto?: boolean;
 }
 
 /**
@@ -227,7 +233,13 @@ interface SunCompassProps {
  * Purely decorative for assistive tech (the report says the same in words)
  * and never takes pointer input.
  */
-export function SunCompass({ path, instant, observer, dimmed = false }: SunCompassProps) {
+export function SunCompass({
+  path,
+  instant,
+  observer,
+  dimmed = false,
+  overPhoto = false,
+}: SunCompassProps) {
   const cone =
     observer.mode === "window" && observer.fovDeg < 360
       ? wedgePath(observer.facingDeg, observer.fovDeg, R)
@@ -240,7 +252,7 @@ export function SunCompass({ path, instant, observer, dimmed = false }: SunCompa
       aria-hidden="true"
     >
       <svg viewBox="-110 -110 220 220" width="100%" height="100%" overflow="visible">
-        <CompassFace />
+        <CompassFace overPhoto={overPhoto} />
         {cone && (
           <path
             d={cone}

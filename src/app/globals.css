@@ -613,6 +613,15 @@ dialog.app-dialog[data-variant="prompt"] {
   background: var(--surface);
   box-shadow: 0 0 0 1px var(--line);
 }
+/*
+ * Phones (bottom left, compact): opened, the credits wrap instead of running
+ * under the column of round buttons on the right (12 px + 48 px of button,
+ * 12 px of air, and the box's own 10 px margin on the left).
+ */
+.maplibregl-ctrl-bottom-left > .maplibregl-ctrl.maplibregl-ctrl-attrib.maplibregl-compact {
+  box-sizing: border-box;
+  max-width: calc(100vw - 82px - var(--safe-left) - var(--safe-right));
+}
 @media (prefers-color-scheme: dark) {
   .maplibregl-ctrl-group button .maplibregl-ctrl-icon,
   .maplibregl-ctrl-attrib-button {

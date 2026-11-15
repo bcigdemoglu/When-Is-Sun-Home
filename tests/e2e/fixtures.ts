@@ -4,8 +4,8 @@
  *
  * What a test gets without asking:
  *
- *  - NO third-party network. Building tiles, terrain, both geocoders and the
- *    basemap are all answered from fixtures (see `mocks`); any other request
+ *  - NO third-party network. Building tiles, terrain, aerial photos, both
+ *    geocoders and the basemap are all answered from fixtures (see `mocks`); any other request
  *    that leaves localhost is aborted AND fails the test, so nothing can pass
  *    by quietly reaching a real service.
  *  - An error guard: an uncaught exception in the page or a `console.error`
@@ -26,6 +26,7 @@ import {
   TILEJSON_URL,
   mockBuildingData,
   mockFlatTerrain,
+  mockImagery,
 } from "./helpers/mockMapData";
 import { AppPage } from "./pages/app";
 import { PlacesPage } from "./pages/places";
@@ -385,6 +386,7 @@ async function prepare(page: Page, options: InstallOptions): Promise<Mocks> {
   await mockBasemap(page, options.basemap);
   if (options.basemap === "blocked") guard.allow(failedRequestTo(/basemaps\.cartocdn\.com/));
   await mockFlatTerrain(page);
+  await mockImagery(page);
   const terrain = new TerrainMock(page, guard);
   await terrain.install();
   await mockBuildingData(page);

@@ -134,6 +134,10 @@ export function MapPanel({
   blockerBuildingId,
   pinBuildingId,
 }: MapPanelProps) {
+  // What this browser remembers of the map (the Satellite choice): read once
+  // the page is up, so the first paint is the same for everybody.
+  useEffect(() => useMapUi.getState().hydrate(), []);
+
   const [failed, setFailed] = useState(false);
   const [attempt, setAttempt] = useState(0);
   const retry = () => {

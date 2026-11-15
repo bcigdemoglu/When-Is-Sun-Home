@@ -15,6 +15,8 @@ export interface MapTheme {
   blocked: string;
   accent: string;
   line: string;
+  /** The app's surface: the edge under an outline drawn over a photo. */
+  surface: string;
 }
 
 function readTheme(scheme: MapTheme["scheme"]): MapTheme {
@@ -31,6 +33,7 @@ function readTheme(scheme: MapTheme["scheme"]): MapTheme {
     blocked: token("--state-blocked", "slategray"),
     accent: token("--accent", "chocolate"),
     line: token("--line", "gray"),
+    surface: token("--surface", "white"),
   };
 }
 
