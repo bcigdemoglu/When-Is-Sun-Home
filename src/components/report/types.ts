@@ -41,8 +41,29 @@ export interface SunReportProps {
   /** The sun at the selected instant. */
   instant: SunInstant | null;
   buildings: BuildingDataStatus;
+  /** Ground-elevation data: "ready" means hills and slopes are included. Defaults to "idle". */
+  terrain?: "idle" | "loading" | "ready" | "error";
   /** True when the pin sits inside a building footprint. */
   pinOnBuilding: boolean;
   /** Jump the app to a date (and optionally a time) — e.g. clicking the heatmap. */
   onSelectDateTime: (date: string, minuteOfDay?: number) => void;
+}
+
+/**
+ * The compact answer shown where space is tight (the collapsed bottom sheet
+ * on phones, the top of the side panel on desktop): today's direct sun and
+ * what the sun is doing right now. Null analysis values render skeletons.
+ */
+export interface SunSummaryHeaderProps {
+  /** The selected date and minute, wall-clock at the place. */
+  date: string;
+  minuteOfDay: number;
+  /** True while date and time follow the clock ("now"). */
+  isLive: boolean;
+  day: DayAnalysis | null;
+  instant: SunInstant | null;
+  year: YearAnalysis | null;
+  /** While building data is loading the numbers describe an open sky. */
+  buildingsStatus: BuildingDataStatus["status"];
+  className?: string;
 }

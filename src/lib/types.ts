@@ -320,3 +320,27 @@ export interface SunInstant extends SunPosition {
     elevationDeg: number;
   };
 }
+
+// ─── Place summary ─────────────────────────────────────────────────────────
+
+/**
+ * The headline numbers of a year analysis — what is shown for a place
+ * outside its full report (saved-place rows, compare, share text, link
+ * previews). Hours are rounded to one decimal.
+ */
+export interface PlaceSummary {
+  year: number;
+  /** Mean direct sun per day over the year, hours. */
+  avgSunHoursPerDay: number;
+  /** Share of daylight that is direct sun, 0..1 (two decimals). */
+  sunFraction: number;
+  /** Direct sun over the whole year, hours (integer). */
+  totalSunHours: number;
+  /** Mean direct sun per day for each month, hours. 12 entries, January first. */
+  monthlySunHours: number[];
+  /** Mean daylight per day for each month, hours. 12 entries. */
+  monthlyDaylightHours: number[];
+  /** Month (0..11) with the most / least direct sun per day. */
+  bestMonth: number;
+  worstMonth: number;
+}

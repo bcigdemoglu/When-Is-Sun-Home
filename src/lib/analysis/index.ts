@@ -28,3 +28,4 @@ export { classifySun, isInViewCone, sunInstantAt } from "./classify";
 export { analyzeDay, windowsFromStates } from "./day";
 export { computeShadowPolygons, type ShadowOptions, type ShadowProperties } from "./shadows";
 export { analyzeYear } from "./year";
+export { summarizeYear } from "./summary";
