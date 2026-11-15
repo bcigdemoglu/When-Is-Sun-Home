@@ -14,6 +14,7 @@
  *   fov       field of view, whole degrees
  *   b         3D buildings layer, "0" = off
  *   sh        shadows layer, "0" = off
+ *   tr        trees layer, "1" = on          (absent = off; the old app had no such key)
  *
  * Rounding: `lat`/`lng` to 5 decimals and `h` to 1 decimal. Everything else
  * round-trips exactly (see `roundSettingsForUrl`).
@@ -102,6 +103,7 @@ export const URL_KEYS = {
   fovDeg: "fov",
   buildings3d: "b",
   shadows: "sh",
+  trees: "tr",
 } as const;
 
 /** Keys only the old app wrote. Reserved: never reuse them for something else. */
@@ -247,6 +249,7 @@ export function settingsToSearchParams(s: Settings): URLSearchParams {
     p.set(K.buildings3d, s.layers.buildings3d ? "1" : "0");
   }
   if (s.layers.shadows !== DEFAULT_LAYERS.shadows) p.set(K.shadows, s.layers.shadows ? "1" : "0");
+  if (s.layers.trees !== DEFAULT_LAYERS.trees) p.set(K.trees, s.layers.trees ? "1" : "0");
 
   return p;
 }
@@ -380,6 +383,8 @@ function decode(params: URLSearchParams, options: SearchParamsToSettingsOptions)
   if (buildings3d !== null) layers.buildings3d = buildings3d;
   const shadows = parseFlag(params.get(K.shadows));
   if (shadows !== null) layers.shadows = shadows;
+  const trees = parseFlag(params.get(K.trees));
+  if (trees !== null) layers.trees = trees;
   if (Object.keys(layers).length > 0) patch.layers = layers;
 
   return patch;

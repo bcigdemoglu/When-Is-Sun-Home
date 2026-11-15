@@ -49,6 +49,35 @@
   --map-shadow: #1e1a15;
   --map-shadow-opacity: 0.3;
 
+  /*
+   * The Trees layer: six height classes, lowest first (see trees.ts). Read
+   * as numbers for the pictures (treeTiles.ts), so plain #rrggbb only.
+   *
+   * On the map: one green, light to dark, every step darker than a shadow
+   * on the ground and than the drawn buildings — told from both by
+   * lightness alone, whatever colours a person sees.
+   */
+  --tree-1: #58ac6d;
+  --tree-2: #3f965a;
+  --tree-3: #288049;
+  --tree-4: #1b693b;
+  --tree-5: #0e522d;
+  --tree-6: #093b20;
+  --tree-alpha: 0.9;
+  /*
+   * Over a photo: yellow to purple (green would vanish in the trees of the
+   * picture), see-through, with an outline around the crowns. The photo is
+   * the same in both colour schemes, and so are these.
+   */
+  --tree-photo-1: #fcf79e;
+  --tree-photo-2: #f9d630;
+  --tree-photo-3: #fe9823;
+  --tree-photo-4: #f14d4c;
+  --tree-photo-5: #bb167c;
+  --tree-photo-6: #6f0f82;
+  --tree-photo-alpha: 0.66;
+  --tree-photo-edge: #ffffff;
+
   /* Layout measurements shared by CSS and JS (the shell keeps them current). */
   --safe-top: env(safe-area-inset-top, 0px);
   --safe-bottom: env(safe-area-inset-bottom, 0px);
@@ -90,6 +119,14 @@
     --map-pin-building: #8f5f1f;
     --map-shadow: #000000;
     --map-shadow-opacity: 0.5;
+
+    /* On the dark map the same green runs the other way: taller is lighter. */
+    --tree-1: #2f7346;
+    --tree-2: #3a8e54;
+    --tree-3: #47aa62;
+    --tree-4: #55c670;
+    --tree-5: #6ce182;
+    --tree-6: #98fba4;
   }
 }
 
@@ -648,11 +685,60 @@ dialog.app-dialog[data-variant="prompt"] {
 .maplibregl-ctrl-bottom-right {
   bottom: var(--map-inset-bottom, 0px);
 }
-.maplibregl-ctrl-bottom-left {
+.maplibregl-ctrl-bottom-left,
+.maplibregl-ctrl-top-left {
   left: var(--safe-left);
 }
 .maplibregl-ctrl-bottom-right {
   right: var(--safe-right);
+}
+/*
+ * The top-left corner also keeps clear of the notice the app itself shows at
+ * the top of the map (buildings loading, failed, or none there): MapPanel
+ * measures it into --map-notice.
+ */
+.maplibregl-ctrl-top-left {
+  top: calc(var(--map-inset-top, 0px) + var(--map-notice, 0px));
+}
+/*
+ * The Trees layer's legend: one of the map's own corner boxes, so it keeps
+ * clear of what floats over the map as they do. Phones: top left, under the
+ * search pill — away from the credits, the round buttons and the pin, and in
+ * view with the sheet half up. Desktop: bottom left, above the time bar. A
+ * fixed width, narrow enough to end left of a pin in the middle of the
+ * smallest phone (360 px) even when a notice has pushed it down beside it;
+ * the survey's name wraps.
+ */
+.maplibregl-ctrl.tree-legend {
+  box-sizing: border-box;
+  width: 142px;
+  padding: 6px 8px 5px;
+  border-radius: 12px;
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: 0 0 0 1px var(--line);
+  font-size: 11px;
+  line-height: 14px;
+}
+.tree-legend-scale {
+  display: grid;
+  grid-template-columns: repeat(6, 21px);
+  margin-top: 3px;
+}
+.tree-legend-swatch {
+  height: 10px;
+}
+.tree-legend-swatch:first-child {
+  border-radius: 3px 0 0 3px;
+}
+.tree-legend-swatch:nth-child(6) {
+  border-radius: 0 3px 3px 0;
+}
+/* Each number sits under the left edge of its class: where the class begins. */
+.tree-legend-tick {
+  margin-top: 1px;
+  color: var(--ink-2);
+  font-variant-numeric: tabular-nums;
 }
 /* The compass lies on the ground under the pin and never takes input. */
 .sun-compass-marker,

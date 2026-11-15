@@ -166,8 +166,28 @@ export function MapPanel({
     return () => document.removeEventListener("visibilitychange", onVisibility);
   }, [failed]);
 
+  // How much room the notice below takes at the top of the map (0 without
+  // one), for whatever the map itself puts in its top-left corner — the
+  // Trees layer's legend, on phones — to sit under it instead of behind it
+  // (see `.maplibregl-ctrl-top-left` in globals.css).
+  const panelRef = useRef<HTMLDivElement>(null);
+  const noticeRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const panel = panelRef.current;
+    const notice = noticeRef.current;
+    if (!panel || !notice || typeof ResizeObserver === "undefined") return;
+    const measure = () => {
+      const height = notice.offsetHeight;
+      panel.style.setProperty("--map-notice", height > 0 ? `${height + 8}px` : "0px");
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(notice);
+    return () => observer.disconnect();
+  }, []);
+
   return (
-    <div className="relative h-full w-full overflow-hidden bg-surface-2">
+    <div ref={panelRef} className="relative h-full w-full overflow-hidden bg-surface-2">
       {failed ? (
         <MapUnavailable onRetry={retry} />
       ) : (
@@ -186,7 +206,10 @@ export function MapPanel({
       )}
 
       {/* Only as large as the notice itself: nothing invisible lies over the map. */}
-      <div className="absolute top-[calc(var(--map-inset-top,0px)+8px)] right-3 left-3 z-10 mx-auto w-fit lg:mx-0">
+      <div
+        ref={noticeRef}
+        className="absolute top-[calc(var(--map-inset-top,0px)+8px)] right-3 left-3 z-10 mx-auto w-fit lg:mx-0"
+      >
         <BuildingNotice
           status={buildingStatus}
           count={buildingCount}

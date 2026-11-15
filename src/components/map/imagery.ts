@@ -159,8 +159,9 @@ export class NoSuchPictureError extends Error {
 /**
  * Fetch one picture, asking again after a failure for as long as `waits`
  * has another wait. A 404 is an answer, not a failure, where `missingIsFinal`.
+ * (Also how the Trees layer fetches its pictures: see `treeTiles.ts`.)
  */
-async function fetchPicture(
+export async function fetchPicture(
   address: string,
   waits: readonly number[],
   missingIsFinal: boolean,

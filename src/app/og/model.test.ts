@@ -163,7 +163,7 @@ describe("ogImagePath", () => {
     date: "2026-06-21",
     minuteOfDay: 600,
     observer: { mode: "window", heightM: 4.5, facingDeg: 90, fovDeg: 120 },
-    layers: { buildings3d: false, shadows: false },
+    layers: { buildings3d: false, shadows: false, trees: true },
   };
 
   test("carries what the card shows — not the date, time or layers", () => {

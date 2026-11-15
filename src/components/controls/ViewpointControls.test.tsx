@@ -174,10 +174,54 @@ describe("ViewpointControls", () => {
     const shadows = screen.getByRole("switch", { name: /Shadows/ });
     expect(buildings).toBeChecked();
     await user.click(buildings);
-    expect(useSettings.getState().layers).toEqual({ buildings3d: false, shadows: true });
+    expect(useSettings.getState().layers).toEqual({
+      buildings3d: false,
+      shadows: true,
+      trees: false,
+    });
     await user.click(shadows);
-    expect(useSettings.getState().layers).toEqual({ buildings3d: false, shadows: false });
+    expect(useSettings.getState().layers).toEqual({
+      buildings3d: false,
+      shadows: false,
+      trees: false,
+    });
     expect(shadows).not.toBeChecked();
+  });
+
+  it("has a Trees switch, off until asked for, that says what the layer is", async () => {
+    useSettings.getState().setPlace({ lat: 45.5385, lng: -122.6265 });
+    const { user } = setup();
+    const trees = screen.getByRole("switch", { name: /^Trees/ });
+    expect(trees).not.toBeChecked();
+    // (Label and description are two lines; a browser reads a space between them.)
+    expect(trees).toHaveAccessibleName(
+      /^Trees ?Measured tree heights, Oregon only\. Not counted in the sun hours$/,
+    );
+    await user.click(trees);
+    expect(trees).toBeChecked();
+    expect(useSettings.getState().layers).toEqual({
+      buildings3d: true,
+      shadows: true,
+      trees: true,
+    });
+    await user.click(trees);
+    expect(trees).not.toBeChecked();
+    expect(useSettings.getState().layers.trees).toBe(false);
+  });
+
+  it("says where there are no tree heights, and the switch still works there", async () => {
+    useSettings.getState().setPlace({ lat: 37.7912, lng: -122.4301 });
+    const { user } = setup();
+    const trees = screen.getByRole("switch", { name: /^Trees/ });
+    expect(trees).toHaveAccessibleName(
+      /^Trees ?Tree heights are only available in Oregon\. Not counted in the sun hours$/,
+    );
+    expect(trees).toBeEnabled();
+    await user.click(trees);
+    expect(trees).toBeChecked();
+    expect(useSettings.getState().layers.trees).toBe(true);
+    // The numbers are none of this switch's business, wherever it is.
+    expect(screen.queryByText(/Measured tree heights, Oregon only/)).not.toBeInTheDocument();
   });
 
   it("resets the viewpoint, and only offers to when there is something to reset", async () => {

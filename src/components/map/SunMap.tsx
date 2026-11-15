@@ -64,6 +64,20 @@ import {
 } from "./pinMove";
 import { SunCompass } from "./SunCompass";
 import { createTileRefreshWatch, type TileRefreshWatch } from "./tileRefresh";
+import { TreeLegend } from "./TreeLegend";
+import {
+  TREES_ATTRIBUTION,
+  TREES_BOUNDS,
+  TREES_PROTOCOL,
+  TREES_SOURCE_ID,
+  TREE_MAX_ZOOM,
+  TREE_MIN_ZOOM,
+  TREE_TILE_SIZE,
+  hasTreeHeights,
+  treeLook,
+  treeTileTemplate,
+} from "./trees";
+import { loadTreeTile } from "./treeTiles";
 import { useMapTheme } from "./useMapTheme";
 
 // The detail photos come through our own loader, which asks again when the
@@ -75,6 +89,10 @@ addProtocol(IMAGERY_DETAIL_PROTOCOL, (request, abortController) =>
 // A region's own photos likewise: a few at a time, and again when turned away.
 addProtocol(IMAGERY_REGIONAL_PROTOCOL, (request, abortController) =>
   loadRegionalImagery(request.url, { signal: abortController.signal }),
+);
+// The Trees layer's pictures are made here, from heights and buildings (see treeTiles.ts).
+addProtocol(TREES_PROTOCOL, (request, abortController) =>
+  loadTreeTile(request.url, { signal: abortController.signal }),
 );
 
 const LIGHT_STYLE = "https://basemaps.cartocdn.com/gl/positron-gl-style/style.json";
@@ -116,6 +134,17 @@ const MIN_SHADOW_OPACITY_ON_PHOTO = 0.45;
  * apart by the depth buffer, which on some devices is coarse.
  */
 const ROOF_LID_HEIGHT_M = 1.5;
+
+/** The sources a new sun position makes MapLibre re-tile (in its worker). */
+const SUN_SOURCE_IDS = ["sun-shadows", "sun-highlights"] as const;
+
+/**
+ * Has the map finished re-tiling what the sun moved? Unlike `map.loaded()`,
+ * this does not wait for tiles of other sources that are still loading.
+ */
+function sunSourcesBack(map: ReturnType<MapRef["getMap"]>): boolean {
+  return SUN_SOURCE_IDS.every((id) => !map.getSource(id) || map.isSourceLoaded(id));
+}
 
 const EMPTY_SHADOWS = { type: "FeatureCollection" as const, features: [] };
 const PIN_BUILDING_FILTER = ["==", ["get", "pin"], true];
@@ -217,6 +246,18 @@ export default function SunMap({
   const [detailNeeded, setDetailNeeded] = useState(() =>
     hasPlace ? needsImageryDetail({ lat, lng }) : true,
   );
+
+  // The Trees layer: measured tree heights, where there are any (Oregon) —
+  // at the pinned place, or with no pin, where the map looks. Coloured for
+  // what lies under them; a change of look asks for the pictures anew.
+  // Not before the map itself has loaded: MapLibre counts a map as loaded
+  // only once every visible layer has its tiles, and the state's server —
+  // a second or two per picture when it is well — must never hold up the
+  // buttons around the map, which wait for that.
+  const [centerHasTrees, setCenterHasTrees] = useState(false);
+  const trees = ready && layers.trees && (hasPlace ? hasTreeHeights({ lat, lng }) : centerHasTrees);
+  const look = treeLook(imagery, isDark);
+  const treeTiles = useMemo(() => [treeTileTemplate(look)], [look]);
 
   /** The place the camera has already been pointed at. */
   const handledPlace = useRef<LatLng | null>(hasPlace ? { lat, lng } : null);
@@ -433,10 +474,16 @@ export default function SunMap({
     const map = mapRef.current?.getMap();
     // Nothing changed on the map, or the camera is moving and it redraws every
     // frame anyway: two frames tell how long a frame takes.
-    if (!map || map.isMoving() || map.loaded()) return settleAfterTwoFrames(done);
+    if (!map || map.isMoving() || map.loaded() || sunSourcesBack(map)) {
+      return settleAfterTwoFrames(done);
+    }
 
     // Otherwise it is re-tiling in its worker and will then redraw: wait for
-    // that, plus one frame for the result to reach the screen.
+    // that, plus one frame for the result to reach the screen. "That" is the
+    // map coming to rest — or, while a picture is still on its way from a
+    // slow server (a tree tile, a photo: the map is not at rest until it is
+    // in, which can take many seconds), the first frame drawn with the sun's
+    // own sources back.
     let finished = false;
     let frame = 0;
     const finish = () => {
@@ -447,14 +494,21 @@ export default function SunMap({
     const onIdle = () => {
       frame = requestAnimationFrame(finish);
     };
+    const onRender = () => {
+      if (!sunSourcesBack(map)) return;
+      map.off("render", onRender);
+      frame = requestAnimationFrame(finish);
+    };
     const timeout = setTimeout(finish, MAP_SETTLE_TIMEOUT_MS);
     const stop = () => {
       finished = true;
       cancelAnimationFrame(frame);
       clearTimeout(timeout);
       map.off("idle", onIdle);
+      map.off("render", onRender);
     };
     map.once("idle", onIdle);
+    map.on("render", onRender);
     return stop;
   };
   const glSun = usePacedValue(glSunNow, { ...GL_SUN_PACING, settle: settleMap });
@@ -596,6 +650,7 @@ export default function SunMap({
           const { lat: centerLat, lng: centerLng } = event.target.getCenter();
           const center = { lat: centerLat, lng: centerLng };
           setCenterHasPhotos(hasAerialPhotos(center));
+          setCenterHasTrees(hasTreeHeights(center));
           setRegionalId(regionalImageryAt(center)?.id ?? null);
           setDetailNeeded(needsImageryDetail(center));
         }}
@@ -652,8 +707,8 @@ export default function SunMap({
 
         {/*
           Layers stack in the order they are created (each goes right below
-          the basemap's labels): the photos, the shadows, every building in
-          view, then the highlights.
+          the basemap's labels): the photos, the trees, the shadows, every
+          building in view, then the highlights.
         */}
 
         {/*
@@ -719,6 +774,39 @@ export default function SunMap({
             />
           </Source>
         ))}
+
+        {/*
+          The Trees layer: over the photos, under the shadows and every
+          building (the buildings are cut out of it anyway). Like the photos
+          always part of the map and drawn only when wanted: hidden, it asks
+          for nothing. Its credit and its legend show while it is drawn.
+        */}
+        <Source
+          id={TREES_SOURCE_ID}
+          type="raster"
+          tiles={treeTiles}
+          tileSize={TREE_TILE_SIZE}
+          minzoom={TREE_MIN_ZOOM}
+          maxzoom={TREE_MAX_ZOOM}
+          bounds={TREES_BOUNDS}
+          attribution={TREES_ATTRIBUTION}
+        >
+          <Layer
+            id={TREES_SOURCE_ID}
+            type="raster"
+            minzoom={TREE_MIN_ZOOM}
+            beforeId={labelLayerId}
+            layout={{ visibility: trees ? "visible" : "none" }}
+          />
+        </Source>
+        {trees && (
+          <TreeLegend
+            key={isDesktop ? "desktop" : "phone"}
+            corner={isDesktop ? "bottom-left" : "top-left"}
+            look={look}
+            place={hasPlace ? { lat, lng } : null}
+          />
+        )}
 
         {/*
           Over a photo, shade is shown on the ground only: the roofs are in

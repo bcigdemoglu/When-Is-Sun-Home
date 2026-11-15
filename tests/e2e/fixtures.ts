@@ -4,7 +4,7 @@
  *
  * What a test gets without asking:
  *
- *  - NO third-party network. Building tiles, terrain, aerial photos, both
+ *  - NO third-party network. Building tiles, terrain, aerial photos, tree heights, both
  *    geocoders and the basemap are all answered from fixtures (see `mocks`); any other request
  *    that leaves localhost is aborted AND fails the test, so nothing can pass
  *    by quietly reaching a real service.
@@ -27,6 +27,7 @@ import {
   mockBuildingData,
   mockFlatTerrain,
   mockImagery,
+  mockTrees,
 } from "./helpers/mockMapData";
 import { AppPage } from "./pages/app";
 import { PlacesPage } from "./pages/places";
@@ -422,6 +423,7 @@ async function prepare(page: Page, options: InstallOptions): Promise<Mocks> {
   if (options.basemap === "blocked") guard.allow(failedRequestTo(/basemaps\.cartocdn\.com/));
   await mockFlatTerrain(page);
   await mockImagery(page);
+  await mockTrees(page);
   const terrain = new TerrainMock(page, guard);
   await terrain.install();
   await mockBuildingData(page);

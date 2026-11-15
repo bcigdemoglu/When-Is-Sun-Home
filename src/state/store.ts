@@ -136,7 +136,7 @@ function sameObserver(a: Observer, b: Observer): boolean {
 }
 
 function sameLayers(a: Layers, b: Layers): boolean {
-  return a.buildings3d === b.buildings3d && a.shadows === b.shadows;
+  return a.buildings3d === b.buildings3d && a.shadows === b.shadows && a.trees === b.trees;
 }
 
 /** The top-level slices of `next` that differ from `prev`, or null if none do. */
