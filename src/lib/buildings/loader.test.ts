@@ -367,6 +367,188 @@ describe("loadBuildings: refreshing", () => {
   });
 });
 
+/**
+ * A stand-in for the page (`document`): the tests run without a DOM. Only
+ * what the loader looks at: `visibilityState` and the event that announces
+ * its changes.
+ */
+function fakePage(initial: "visible" | "hidden" = "visible") {
+  const events = new EventTarget();
+  const page = {
+    visibilityState: initial as string,
+    addEventListener: events.addEventListener.bind(events),
+    removeEventListener: events.removeEventListener.bind(events),
+  };
+  vi.stubGlobal("document", page);
+  const listeners = { added: 0, removed: 0 };
+  const add = page.addEventListener;
+  const remove = page.removeEventListener;
+  page.addEventListener = (...args: Parameters<typeof add>) => (listeners.added++, add(...args));
+  page.removeEventListener = (...args: Parameters<typeof remove>) => (
+    listeners.removed++,
+    remove(...args)
+  );
+  return {
+    listeners,
+    show(state: "visible" | "hidden") {
+      page.visibilityState = state;
+      events.dispatchEvent(new Event("visibilitychange"));
+    },
+  };
+}
+
+// iOS suspends a page that goes to the background: its requests are cut off
+// ("Load failed") and nothing more happens until the user comes back.
+describe("loadBuildings: a page in the background", () => {
+  /** What iOS answers for a request that was under way when the page was suspended. */
+  const cutOff: Reply = () => {
+    throw new TypeError("Load failed");
+  };
+  const everythingCutOff = () => {
+    tileJson = cutOff;
+    tiles = cutOff;
+    api = cutOff;
+    overpass = cutOff;
+  };
+  const everythingBack = () => {
+    tileJson = respond(TILEJSON);
+    tiles = tilesWith([10, 20, 30]);
+  };
+  const settled = (promise: Promise<unknown>) => {
+    let done = false;
+    promise.then(
+      () => (done = true),
+      () => (done = true),
+    );
+    return () => done;
+  };
+
+  test("a load cut off in the background runs again when the page is back", async () => {
+    const page = fakePage();
+    everythingCutOff();
+    tiles = () => {
+      page.show("hidden"); // the user switches to another app mid-download
+      throw new TypeError("Load failed");
+    };
+
+    const pending = loadBuildings(AREA);
+    const isSettled = settled(pending);
+    // Every source failed, yet there is no error: the load waits for the page.
+    await vi.waitFor(() => expect(calls("overpass")).toHaveLength(OVERPASS_ENDPOINTS.length));
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(isSettled()).toBe(false);
+    const before = fetchMock.mock.calls.length;
+
+    everythingBack();
+    page.show("visible");
+    const loaded = await pending;
+    expect(loaded.source).toBe("tiles");
+    expect(loaded.buildings.features.map((f) => f.properties.heightM)).toEqual([10, 20, 30]);
+    // The second round asked the tiles only.
+    expect(fetchMock.mock.calls.slice(before).map(([url]) => kindOf(String(url)))).toEqual([
+      "tile",
+      "tile",
+      "tile",
+      "tile",
+    ]);
+    expect(await cached()).toMatchObject({ source: "tiles" });
+    expect(page.listeners.removed).toBe(page.listeners.added);
+  });
+
+  test("a link opened in a background tab is treated the same", async () => {
+    const page = fakePage("hidden");
+    everythingCutOff();
+    const pending = loadBuildings(AREA);
+    await vi.waitFor(() => expect(calls("overpass")).toHaveLength(OVERPASS_ENDPOINTS.length));
+
+    everythingBack();
+    page.show("visible");
+    await expect(pending).resolves.toMatchObject({ source: "tiles" });
+  });
+
+  test("there is one more round, not an endless loop", async () => {
+    const page = fakePage();
+    everythingCutOff();
+    tiles = () => {
+      page.show("hidden");
+      throw new TypeError("Load failed");
+    };
+    const pending = failure(loadBuildings(AREA));
+    await vi.waitFor(() => expect(calls("overpass")).toHaveLength(OVERPASS_ENDPOINTS.length));
+
+    tiles = cutOff; // still no network after coming back
+    page.show("visible");
+    const error = await pending;
+    expect(error).toBeInstanceOf(BuildingsUnavailableError);
+    expect((error as BuildingsUnavailableError).attempts.map((a) => a.source)).toEqual([
+      "tiles",
+      "api",
+      "overpass",
+    ]);
+    expect(calls("overpass")).toHaveLength(2 * OVERPASS_ENDPOINTS.length);
+    expect(page.listeners.removed).toBe(page.listeners.added);
+  });
+
+  test("a failure with the page in view all along is final", async () => {
+    const page = fakePage();
+    everythingCutOff();
+    const error = await failure(loadBuildings(AREA));
+    expect(error).toBeInstanceOf(BuildingsUnavailableError);
+    expect(calls("overpass")).toHaveLength(OVERPASS_ENDPOINTS.length);
+    expect(page.listeners.removed).toBe(page.listeners.added);
+  });
+
+  test("going to the background does not disturb a load that succeeds", async () => {
+    const page = fakePage();
+    const ok = tilesWith([10, 20, 30]);
+    tiles = (url, init) => {
+      page.show("hidden");
+      return ok(url, init);
+    };
+    await expect(loadBuildings(AREA)).resolves.toMatchObject({ source: "tiles" });
+    expect(calls("tile")).toHaveLength(4);
+  });
+
+  test("aborting while it waits for the page: AbortError", async () => {
+    const page = fakePage("hidden");
+    everythingCutOff();
+    const controller = new AbortController();
+    const pending = failure(loadBuildings(AREA, { signal: controller.signal }));
+    await vi.waitFor(() => expect(calls("overpass")).toHaveLength(OVERPASS_ENDPOINTS.length));
+    const before = fetchMock.mock.calls.length;
+
+    controller.abort();
+    const error = await pending;
+    expect(isAbortError(error)).toBe(true);
+    page.show("visible");
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(fetchMock.mock.calls).toHaveLength(before);
+    expect(page.listeners.removed).toBe(page.listeners.added);
+  });
+});
+
+// Safari on iOS can leave an IndexedDB request unanswered for good.
+describe("loadBuildings: a cache that does not answer", () => {
+  test("the load goes on without it after a moment", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    vi.stubGlobal("indexedDB", { open: () => ({}) }); // no event ever fires
+    vi.resetModules();
+    const fresh = await import("./loader");
+    const { BUILDING_CACHE_READ_TIMEOUT_MS } = await import("./cache");
+
+    const pending = fresh.loadBuildings(AREA);
+    await vi.advanceTimersByTimeAsync(BUILDING_CACHE_READ_TIMEOUT_MS - 1);
+    expect(fetchMock).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(1);
+    await expect(pending).resolves.toMatchObject({ source: "tiles", origin: "tiles" });
+
+    // The next load does not wait at all, and nothing is left ticking.
+    fetchMock.mockClear();
+    await expect(fresh.loadBuildings(AREA)).resolves.toMatchObject({ source: "tiles" });
+    expect(vi.getTimerCount()).toBe(0);
+  });
+});
+
 describe("loadBuildings: time budget", () => {
   test("with every server hanging, the error comes after 28 seconds", async () => {
     expect(NETWORK_BUDGET_MS).toBe(28_000);

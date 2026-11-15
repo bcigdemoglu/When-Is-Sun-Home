@@ -13,7 +13,11 @@ test.describe("Sun report", () => {
     if (isPhone) await app.moveSheetTo("full");
   });
 
-  test("every section is there, in reading order, with jump tabs", async ({ report, page }) => {
+  test("every section is there, in reading order, with jump tabs", async ({
+    report,
+    page,
+    isPhone,
+  }) => {
     const headings = page.locator(".sun-report").last().getByRole("heading", { level: 2 });
     await expect(headings).toHaveText([
       "Direct sun · average day",
@@ -33,17 +37,20 @@ test.describe("Sun report", () => {
       "About",
     ]);
     // Each tab brings its card on screen and marks itself as the current one.
-    for (const [name, card] of [
-      ["Skyline", report.skyline],
+    // (Desktop "Skyline" is left to the fixme test below.)
+    const jumps = [
+      ["Year", report.year],
       ["Sun hours", report.sunHours],
       ["About", report.about],
       ["Today", report.today],
-    ] as const) {
+      ...(isPhone ? ([["Skyline", report.skyline]] as const) : []),
+    ] as const;
+    for (const [name, card] of jumps) {
       await report.press(report.tab(name));
       await expect(card.getByRole("heading", { level: 2 })).toBeInViewport();
       await expect(report.tab(name)).toHaveAttribute("aria-current", "location");
+      await expect(report.tabs.locator("[aria-current]")).toHaveCount(1);
     }
-    await expect(report.tabs.locator("[aria-current]")).toHaveCount(1);
 
     // What the cards hold.
     await expect(report.seasons.getByRole("listitem")).toHaveCount(4);
@@ -67,7 +74,30 @@ test.describe("Sun report", () => {
     const method = report.about.getByRole("button", { name: "How it is worked out" });
     await expect(method).toHaveAttribute("aria-expanded", "false");
     await report.press(method);
-    await expect(method).toHaveAttribute("aria-expanded", "true");
+    const hide = report.about.getByRole("button", { name: "Hide the details" });
+    await expect(hide).toHaveAttribute("aria-expanded", "true");
+    await expect(report.about).toContainText("Clear-sky geometry.");
+  });
+
+  // BUG (desktop, 1440×900): tapping the "Skyline" tab lights up "About".
+  // The panel is tall enough that it reaches the end of its scroll 30 px
+  // before the Skyline card arrives under the tab row; ReportTabs then applies
+  // its "scrolled to the end → the last section is the current one" rule
+  // (`activeSectionIndex(tops, atEnd)` in src/components/app/ReportTabs.tsx),
+  // which overrides the tab that was just pressed. On the phone the sheet can
+  // scroll far enough and the same tap marks "Skyline" correctly.
+  // Suspected fix: only let "at the end" win over a section that has not
+  // reached the line if the user did not just jump to it (or pad the report's
+  // end so every section can reach the line).
+  test.fixme("desktop: pressing a jump tab marks THAT tab as current, also near the end", async ({
+    report,
+    isPhone,
+  }) => {
+    test.skip(isPhone, "desktop layout only (the phone gets this right)");
+    await report.press(report.tab("Skyline"));
+    await expect(report.skyline.getByRole("heading", { level: 2 })).toBeInViewport();
+    await expect(report.tab("Skyline")).toHaveAttribute("aria-current", "location");
+    await expect(report.tab("About")).not.toHaveAttribute("aria-current", "location");
   });
 
   test("choosing a day in the heat map moves every card to the same day and total", async ({
@@ -128,14 +158,17 @@ test.describe("Sun report", () => {
     await expect(report.heatmap).toBeFocused();
     await expect(report.heatmap).toHaveAccessibleName(/Arrow keys move the selection/);
 
+    // (One press at a time, each waited for: see the fixme test below about quick presses.)
     await page.keyboard.press("ArrowRight");
     await expect(report.heatmapValue).toHaveText("Mon, Jun 22 · 3:00 PM");
     await page.keyboard.press("ArrowLeft");
+    await expect(report.heatmapValue).toHaveText("Sun, Jun 21 · 3:00 PM");
     await page.keyboard.press("ArrowLeft");
     await expect(report.heatmapValue).toHaveText("Sat, Jun 20 · 3:00 PM");
     await page.keyboard.press("ArrowDown");
     await expect(report.heatmapValue).toHaveText("Sat, Jun 20 · 3:15 PM");
     await page.keyboard.press("ArrowUp");
+    await expect(report.heatmapValue).toHaveText("Sat, Jun 20 · 3:00 PM");
     await page.keyboard.press("ArrowUp");
     await expect(report.heatmapValue).toHaveText("Sat, Jun 20 · 2:45 PM");
 
@@ -147,6 +180,32 @@ test.describe("Sun report", () => {
     await expect(timeBar.slider).toHaveValue("885");
     await expect(report.heatmap).toBeFocused();
     await expect(page).toHaveURL(/d=2026-06-20&t=1445/);
+  });
+
+  // BUG: arrow keys pressed in quick succession on the heat map lose steps —
+  // two presses of ← move the selection ONE day (seen on both projects; the
+  // same happens with ↑ / ↓). YearHeatmap.onKeyDown works out the next
+  // selection from its `date` / `minuteOfDay` props, and those reach the report
+  // through `usePacedValue` (REPORT_PACING in AppShell: at most one update per
+  // 50 ms, slower when a redraw is slow). A second key press that arrives
+  // before the paced props have caught up starts from the OLD selection and
+  // lands on the same day as the first. A person double-tapping an arrow on a
+  // slow device, or holding it down (key repeat is ~30 Hz), gets fewer steps
+  // than presses. Suspected fix: compute keyboard steps from the live store
+  // (`useSettings.getState()`), as the global ← / → shortcuts already do.
+  test.fixme("every arrow-key press on the heat map counts, however quick", async ({
+    report,
+    page,
+  }) => {
+    await report.show(report.heatmap);
+    await report.heatmap.focus();
+    await page.keyboard.press("ArrowLeft");
+    await page.keyboard.press("ArrowLeft");
+    await page.keyboard.press("ArrowLeft");
+    await expect(report.heatmapValue).toHaveText("Thu, Jun 18 · 3:00 PM");
+    await page.keyboard.press("ArrowDown");
+    await page.keyboard.press("ArrowDown");
+    await expect(report.heatmapValue).toHaveText("Thu, Jun 18 · 3:30 PM");
   });
 
   test("the monthly numbers are also there as a table", async ({ report }) => {

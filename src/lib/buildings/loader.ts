@@ -14,6 +14,13 @@
  * All of the network together gets `NETWORK_BUDGET_MS`: the tiles normally
  * answer well within a second, and when everything is down the caller has
  * an error in under half a minute.
+ *
+ * One exception. A phone suspends a page that goes to the background (the
+ * user switches to another app, or locks the screen): iOS cuts its requests
+ * off ("Load failed") and stops its clocks, so on return every source has
+ * failed and the budget is long gone. That says nothing about the sources. A
+ * load that failed with the page in the background is therefore run once
+ * more, with a fresh budget, as soon as the page is visible again.
  */
 import type { BuildingCollection } from "@/lib/types";
 import { fetchBuildingsFromApi } from "./api";
@@ -75,6 +82,54 @@ export interface LoadBuildingsOptions {
 }
 
 /**
+ * Notes whether the page is, or goes, to the background while a load runs,
+ * and can wait for it to come back. Without a document (server, workers)
+ * the page counts as always visible.
+ */
+function watchPage() {
+  const page = typeof document === "undefined" ? null : document;
+  const isHidden = () => page !== null && page.visibilityState === "hidden";
+  let wasHidden = isHidden();
+  const note = () => {
+    if (isHidden()) wasHidden = true;
+  };
+  page?.addEventListener("visibilitychange", note);
+
+  return {
+    wasHidden: () => wasHidden,
+    stop: () => page?.removeEventListener("visibilitychange", note),
+    /** Resolves once the page is visible; rejects with an AbortError if `signal` fires first. */
+    visible(signal: AbortSignal | undefined): Promise<void> {
+      return new Promise<void>((resolve, reject) => {
+        if (signal?.aborted) {
+          reject(abortErrorFrom(signal));
+          return;
+        }
+        if (page === null || !isHidden()) {
+          resolve();
+          return;
+        }
+        const onChange = () => {
+          if (isHidden()) return;
+          cleanUp();
+          resolve();
+        };
+        const onAbort = () => {
+          cleanUp();
+          reject(abortErrorFrom(signal as AbortSignal));
+        };
+        const cleanUp = () => {
+          page.removeEventListener("visibilitychange", onChange);
+          signal?.removeEventListener("abort", onAbort);
+        };
+        page.addEventListener("visibilitychange", onChange);
+        signal?.addEventListener("abort", onAbort, { once: true });
+      });
+    },
+  };
+}
+
+/**
  * The buildings for one fetch area, from the first source that has them.
  *
  * Rejects with `BuildingsUnavailableError` when every source failed, and
@@ -84,12 +139,35 @@ export async function loadBuildings(
   area: FetchArea,
   options: LoadBuildingsOptions = {},
 ): Promise<LoadedBuildings> {
-  const { signal, fresh = false, fetchImpl, budgetMs = NETWORK_BUDGET_MS } = options;
+  const { signal, fresh = false } = options;
 
   if (!fresh) {
     const cached = await getCachedBuildingsEntry(area.key);
     if (cached) return { buildings: cached.data, source: "cache", origin: cached.source };
   }
+
+  const page = watchPage();
+  try {
+    try {
+      return await loadFromNetwork(area, options);
+    } catch (error) {
+      // Only a failure of the sources is worth another round, and only when
+      // the page being suspended may be what made them fail.
+      if (!(error instanceof BuildingsUnavailableError) || !page.wasHidden()) throw error;
+    }
+    await page.visible(signal);
+    return await loadFromNetwork(area, options);
+  } finally {
+    page.stop();
+  }
+}
+
+/** Every network source in turn, within one time budget. */
+async function loadFromNetwork(
+  area: FetchArea,
+  options: LoadBuildingsOptions,
+): Promise<LoadedBuildings> {
+  const { signal, fresh = false, fetchImpl, budgetMs = NETWORK_BUDGET_MS } = options;
 
   const deadline = Date.now() + budgetMs;
   const remaining = () => deadline - Date.now();

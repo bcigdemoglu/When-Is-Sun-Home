@@ -2,9 +2,10 @@ import { TZDate } from "@date-fns/tz";
 import fc from "fast-check";
 import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
-import { describe, expect, test } from "vitest";
+import { afterEach, describe, expect, test, vi } from "vitest";
 
 import {
+  OLDER_ZONE_NAMES,
   addDays,
   dateFromDayIndex,
   dayIndexFromDate,
@@ -69,6 +70,89 @@ describe("timeZoneAt", () => {
     // The POSIX-style sign really is inverted: Etc/GMT+8 is UTC−8.
     expect(utcOffsetMinutes("Etc/GMT+8", 0)).toBe(-480);
     expect(utcOffsetMinutes("Etc/GMT-10", 0)).toBe(600);
+  });
+});
+
+// A browser's list of zones is as old as its operating system. An iPhone on
+// iOS 15 or 16 has never heard of "Europe/Kyiv".
+describe("timeZoneAt on a runtime with older time-zone data", () => {
+  const PLACES: Record<string, [lat: number, lng: number]> = {
+    "Europe/Kyiv": [50.45, 30.52],
+    "America/Ciudad_Juarez": [31.7, -106.4],
+    "America/Coyhaique": [-45.57, -72.07],
+    "America/Nuuk": [64.18, -51.7],
+    "Pacific/Kanton": [-2.8, -171.7],
+  };
+
+  /** A fresh copy of the module (it remembers which zones work) on a runtime without `unknown`. */
+  async function withoutZones(unknown: readonly string[]) {
+    const Real = Intl.DateTimeFormat;
+    vi.spyOn(Intl, "DateTimeFormat").mockImplementation(function (
+      locales?: Intl.LocalesArgument,
+      options?: Intl.DateTimeFormatOptions,
+    ) {
+      if (options?.timeZone !== undefined && unknown.includes(options.timeZone)) {
+        throw new RangeError(`Invalid time zone specified: ${options.timeZone}`);
+      }
+      return new Real(locales, options);
+    } as never);
+    vi.resetModules();
+    return import("./timezone");
+  }
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  test("the table covers what the lookup can answer, and nothing in it is its own stand-in", () => {
+    expect(Object.keys(OLDER_ZONE_NAMES).sort()).toEqual(Object.keys(PLACES).sort());
+    for (const [zone, [lat, lng]] of Object.entries(PLACES)) {
+      expect(timeZoneAt(lat, lng)).toBe(zone);
+      expect(OLDER_ZONE_NAMES[zone]).not.toBe(zone);
+    }
+  });
+
+  test.each(Object.entries(OLDER_ZONE_NAMES))(
+    "%s: %s keeps the same clock all through 2026 and 2027",
+    (zone, older) => {
+      for (const year of [2026, 2027]) {
+        const real = zoneOffsetTable(zone, year);
+        const standIn = zoneOffsetTable(older, year);
+        expect(standIn.offsetsMin).toEqual(real.offsetsMin);
+        expect(standIn.startsMs).toEqual(real.startsMs);
+      }
+    },
+  );
+
+  test.each(Object.entries(PLACES))(
+    "%s unknown: the older zone is used, not a fixed offset",
+    async (zone, [lat, lng]) => {
+      const old = await withoutZones([zone]);
+      const found = old.timeZoneAt(lat, lng);
+      expect(found).toBe(OLDER_ZONE_NAMES[zone]);
+      // The whole engine works with the stand-in, daylight saving time included.
+      const july = Date.UTC(2026, 6, 1, 12);
+      const january = Date.UTC(2026, 0, 1, 12);
+      expect(old.utcOffsetMinutes(found, july)).toBe(utcOffsetMinutes(zone, july));
+      expect(old.utcOffsetMinutes(found, january)).toBe(utcOffsetMinutes(zone, january));
+    },
+  );
+
+  test("Kyiv in summer is UTC+3 there too (a longitude estimate would say UTC+2 all year)", async () => {
+    const old = await withoutZones(["Europe/Kyiv"]);
+    const zone = old.timeZoneAt(50.45, 30.52);
+    expect(iso(old.zonedToUtc("2026-07-01", 12 * 60, zone))).toBe("2026-07-01T09:00:00.000Z");
+    expect(iso(old.zonedToUtc("2026-01-01", 12 * 60, zone))).toBe("2026-01-01T10:00:00.000Z");
+  });
+
+  test("with the stand-in unknown as well, the longitude estimate is the last resort", async () => {
+    const old = await withoutZones(["Europe/Kyiv", "Europe/Kiev"]);
+    expect(old.timeZoneAt(50.45, 30.52)).toBe("Etc/GMT-2");
+  });
+
+  test("a zone the runtime knows is never replaced", async () => {
+    const old = await withoutZones([]);
+    expect(old.timeZoneAt(50.45, 30.52)).toBe("Europe/Kyiv");
   });
 });
 
