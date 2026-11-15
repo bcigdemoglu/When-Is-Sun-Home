@@ -143,7 +143,7 @@ describe("startUrlSync", () => {
     expect(href()).toBe("/?lat=40.71280&lng=-74.00600&d=2026-06-21&t=1430&m=w&h=7.5&dir=90");
   });
 
-  test("the summary of a shared link (s) is dropped on the first write and never written", () => {
+  test("an incoming summary (s) is dropped until the app has settled numbers of its own", () => {
     const s = "1.1t1i401u9.00011p3a3j3h3i3f2e0d0000.2p2z3a3n3x423z3q3f322s2m";
     setUrl(`/${STORED_QUERY}&s=${s}#report`);
     store.hydrateSettings();
@@ -159,6 +159,49 @@ describe("startUrlSync", () => {
     store.useSettings.getState().setMinuteOfDay(600);
     vi.advanceTimersByTime(400);
     expect(location.search).not.toMatch(/[?&]s=/);
+  });
+
+  test("settled numbers are written to the address bar, and removed when they no longer apply", async () => {
+    const { decodeSummaryParam, encodeSummaryParam } = await import("../urlCodec");
+    const s = "1.1t1i401u9.00011p3a3j3h3i3f2e0d0000.2p2z3a3n3x423z3q3f322s2m";
+    const summary = decodeSummaryParam(s, 2026)!;
+    expect(encodeSummaryParam(summary)).toBe(s);
+
+    setUrl(`/${STORED_QUERY}`);
+    store.hydrateSettings();
+    sync.startUrlSync();
+    vi.advanceTimersByTime(400);
+    expect(location.search).not.toMatch(/[?&]s=/);
+
+    // The analysis finished: a link copied from the address bar now previews with its sun hours.
+    sync.setLinkSummary(summary);
+    vi.advanceTimersByTime(400);
+    expect(href()).toBe(`/${STORED_QUERY}&s=${s}`);
+    const calls = replaceState.mock.calls.length;
+
+    // The same numbers again: nothing to write.
+    sync.setLinkSummary(summary);
+    vi.advanceTimersByTime(1000);
+    expect(replaceState).toHaveBeenCalledTimes(calls);
+
+    // The place or viewpoint changed and the numbers are not known yet: no stale summary.
+    sync.setLinkSummary(null);
+    vi.advanceTimersByTime(400);
+    expect(href()).toBe(`/${STORED_QUERY}`);
+  });
+
+  test("no summary is written when there is no place", async () => {
+    const { decodeSummaryParam } = await import("../urlCodec");
+    const summary = decodeSummaryParam(
+      "1.1t1i401u9.00011p3a3j3h3i3f2e0d0000.2p2z3a3n3x423z3q3f322s2m",
+      2026,
+    )!;
+    setUrl("/");
+    store.hydrateSettings();
+    sync.startUrlSync();
+    sync.setLinkSummary(summary);
+    vi.advanceTimersByTime(1000);
+    expect(location.search).toBe("");
   });
 
   test("skips the call when the query string is unchanged", () => {

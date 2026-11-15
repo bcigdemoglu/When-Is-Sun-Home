@@ -168,10 +168,10 @@ describe("ogImagePath", () => {
 
   test("carries what the card shows — not the date, time or layers", () => {
     expect(ogImagePath(settings, SUMMARY)).toBe(
-      `/og?lat=37.79120&lng=-122.43010&n=Home&m=w&h=4.5&dir=90&fov=120&s=${S}&v=1`,
+      `/og?lat=37.79120&lng=-122.43010&n=Home&m=w&h=4.5&dir=90&fov=120&s=${S}&v=2`,
     );
     expect(ogImagePath(settings, null)).toBe(
-      "/og?lat=37.79120&lng=-122.43010&n=Home&m=w&h=4.5&dir=90&fov=120&v=1",
+      "/og?lat=37.79120&lng=-122.43010&n=Home&m=w&h=4.5&dir=90&fov=120&v=2",
     );
   });
 
@@ -197,7 +197,7 @@ describe("shareMetadataFromParams", () => {
       title: "2550 Pacific Ave: 6.5 h of direct sun a day · When Is Sun Home?",
       description:
         "6.5 h of direct sun on an average day (12.7 h in May, none in January). 54% of possible daylight. A clear-sky estimate from building and terrain data. Open the link for the full year, hour by hour.",
-      imagePath: `/og?lat=37.79120&lng=-122.43010&n=2550+Pacific+Ave%2C+San+Francisco&s=${S}&v=1`,
+      imagePath: `/og?lat=37.79120&lng=-122.43010&n=2550+Pacific+Ave%2C+San+Francisco&s=${S}&v=2`,
       imageAlt:
         "2550 Pacific Ave: 6.5 h of direct sun on an average day (12.7 h in May, none in January).",
     });
