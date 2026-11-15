@@ -38,7 +38,8 @@ test("the stylesheet matches the app: the layout is laid out, not unstyled", asy
         scrolls: element.scrollHeight > element.clientHeight,
         // iOS Safari cannot touch-scroll under `pointer-events: none` (WebKit bug 183870).
         takesTouches,
-        holdsTheMap: element.contains(document.querySelector(".maplibregl-map")),
+        // The map's own element arrives later (it is loaded lazily); its slot is there at once.
+        holdsTheMap: element.firstElementChild?.classList.contains("sheet-map") === true,
       };
     });
     expect(sheet).toEqual({
