@@ -1,11 +1,12 @@
 import { readFileSync } from "node:fs";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
-import { parseBuildingCollection } from "@/lib/buildings/api";
+import { buildingsApiUrl, parseBuildingCollection } from "@/lib/buildings/api";
 import {
   OVERPASS_ENDPOINTS,
   buildOverpassQuery,
   parseOverpassResponse,
 } from "@/lib/buildings/overpass";
+import { handleBuildingsRequest, resetUpstreamFailures } from "@/lib/buildings/server";
 import { fetchAreaFor } from "@/lib/buildings/tiles";
 import * as route from "./route";
 
@@ -67,9 +68,11 @@ function get(query: string, init?: RequestInit): Promise<Response> {
   return GET(new Request(`${ORIGIN}/api/buildings${query}`, init));
 }
 
-const forArea = (key = AREA.key) => `?area=${encodeURIComponent(key)}`;
+const forArea = (key = AREA.key) => `?area=${key}`;
+const CACHE_FAILED = "public, max-age=0, s-maxage=30";
 
 beforeEach(() => {
+  resetUpstreamFailures();
   fetchMock = vi.fn<typeof fetch>();
   upstream(answer(overpassBody(3)));
   vi.stubGlobal("fetch", fetchMock);
@@ -127,11 +130,10 @@ describe("GET /api/buildings: success", () => {
     expect([...headers.keys()]).toEqual(["user-agent"]);
   });
 
-  test("the key may arrive percent-encoded or plain", async () => {
-    for (const query of [`?area=${AREA.key}`, `?area=${encodeURIComponent(AREA.key)}`]) {
-      const response = await get(query);
-      expect(response.status, query).toBe(200);
-    }
+  test("the one accepted spelling of the URL is what the client sends", async () => {
+    expect(buildingsApiUrl(AREA.key)).toBe(`/api/buildings?area=${AREA.key}`);
+    const response = await GET(new Request(`${ORIGIN}${buildingsApiUrl(AREA.key)}`));
+    expect(response.status).toBe(200);
   });
 
   test("the centre queried is the cell's exact centre, not the rounded one in the key", async () => {
@@ -162,11 +164,11 @@ describe("GET /api/buildings: success", () => {
   });
 
   test("falls back through the Overpass endpoints and names the one that answered", async () => {
-    upstream(answer("slow down", 429), offline, answer(overpassBody(2)));
+    upstream(answer("slow down", 429), answer(overpassBody(2)));
     const response = await get(forArea());
     expect(response.status).toBe(200);
     expect(response.headers.get("cache-control")).toBe(CACHE_OK);
-    expect(response.headers.get("x-buildings-source")).toBe("maps.mail.ru");
+    expect(response.headers.get("x-buildings-source")).toBe("overpass.private.coffee");
     expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([...OVERPASS_ENDPOINTS]);
     // Every attempt is identified.
     for (const [, init] of fetchMock.mock.calls) {
@@ -191,6 +193,22 @@ describe("GET /api/buildings: invalid requests", () => {
 
   test.each([
     ["no parameters", ""],
+    ["the colons percent-encoded", `?area=${encodeURIComponent(AREA.key)}`],
+    ["one colon percent-encoded", `?area=${AREA.key.replace(":", "%3A")}`],
+    ["a lower-case escape", `?area=${AREA.key.replace(":", "%3a")}`],
+    ["a letter percent-encoded", `?area=${AREA.key.replace("v", "%76")}`],
+    ["a digit percent-encoded", `?area=${AREA.key.replace("4", "%34")}`],
+    ["the parameter name percent-encoded", `?%61rea=${AREA.key}`],
+    ["a trailing ampersand", `?area=${AREA.key}&`],
+    ["a leading ampersand", `?&area=${AREA.key}`],
+    ["a second question mark", `??area=${AREA.key}`],
+    ["a trailing equals sign parameter", `?area=${AREA.key}&=`],
+    ["a trailing semicolon", `?area=${AREA.key};`],
+    ["a trailing space", `?area=${AREA.key}%20`],
+    ["a trailing plus", `?area=${AREA.key}+`],
+    ["a trailing null byte", `?area=${AREA.key}%00`],
+    ["a minus sign percent-encoded", `?area=${AREA.key.replace("-", "%2D")}`],
+    ["an upper-case version letter", `?area=${AREA.key.replace("v", "V")}`],
     ["an empty key", "?area="],
     ["another parameter name", `?key=${AREA.key}`],
     ["a differently cased name", `?Area=${AREA.key}`],
@@ -227,8 +245,8 @@ describe("GET /api/buildings: invalid requests", () => {
 describe("GET /api/buildings: Overpass failures", () => {
   async function expectError(response: Response, status: number, kind: string) {
     expect(response.status).toBe(status);
-    // Failures must never be cached at the CDN.
-    expect(response.headers.get("cache-control")).toBe("no-store");
+    // Never cached by browsers, and by shared caches for half a minute only.
+    expect(response.headers.get("cache-control")).toBe(CACHE_FAILED);
     expect(response.headers.get("content-type")).toBe("application/json; charset=utf-8");
     const body = (await response.json()) as { error: string; message: string };
     expect(Object.keys(body).sort()).toEqual(["error", "message"]);
@@ -262,15 +280,22 @@ describe("GET /api/buildings: Overpass failures", () => {
     upstream(reply);
     const response = await get(forArea());
     await expectError(response, status, kind);
-    expect(fetchMock).toHaveBeenCalledTimes(3);
-    expect(response.headers.get("x-buildings-source")).toBe("maps.mail.ru");
+    expect(fetchMock).toHaveBeenCalledTimes(OVERPASS_ENDPOINTS.length);
+    expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([...OVERPASS_ENDPOINTS]);
+    expect(response.headers.get("x-buildings-source")).toBe("overpass.private.coffee");
+    // One entry per server asked: host=kind[/status]/duration.
+    const attempts = response.headers.get("x-buildings-attempts")!.split(", ");
+    expect(attempts).toHaveLength(OVERPASS_ENDPOINTS.length);
+    expect(attempts[0]).toMatch(/^overpass-api\.de=[a-z-]+(\/\d+)?\/\d+ms$/);
+    expect(attempts[1]).toMatch(/^overpass\.private\.coffee=[a-z-]+(\/\d+)?\/\d+ms$/);
   });
 
   test("the last endpoint's failure decides the status", async () => {
-    upstream(answer("busy", 429), answer("busy", 429), answer("oops", 500));
+    upstream(answer("busy", 429), answer("oops", 500));
     await expectError(await get(forArea()), 502, "http");
 
-    upstream(answer("oops", 500), offline, answer("busy", 429));
+    resetUpstreamFailures();
+    upstream(offline, answer("busy", 429));
     await expectError(await get(forArea()), 429, "rate-limited");
   });
 
@@ -280,17 +305,19 @@ describe("GET /api/buildings: Overpass failures", () => {
     await expectError(known, 429, "rate-limited");
     expect(known.headers.get("retry-after")).toBe("42");
 
+    resetUpstreamFailures();
     upstream(answer("busy", 429));
     const unknown = await get(forArea());
     await expectError(unknown, 429, "rate-limited");
     expect(unknown.headers.has("retry-after")).toBe(false);
 
     // Retry-After on some other failure is not ours to pass on.
+    resetUpstreamFailures();
     upstream(answer("oops", 503, { "Retry-After": "42" }));
     expect((await get(forArea())).headers.has("retry-after")).toBe(false);
   });
 
-  test("hanging servers: 10 s each, 25 s in all, then 504", async () => {
+  test("hanging servers: 10 s each, then 504", async () => {
     vi.useFakeTimers();
     upstream(hang);
     let response: Response | undefined;
@@ -300,19 +327,39 @@ describe("GET /api/buildings: Overpass failures", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
     await vi.advanceTimersByTimeAsync(1);
     expect(fetchMock).toHaveBeenCalledTimes(2);
-    await vi.advanceTimersByTimeAsync(10_000);
-    expect(fetchMock).toHaveBeenCalledTimes(3);
-    // The third server only gets what is left of the budget.
-    await vi.advanceTimersByTimeAsync(4_999);
+    await vi.advanceTimersByTimeAsync(9_999);
     expect(response).toBeUndefined();
     await vi.advanceTimersByTimeAsync(1);
     expect(response).toBeDefined();
     await expectError(response!, 504, "timeout");
-    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
     for (const [, init] of fetchMock.mock.calls) {
       expect((init?.signal as AbortSignal).aborted).toBe(true);
     }
+    expect(response!.headers.get("x-buildings-attempts")).toBe(
+      "overpass-api.de=timeout/10000ms, overpass.private.coffee=timeout/10000ms",
+    );
     expect(vi.getTimerCount()).toBe(0);
+  });
+
+  test("the whole route stays within its 25 s budget however many servers there are", async () => {
+    vi.useFakeTimers();
+    let response: Response | undefined;
+    const request = new Request(`${ORIGIN}/api/buildings${forArea()}`);
+    void handleBuildingsRequest(request, {
+      fetchImpl: vi.fn<typeof fetch>(
+        (input, init) => hang(String(input), init) as Promise<Response>,
+      ),
+      endpoints: ["https://a.test/i", "https://b.test/i", "https://c.test/i", "https://d.test/i"],
+    }).then((r) => (response = r));
+    await vi.advanceTimersByTimeAsync(24_999);
+    expect(response).toBeUndefined();
+    await vi.advanceTimersByTimeAsync(1);
+    expect(response?.status).toBe(504);
+    // 10 s, 10 s, then the 5 s that are left; the fourth server is not asked.
+    expect(response!.headers.get("x-buildings-attempts")).toBe(
+      "a.test=timeout/10000ms, b.test=timeout/10000ms, c.test=timeout/5000ms",
+    );
   });
 
   test("a slow first server does not starve the others", async () => {
@@ -335,5 +382,68 @@ describe("GET /api/buildings: Overpass failures", () => {
     expect(response.status).toBe(504);
     expect(response.headers.get("cache-control")).toBe("no-store");
     expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    // And it is not held against the next visitor.
+    upstream(answer(overpassBody(1)));
+    expect((await get(forArea())).status).toBe(200);
+  });
+});
+
+describe("GET /api/buildings: a burst of requests while Overpass is down", () => {
+  test("the failure is replayed for half a minute without asking Overpass again", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    upstream(answer("blocked", 406));
+    const first = await get(forArea());
+    expect(first.status).toBe(502);
+    expect(first.headers.get("cache-control")).toBe(CACHE_FAILED);
+    expect(first.headers.has("x-buildings-replayed")).toBe(false);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    const firstBody = await first.json();
+
+    vi.setSystemTime(Date.now() + 29_000);
+    for (let i = 0; i < 5; i++) {
+      const again = await get(forArea());
+      expect(again.status).toBe(502);
+      expect(again.headers.get("cache-control")).toBe(CACHE_FAILED);
+      expect(again.headers.get("x-buildings-replayed")).toBe("1");
+      expect(again.headers.get("x-buildings-attempts")).toBe(
+        first.headers.get("x-buildings-attempts"),
+      );
+      expect(again.headers.get("x-buildings-source")).toBe("overpass.private.coffee");
+      expect(await again.json()).toEqual(firstBody);
+    }
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+
+    // After that, Overpass is asked again; a success clears the slate.
+    vi.setSystemTime(Date.now() + 2_000);
+    upstream(answer(overpassBody(3)));
+    const later = await get(forArea());
+    expect(later.status).toBe(200);
+    expect(later.headers.get("cache-control")).toBe(CACHE_OK);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect((await get(forArea())).status).toBe(200);
+  });
+
+  test("Retry-After is replayed with a 429", async () => {
+    upstream(answer("busy", 429, { "Retry-After": "42" }));
+    await get(forArea());
+    const again = await get(forArea());
+    expect(again.status).toBe(429);
+    expect(again.headers.get("retry-after")).toBe("42");
+    expect(again.headers.get("x-buildings-replayed")).toBe("1");
+  });
+
+  test("other areas are not affected, and invalid requests are never remembered", async () => {
+    upstream(answer("oops", 500));
+    expect((await get(forArea())).status).toBe(502);
+    expect((await get("?area=nonsense")).status).toBe(400);
+    expect((await get("?area=nonsense")).headers.get("cache-control")).toBe("no-store");
+
+    const other = fetchAreaFor({ lat: 52.3731, lng: 4.8922 });
+    upstream(answer(overpassBody(2)));
+    const response = await get(forArea(other.key));
+    expect(response.status).toBe(200);
+    // The first area's failure is still being replayed.
+    expect((await get(forArea())).headers.get("x-buildings-replayed")).toBe("1");
   });
 });

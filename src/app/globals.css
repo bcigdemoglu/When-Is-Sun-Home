@@ -419,6 +419,34 @@ dialog.app-dialog[data-variant="menu"] {
     padding-bottom: 0;
   }
 }
+/* A small prompt (naming a place): a card near the top, clear of the keyboard. */
+dialog.app-dialog[data-variant="prompt"] {
+  position: fixed;
+  inset: max(16px, calc(var(--safe-top) + 12dvh)) 16px auto 16px;
+  margin: 0 auto;
+  width: min(400px, 100vw - 32px);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-card);
+}
+
+/*
+ * Toasts: a manual popover, so they sit in the top layer above every sheet
+ * and dialog. Undo the browser's popover styling; the shell positions it.
+ */
+.toaster[popover] {
+  inset: auto;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  overflow: visible;
+  color: inherit;
+  background: transparent;
+}
+.toaster:not([popover]),
+.toaster[popover]:not(:popover-open) {
+  display: flex;
+}
+
 @media (prefers-reduced-motion: no-preference) {
   dialog.app-dialog[open] {
     animation: dialog-in 0.22s ease-out;

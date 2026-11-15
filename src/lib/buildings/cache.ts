@@ -40,7 +40,11 @@ export interface CachedBuildings {
   source: BuildingDataSource | null;
   savedAt: number;
 }
-export const BUILDING_CACHE_MAX_AREAS = 40;
+/**
+ * An area from the tiles is 1–3 MB of footprints in a dense city, so this
+ * many areas can come to some 50 MB of storage.
+ */
+export const BUILDING_CACHE_MAX_AREAS = 20;
 
 const DATA_PREFIX = "data:";
 const META_PREFIX = "meta:";
