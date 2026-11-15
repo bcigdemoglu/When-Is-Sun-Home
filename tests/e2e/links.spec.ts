@@ -56,7 +56,7 @@ test.describe("Links", () => {
     newVisitor,
   }) => {
     await app.openPlace(PIN);
-    await expect(page).toHaveURL(/\?lat=37\.79120&lng=-122\.43010&n=[^&]+$/);
+    await expect(page).toHaveURL(/\?lat=37\.79120&lng=-122\.43010&n=[^&]+(&s=[^&]+)?$/);
 
     // Change one of everything.
     await timeBar.slider.fill("450");
@@ -70,7 +70,7 @@ test.describe("Links", () => {
     await viewpoint.close();
 
     await expect(page).toHaveURL(
-      /\?lat=37\.79120&lng=-122\.43010&n=[^&]+&d=2026-12-21&t=0730&m=w&h=4\.5&dir=135&fov=270&b=0$/,
+      /\?lat=37\.79120&lng=-122\.43010&n=[^&]+&d=2026-12-21&t=0730&m=w&h=4\.5&dir=135&fov=270&b=0(&s=[^&]+)?$/,
     );
     const daySun = await app.summaryFigure.textContent();
     const status = await app.summaryStatus.textContent();
@@ -116,7 +116,7 @@ test.describe("Links", () => {
 
       // Rewritten into today's format; the keys only the old app knew are gone.
       await expect(page).toHaveURL(
-        /\?lat=37\.79120&lng=-122\.43010(&n=[^&]+)?&d=2026-06-21&t=1200&m=w&h=4\.5&fov=120$/,
+        /\?lat=37\.79120&lng=-122\.43010(&n=[^&]+)?&d=2026-06-21&t=1200&m=w&h=4\.5&fov=120(&s=[^&]+)?$/,
       );
     });
 
@@ -160,7 +160,8 @@ test.describe("Links", () => {
     await expect(timeBar.backToNow).toHaveCount(0);
     await expect(viewpoint.toggle).toContainText("Yard");
     await expect(app.heroFigure).toHaveText(/^\d+\.\d\s*h$/);
-    await expect(page).not.toHaveURL(/[?&](d|t|m|b|sh|s|x)=/);
+    // The junk is gone; an `s` in the address bar can only be this page's own numbers.
+    await expect(page).not.toHaveURL(/[?&](d|t|m|b|sh|x)=|zzzz/);
   });
 
   test("a name in a link is shown as text, whatever it contains", async ({ app, page }) => {

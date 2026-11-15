@@ -250,9 +250,10 @@ test.describe("Share", () => {
       "aria-pressed",
       "false",
     );
-    // The preview numbers (`s`) are for link cards only: the address bar drops them.
+    // The address bar keeps every setting; the preview numbers (`s`) it ends with
+    // are the visitor's own, written once their report has settled.
     await expect(visitor.page).toHaveURL(
-      /\?lat=37\.79120&lng=-122\.43010&n=Elm\+St\+backyard&d=2026-09-22&t=1030&m=w&h=4\.5&dir=90&fov=90$/,
+      /\?lat=37\.79120&lng=-122\.43010&n=Elm\+St\+backyard&d=2026-09-22&t=1030&m=w&h=4\.5&dir=90&fov=90(&s=[^&]+)?$/,
     );
 
     // Sender's side, for the record: the viewpoint and moment were what was sent.

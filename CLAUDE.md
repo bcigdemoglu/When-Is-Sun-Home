@@ -19,5 +19,6 @@ Always use `pnpm` for all commands. Never use `npm`, `yarn`, or `npx`.
 - The engine (`src/lib/solar`, `horizon`, `terrain`, `analysis`) is pure TypeScript: no React, DOM or network.
 - Colours come from the design tokens in `src/app/globals.css`; do not use raw hex or palette utilities in components.
 - Building data comes from OpenFreeMap vector tiles (Overpass is only a fallback and is blocked from most cloud hosts). Browser tests mock all map data with `tests/e2e/helpers/mockMapData.ts`.
+- The map draws the buildings in view natively from the same tiles (a MapLibre `vector` source, `sun-city` in `SunMap.tsx`; MapLibre loads and drops tiles as the map moves). The analysed collection around the pin is only drawn for what is per building: the highlighted blocker and pin building, and the shadows. Rules shared by both live in `src/components/map/mapData.ts`; the tile address comes from `loadTileTemplate()` for both, so they read the same weekly build.
 - Git hooks: pre-commit runs `pnpm build`, pre-push runs `pnpm check`. Never bypass them with `--no-verify`; every push is deployed.
 - `/dev/*` pages are development-only harnesses (404 in production).

@@ -233,7 +233,11 @@ export class NominatimMock {
 
 // ─── Buildings and the basemap ─────────────────────────────────────────────
 
-/** Switches for the building-data mock, for the tests about slow or failing data. */
+/**
+ * Switches for the building-data mock, for the tests about slow or failing
+ * data. They act on every request for building tiles: the sun computation's
+ * and the map's own (the buildings it draws in view).
+ */
 export class BuildingDataMock {
   private held: (() => void)[] = [];
   private holding = false;

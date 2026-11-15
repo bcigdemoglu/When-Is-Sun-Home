@@ -79,6 +79,65 @@ test("a pinned place gets real building data and an answer", async ({ page }) =>
   expect(errors).toEqual([]);
 });
 
+test("moving the map away from the pin loads the buildings there", async ({ page, isMobile }) => {
+  // The map draws every building in view from OpenFreeMap's zoom-14 tiles,
+  // the same ones the sun computation reads around the pin. This pin is in
+  // the middle of tile 14/2620/6331, so that tile is all the computation
+  // needs; the next tile east (column 2621) starts 900 m away.
+  const errors = collectPageErrors(page);
+  const TILE = /^https:\/\/tiles\.openfreemap\.org\/planet\/[^/]+\/14\/(\d+)\/(\d+)\.pbf/;
+  const answered: { column: number; status: number }[] = [];
+  page.on("response", (response) => {
+    const match = TILE.exec(response.url());
+    if (match) answered.push({ column: Number(match[1]), status: response.status() });
+  });
+  const east = () => answered.filter((tile) => tile.column >= 2621);
+
+  await page.goto("/?lat=37.7968&lng=-122.4199");
+  const estimate = page.getByText(/includes shade from [0-9,]+ nearby buildings/).first();
+  await expect(estimate).toBeAttached({ timeout: 60_000 });
+  const canvas = page.locator(".maplibregl-canvas");
+  await expect(canvas).toBeVisible({ timeout: 30_000 });
+  // The pin's own tile has been answered, to the computation and to the map.
+  await expect.poll(() => answered.length, { timeout: 30_000 }).toBeGreaterThan(1);
+  expect(east()).toEqual([]);
+
+  // Drag east, most of a screen at a time: a finger on the phone, a mouse on
+  // the desktop, along a line near the top of the map (clear of the pin).
+  const box = (await canvas.boundingBox())!;
+  const x = box.x + box.width - 16;
+  const y = box.y + Math.min(260, box.height * 0.3);
+  const dx = Math.round(box.width * 0.85);
+  const touch = isMobile ? await page.context().newCDPSession(page) : null;
+  for (let drags = 0; drags < 40 && east().length === 0; drags++) {
+    if (touch) {
+      const at = (step: number) => [{ x: Math.round(x - (dx * step) / 6), y: Math.round(y) }];
+      await touch.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: at(0) });
+      for (let step = 1; step <= 6; step++) {
+        await touch.send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: at(step) });
+      }
+      await touch.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+    } else {
+      await page.mouse.move(x, y);
+      await page.mouse.down();
+      await page.mouse.move(x - dx, y, { steps: 6 });
+      await page.mouse.up();
+    }
+    await page.waitForTimeout(250);
+  }
+
+  // The tiles beyond the pin's surroundings were asked for, and arrived.
+  expect(east().length).toBeGreaterThan(0);
+  expect(answered.filter((tile) => tile.status !== 200 && tile.status !== 204)).toEqual([]);
+  // The answer for the pin is untouched, and nothing complains.
+  await expect(estimate).toBeAttached();
+  await expect(
+    page.getByText(/Building data couldn.t be loaded|Couldn.t load building/),
+  ).toHaveCount(0);
+  await expect(page.getByText("The map can’t be shown")).toHaveCount(0);
+  expect(errors).toEqual([]);
+});
+
 test("a shared link shows the answer in its preview", async ({ request }) => {
   const summary = "1.1t1i401u9.00011p3a3j3h3i3f2e0d0000.2p2z3a3n3x423z3q3f322s2m";
   const page = await request.get(`${PLACE}&n=Pacific+Ave+backyard&s=${summary}`, {

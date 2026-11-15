@@ -5,7 +5,9 @@
  * test (flat terrain by default).
  *
  * The basemap (basemaps.cartocdn.com) is not touched: only
- * tiles.openfreemap.org, which the app uses for building data alone.
+ * tiles.openfreemap.org, which the app uses for building data alone — the sun
+ * computation fetches the tiles around the pin, and the map itself (MapLibre)
+ * fetches the zoom-14 tiles of whatever is in view from zoom 15 on.
  */
 import fs from "node:fs";
 import path from "node:path";
@@ -35,7 +37,8 @@ export const TERRAIN_TILE_URL = /elevation-tiles-prod/;
  *    taken.
  *  - A z14 tile is served from `14/<x>/<y>.pbf` if that file exists (the four
  *    tiles around 37.7912, -122.4301, plus 14/2621/6332) and is otherwise an
- *    empty 204: a place with no buildings.
+ *    empty 204: a place with no buildings. (The fixture tiles hold the
+ *    `building` layer only, which is all that either reader looks at.)
  *  - The fallback sources, `/api/buildings` and Overpass, fail at once, so a
  *    test can never pass by quietly reaching the real services.
  *
