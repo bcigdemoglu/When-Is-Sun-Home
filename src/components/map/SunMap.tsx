@@ -135,6 +135,11 @@ export default function SunMap({
   const handledPlace = useRef<LatLng | null>(hasPlace ? { lat, lng } : null);
   /** The last spot picked on the map itself: no need to fly there. */
   const placedOnMap = useRef<LatLng | null>(null);
+  // Where the camera is currently travelling to because the place changed.
+  // While this is set, a change in what covers the map (the sheet or the time
+  // bar appearing) must not start a second animation: MapLibre stops the
+  // running one, and the map would be left short of the place.
+  const flight = useRef<{ center: [number, number]; zoom: number; pitch: number } | null>(null);
   const lastDragEndAt = useRef(0);
   const [clickGate] = useState(() => createClickGate());
   useEffect(() => () => clickGate.cancel(), [clickGate]);
@@ -169,12 +174,20 @@ export default function SunMap({
 
     const center: [number, number] = [next.lng, next.lat];
     const pitch = useMapUi.getState().wantsTilt ? PLACE_PITCH : 0;
+    // Every move carries the current padding, so it ends with the pin centred
+    // in the part of the map that is actually visible.
+    const covered = useMapUi.getState().insets;
+    const padding = { top: covered.top, bottom: covered.bottom, left: 0, right: 0 };
     if (move.type === "ease") {
-      map.easeTo({ center, duration: 500, essential: true });
+      map.easeTo({ center, padding, duration: 500, essential: true });
+      // (Starting a move ends the previous one, which clears `flight`; set it after.)
+      flight.current = { center, zoom: map.getZoom(), pitch: map.getPitch() };
     } else if (move.type === "jump") {
-      map.jumpTo({ center, zoom: move.zoom, pitch });
+      map.jumpTo({ center, zoom: move.zoom, pitch, padding });
+      flight.current = null;
     } else {
-      map.flyTo({ center, zoom: move.zoom, pitch, duration: 1800, essential: true });
+      map.flyTo({ center, zoom: move.zoom, pitch, padding, duration: 1800, essential: true });
+      flight.current = { center, zoom: move.zoom, pitch };
     }
   }, [ready, lat, lng, reducedMotion]);
 
@@ -187,6 +200,18 @@ export default function SunMap({
     const padding = { top: insetTop, bottom: insetBottom, left: 0, right: 0 };
     const current = map.getPadding();
     if (current.top === padding.top && current.bottom === padding.bottom) return;
+    const target = flight.current;
+    if (target) {
+      // The camera is on its way to a place: keep going there, with the new padding.
+      if (reducedMotion) {
+        map.jumpTo({ ...target, padding });
+        flight.current = null;
+      } else {
+        map.flyTo({ ...target, padding, duration: 1200, essential: true });
+        flight.current = target;
+      }
+      return;
+    }
     if (reducedMotion) map.jumpTo({ padding });
     else map.easeTo({ padding, duration: 250, essential: true });
   }, [ready, insetTop, insetBottom, reducedMotion]);
@@ -393,6 +418,10 @@ export default function SunMap({
         onStyleData={(event) => {
           const map = event.target;
           setLabelLayerId(map.getLayersOrder().find((id) => map.getLayer(id)?.type === "symbol"));
+        }}
+        onMoveEnd={() => {
+          // The journey is over (arrived, or the user took the map elsewhere).
+          flight.current = null;
         }}
         onLoad={(event) => {
           setReady(true);

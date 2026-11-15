@@ -97,3 +97,60 @@ test("a shared link shows the answer in its preview", async ({ request }) => {
 test("developer harness pages are not reachable", async ({ request }) => {
   expect((await request.get("/dev/places?seed=1")).status()).toBe(404);
 });
+
+test.describe("going to a place from the start screen", () => {
+  test("the map travels to a searched place and stops with the pin in view", async ({
+    page,
+    isMobile,
+  }) => {
+    // Regression: the flight to the first place was cancelled by the camera
+    // adjusting for the sheet appearing, leaving the map short of the place.
+    await page.goto("/");
+    await expect(page.getByText("Where do you want sun?").first()).toBeVisible();
+    // Give the map time to load at its world view, as a person would.
+    await expect(page.locator(".maplibregl-canvas")).toBeAttached({ timeout: 30_000 });
+    await page.waitForTimeout(1500);
+
+    if (isMobile) await page.getByRole("button", { name: "Enter an address" }).first().click();
+    const field = page.getByRole("combobox").first();
+    await field.click();
+    // Typed coordinates are resolved in the app itself: no geocoding service involved.
+    await field.fill("37.7912, -122.4301");
+    await page
+      .getByRole("option")
+      .filter({ hasText: /37\.79/ })
+      .first()
+      .click();
+    await expect(page.getByText(/of direct sun/).first()).toBeVisible();
+
+    const marker = page.locator(".maplibregl-marker").first();
+    await expect(marker).toBeAttached({ timeout: 30_000 });
+    // Let the camera come to rest (same pin position in two looks a second
+    // apart), THEN judge: the pin must sit near the middle of the visible map.
+    const offCentre = () =>
+      marker.evaluate((pin) => {
+        const map = document.querySelector(".maplibregl-map")!.getBoundingClientRect();
+        const box = pin.getBoundingClientRect();
+        return {
+          dx: (box.x + box.width / 2 - (map.x + map.width / 2)) / map.width,
+          dy: (box.y + box.height / 2 - (map.y + map.height / 2)) / map.height,
+        };
+      });
+    let previous = await offCentre();
+    await expect
+      .poll(
+        async () => {
+          await page.waitForTimeout(1000);
+          const now = await offCentre();
+          const still =
+            Math.abs(now.dx - previous.dx) < 0.002 && Math.abs(now.dy - previous.dy) < 0.002;
+          previous = now;
+          return still;
+        },
+        { timeout: 30_000, intervals: [100] },
+      )
+      .toBe(true);
+    expect(Math.abs(previous.dx), "pin is off to the side").toBeLessThan(0.34);
+    expect(Math.abs(previous.dy), "pin is too high or low").toBeLessThan(0.34);
+  });
+});
