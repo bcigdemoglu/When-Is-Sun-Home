@@ -31,9 +31,14 @@ import {
   IMAGERY_DETAIL,
   IMAGERY_DETAIL_PROTOCOL,
   IMAGERY_DETAIL_SOURCE_ID,
+  IMAGERY_REGIONAL_PROTOCOL,
+  REGIONAL_IMAGERY,
   cameraPitch,
   hasAerialPhotos,
   loadImageryDetail,
+  loadRegionalImagery,
+  needsImageryDetail,
+  regionalImageryAt,
   showsImagery,
 } from "./imagery";
 import {
@@ -66,6 +71,10 @@ import { useMapTheme } from "./useMapTheme";
 // this module only ever runs in the browser.
 addProtocol(IMAGERY_DETAIL_PROTOCOL, (request, abortController) =>
   loadImageryDetail(request.url, { signal: abortController.signal }),
+);
+// A region's own photos likewise: a few at a time, and again when turned away.
+addProtocol(IMAGERY_REGIONAL_PROTOCOL, (request, abortController) =>
+  loadRegionalImagery(request.url, { signal: abortController.signal }),
 );
 
 const LIGHT_STYLE = "https://basemaps.cartocdn.com/gl/positron-gl-style/style.json";
@@ -199,6 +208,15 @@ export default function SunMap({
   const satellite = useMapUi((state) => state.satellite);
   const [centerHasPhotos, setCenterHasPhotos] = useState(false);
   const imagery = satellite && (hasPlace ? hasAerialPhotos({ lat, lng }) : centerHasPhotos);
+  // Which photos, goes by where the map is looking (kept up at the end of
+  // every move): a region's own sharp ones where there are any, and the slow
+  // national detail only where those do not cover everything in view.
+  const [regionalId, setRegionalId] = useState<string | null>(() =>
+    hasPlace ? (regionalImageryAt({ lat, lng })?.id ?? null) : null,
+  );
+  const [detailNeeded, setDetailNeeded] = useState(() =>
+    hasPlace ? needsImageryDetail({ lat, lng }) : true,
+  );
 
   /** The place the camera has already been pointed at. */
   const handledPlace = useRef<LatLng | null>(hasPlace ? { lat, lng } : null);
@@ -542,6 +560,7 @@ export default function SunMap({
 
   const pin = dragSpot ?? (hasPlace ? { lat, lng } : null);
   const imageryVisibility = imagery ? "visible" : "none";
+  const detailVisibility = imagery && detailNeeded ? "visible" : "none";
   // (A layer that is not drawn makes its source load nothing.)
   const cityFlatVisibility = imagery || extruded ? "none" : "visible";
   const flatVisibility = extruded ? "none" : "visible";
@@ -574,8 +593,11 @@ export default function SunMap({
         onMoveEnd={(event) => {
           // The journey is over (arrived, or the user took the map elsewhere).
           flight.current = null;
-          const center = event.target.getCenter();
-          setCenterHasPhotos(hasAerialPhotos({ lat: center.lat, lng: center.lng }));
+          const { lat: centerLat, lng: centerLng } = event.target.getCenter();
+          const center = { lat: centerLat, lng: centerLng };
+          setCenterHasPhotos(hasAerialPhotos(center));
+          setRegionalId(regionalImageryAt(center)?.id ?? null);
+          setDetailNeeded(needsImageryDetail(center));
         }}
         onLoad={(event) => {
           setReady(true);
@@ -669,9 +691,34 @@ export default function SunMap({
             type="raster"
             minzoom={IMAGERY_DETAIL.minzoom}
             beforeId={labelLayerId}
-            layout={{ visibility: imageryVisibility }}
+            layout={{ visibility: detailVisibility }}
           />
         </Source>
+        {/*
+          A region's own, sharper photos, over the national ones: where a
+          tile of theirs is missing or partly transparent, those show
+          through. Drawn (and credited) only with the map at that region.
+        */}
+        {REGIONAL_IMAGERY.map((region) => (
+          <Source
+            key={region.id}
+            id={region.sourceId}
+            type="raster"
+            tiles={region.tiles}
+            tileSize={region.tileSize}
+            minzoom={region.minzoom}
+            maxzoom={region.maxzoom}
+            bounds={region.bounds}
+            attribution={region.attribution}
+          >
+            <Layer
+              id={region.sourceId}
+              type="raster"
+              beforeId={labelLayerId}
+              layout={{ visibility: imagery && regionalId === region.id ? "visible" : "none" }}
+            />
+          </Source>
+        ))}
 
         {/*
           Over a photo, shade is shown on the ground only: the roofs are in

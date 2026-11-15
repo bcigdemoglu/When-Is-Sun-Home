@@ -35,6 +35,9 @@ export const IMAGERY_BASE_URL =
 /** The detailed aerial photos (USGS), cut to order: `…/USGSNAIPPlus/ImageServer/exportImage?bbox=…`. */
 export const IMAGERY_DETAIL_URL =
   /^https:\/\/imagery\.nationalmap\.gov\/arcgis\/rest\/services\/USGSNAIPPlus\/ImageServer\/exportImage\?bbox=/;
+/** A region's own aerial photos (so far the City of Portland's), `…/MapServer/tile/<z>/<y>/<x>`. */
+export const IMAGERY_REGIONAL_URL =
+  /^https:\/\/www\.portlandmaps\.com\/arcgis\/rest\/services\/Public\/Aerial_Photos_Summer_2025\/MapServer\/tile\/(\d+)\/(\d+)\/(\d+)$/;
 
 /**
  * Serve building data from `tests/fixtures/openfreemap`.
@@ -111,16 +114,18 @@ const TINY_IMAGE = Buffer.from(
 );
 
 /**
- * The Satellite view's two picture services (see `src/components/map/imagery.ts`)
- * answer at once with the same tiny picture. Only their exact tile and export
- * addresses are served: any other request to those hosts stays unmocked, and
- * an unmocked request fails the test (see `fixtures.ts`).
+ * The Satellite view's picture services (see `src/components/map/imagery.ts`:
+ * the two national ones and the regional ones) answer at once with the same
+ * tiny picture. Only their exact tile and export addresses are served: any
+ * other request to those hosts stays unmocked, and an unmocked request fails
+ * the test (see `fixtures.ts`).
  */
 export async function mockImagery(page: Page): Promise<void> {
   const picture = (route: Route) =>
     route.fulfill({ body: TINY_IMAGE, contentType: "image/png", headers: CORS });
   await page.route(IMAGERY_BASE_URL, picture);
   await page.route(IMAGERY_DETAIL_URL, picture);
+  await page.route(IMAGERY_REGIONAL_URL, picture);
 }
 
 /**
