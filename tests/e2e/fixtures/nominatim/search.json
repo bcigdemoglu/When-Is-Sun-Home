@@ -1,0 +1,55 @@
+[
+  {
+    "place_id": 404162678,
+    "licence": "Data © OpenStreetMap contributors, ODbL 1.0. http://osm.org/copyright",
+    "osm_type": "way",
+    "osm_id": 468450103,
+    "lat": "37.7912",
+    "lon": "-122.4301",
+    "category": "place",
+    "type": "house",
+    "place_rank": 30,
+    "importance": 0.00001,
+    "addresstype": "place",
+    "name": "",
+    "display_name": "2550, Pacific Avenue, Cow Hollow, Pacific Heights, San Francisco, California, 94115, United States",
+    "address": {
+      "house_number": "2550",
+      "road": "Pacific Avenue",
+      "neighbourhood": "Cow Hollow",
+      "quarter": "Pacific Heights",
+      "city": "San Francisco",
+      "state": "California",
+      "postcode": "94115",
+      "country": "United States",
+      "country_code": "us"
+    },
+    "boundingbox": ["37.7911", "37.7913", "-122.4302", "-122.4300"]
+  },
+  {
+    "place_id": 404162999,
+    "licence": "Data © OpenStreetMap contributors, ODbL 1.0. http://osm.org/copyright",
+    "osm_type": "way",
+    "osm_id": 468450999,
+    "lat": "47.2415990",
+    "lon": "-122.4364026",
+    "category": "place",
+    "type": "house",
+    "place_rank": 30,
+    "importance": 0.00001,
+    "addresstype": "place",
+    "name": "",
+    "display_name": "2550, Pacific Avenue, Tacoma, Pierce County, Washington, 98402, United States",
+    "address": {
+      "house_number": "2550",
+      "road": "Pacific Avenue",
+      "city": "Tacoma",
+      "county": "Pierce County",
+      "state": "Washington",
+      "postcode": "98402",
+      "country": "United States",
+      "country_code": "us"
+    },
+    "boundingbox": ["47.2415", "47.2417", "-122.4365", "-122.4363"]
+  }
+]

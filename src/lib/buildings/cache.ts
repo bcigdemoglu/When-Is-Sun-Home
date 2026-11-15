@@ -15,11 +15,13 @@
  * null and writes become no-ops.
  *
  * It is also safe when IndexedDB does not answer at all. Safari on iOS (and
- * the in-app browsers built on it) can leave a request hanging forever, e.g.
- * when the system took the database connection away while the page was in
- * the background. Every operation therefore has a time limit, and while a
- * request that ran out of time is still unanswered the cache is skipped
- * altogether (see `guarded`): a load is never held up by its cache.
+ * the in-app browsers built on it) has left requests unanswered for good:
+ * an `open` whose events never fire (WebKit bug 226547), operations cut
+ * short when the system takes the database connection away from a page in
+ * the background (bugs 197050, 273827). Every operation therefore has a time
+ * limit, and while a request that ran out of time is still unanswered the
+ * cache is skipped altogether (see `guarded`): a load is never held up by
+ * its cache.
  *
  * Note: idb-keyval can hold only ONE object store per database, so nothing
  * else may call `createStore("sun-home", <other name>)`.

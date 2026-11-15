@@ -4,7 +4,7 @@
  *
  * What a test gets without asking:
  *
- *  - NO third-party network. Building tiles, terrain, geocoding and the
+ *  - NO third-party network. Building tiles, terrain, both geocoders and the
  *    basemap are all answered from fixtures (see `mocks`); any other request
  *    that leaves localhost is aborted AND fails the test, so nothing can pass
  *    by quietly reaching a real service.
@@ -58,65 +58,123 @@ export const FIXTURE_QUERY = `lat=${FIXTURE_PIN.lat}&lng=${FIXTURE_PIN.lng}&d=20
 /** 21 June 2026, 12:00 in San Francisco (PDT, UTC−7): "now" for live-mode tests. */
 export const SUMMER_NOON = "2026-06-21T19:00:00Z";
 
-// ─── Photon (geocoding) ────────────────────────────────────────────────────
+// ─── Geocoding: Photon (as you type) and Nominatim (the fallback) ─────────
 
-const PHOTON_FIXTURES = path.join(__dirname, "fixtures", "photon");
+const GEOCODER_FIXTURES = path.join(__dirname, "fixtures");
 const PHOTON_URL = /^https:\/\/photon\.komoot\.io\//;
+const NOMINATIM_URL = /^https:\/\/nominatim\.openstreetmap\.org\//;
 /** Mocked cross-origin answers need this, or the browser withholds them from the page. */
 const CORS = { "access-control-allow-origin": "*" };
 
-type SearchBehaviour = "match" | "empty" | "error";
-type ReverseBehaviour = "address" | "none" | "error";
+function serverError(route: Route): Promise<void> {
+  return route.fulfill({ status: 503, contentType: "text/plain", headers: CORS, body: "mocked" });
+}
 
 /**
- * The geocoder, mocked. By default a search whose text contains "pacific"
- * answers three addresses (the first is the fixture pin, "2140 Pacific
- * Avenue"), anything else answers nothing, and a reverse lookup names every
- * spot "2200 Sacramento Street, San Francisco".
+ * Photon, the search-as-you-type geocoder, mocked. By default a search whose
+ * text contains "pacific" answers three addresses (the first is the fixture
+ * pin, "2140 Pacific Avenue"), anything else answers nothing, and a reverse
+ * lookup names every spot `MOCK_ADDRESS`.
  */
 export class PhotonMock {
   /** The `q` of every search request the page sent, in order. */
   readonly searches: string[] = [];
   /** "lat,lon" of every reverse lookup the page sent, in order. */
   readonly reverseLookups: string[] = [];
-  private search: SearchBehaviour = "match";
-  private reverse: ReverseBehaviour = "address";
+  private isDown = false;
+  private knowsAddresses = true;
 
-  /** Every search answers HTTP 500 from now on (until `searchWorks()`). */
-  failSearches(): void {
-    this.search = "error";
+  /**
+   * The whole service answers HTTP 503 from now on (search and reverse).
+   * The app then leaves it alone for a minute and falls back to Nominatim.
+   */
+  down(): void {
+    this.isDown = true;
   }
-  searchWorks(): void {
-    this.search = "match";
+  up(): void {
+    this.isDown = false;
   }
-  /** Reverse lookups find no address: a dropped pin stays unnamed. */
+  /** Reverse lookups cleanly find no address: a dropped pin stays unnamed. */
   noAddresses(): void {
-    this.reverse = "none";
-  }
-  failReverseLookups(): void {
-    this.reverse = "error";
+    this.knowsAddresses = false;
   }
 
   async handle(route: Route): Promise<void> {
     const url = new URL(route.request().url());
     const json = (file: string) =>
       route.fulfill({
-        path: path.join(PHOTON_FIXTURES, file),
+        path: path.join(GEOCODER_FIXTURES, "photon", file),
         contentType: "application/json",
         headers: CORS,
       });
-    const serverError = () =>
-      route.fulfill({ status: 500, contentType: "text/plain", headers: CORS, body: "mocked" });
 
     if (url.pathname.startsWith("/reverse")) {
       this.reverseLookups.push(`${url.searchParams.get("lat")},${url.searchParams.get("lon")}`);
-      if (this.reverse === "error") return serverError();
-      return json(this.reverse === "address" ? "reverse-sacramento.json" : "empty.json");
+      if (this.isDown) return serverError(route);
+      return json(this.knowsAddresses ? "reverse-sacramento.json" : "empty.json");
     }
     const query = url.searchParams.get("q") ?? "";
     this.searches.push(query);
-    if (this.search === "error") return serverError();
+    if (this.isDown) return serverError(route);
     return json(/pacific/i.test(query) ? "search-pacific.json" : "empty.json");
+  }
+}
+
+/** What the mocked Nominatim calls any spot it is asked about. */
+export const NOMINATIM_MOCK_ADDRESS = "2698 Pacific Avenue, San Francisco";
+
+/**
+ * Nominatim, the geocoder the app falls back to when Photon is down — only
+ * for a search the person submitted, and for naming a dropped pin. Mocked: a
+ * search whose text contains "pacific" answers two addresses (the first is
+ * the fixture pin, "2550 Pacific Avenue"), anything else answers nothing, and
+ * a reverse lookup names every spot `NOMINATIM_MOCK_ADDRESS`.
+ */
+export class NominatimMock {
+  /** The `q` of every search request the page sent, in order. */
+  readonly searches: string[] = [];
+  /** "lat,lon" of every reverse lookup the page sent, in order. */
+  readonly reverseLookups: string[] = [];
+  private isDown = false;
+  private findsNothing = false;
+
+  /** Every request answers HTTP 503 from now on. */
+  down(): void {
+    this.isDown = true;
+  }
+  up(): void {
+    this.isDown = false;
+  }
+  /** Searches match nothing and reverse lookups know no address. */
+  nothingFound(): void {
+    this.findsNothing = true;
+  }
+
+  async handle(route: Route): Promise<void> {
+    const url = new URL(route.request().url());
+    const file = (name: string) =>
+      route.fulfill({
+        path: path.join(GEOCODER_FIXTURES, "nominatim", name),
+        contentType: "application/json",
+        headers: CORS,
+      });
+    const body = (value: unknown) =>
+      route.fulfill({
+        contentType: "application/json",
+        headers: CORS,
+        body: JSON.stringify(value),
+      });
+
+    if (url.pathname.startsWith("/reverse")) {
+      this.reverseLookups.push(`${url.searchParams.get("lat")},${url.searchParams.get("lon")}`);
+      if (this.isDown) return serverError(route);
+      // "Nothing here" is a 200 with an error body, as the real service answers.
+      return this.findsNothing ? body({ error: "Unable to geocode" }) : file("reverse.json");
+    }
+    const query = url.searchParams.get("q") ?? "";
+    this.searches.push(query);
+    if (this.isDown) return serverError(route);
+    return !this.findsNothing && /pacific/i.test(query) ? file("search.json") : body([]);
   }
 }
 
@@ -201,9 +259,10 @@ const ALLOWED_CONSOLE_ERRORS: readonly {
       /\/api\/buildings\?/.test(message.location().url),
   },
   {
-    why: "The geocoder mock answers HTTP 500 in the tests about a failing search.",
+    why: "The geocoder mocks answer HTTP 503 in the tests about a geocoder that is down; Chromium logs the status.",
     matches: (message) =>
-      /^Failed to load resource/.test(message.text()) && PHOTON_URL.test(message.location().url),
+      /^Failed to load resource/.test(message.text()) &&
+      [PHOTON_URL, NOMINATIM_URL].some((url) => url.test(message.location().url)),
   },
 ];
 
@@ -221,6 +280,11 @@ export class ErrorGuard {
    */
   allow(pattern: RegExp): void {
     this.expected.push(pattern);
+  }
+
+  /** Hand over (and forget) the stray requests so far: for the test that provokes one on purpose. */
+  takeStrayRequests(): string[] {
+    return this.strayRequests.splice(0);
   }
 
   /** Start watching a page (the test's own, or a visitor's). */
@@ -243,6 +307,7 @@ const isLocal = (url: URL) => url.hostname === "localhost" || url.hostname === "
 
 export interface Mocks {
   photon: PhotonMock;
+  nominatim: NominatimMock;
   buildings: BuildingDataMock;
 }
 
@@ -289,11 +354,13 @@ async function prepare(page: Page, options: InstallOptions): Promise<Mocks> {
   await buildings.install();
   const photon = new PhotonMock();
   await page.route(PHOTON_URL, (route) => photon.handle(route));
+  const nominatim = new NominatimMock();
+  await page.route(NOMINATIM_URL, (route) => nominatim.handle(route));
 
   guard.watch(page);
   await hideDevIndicator(page);
   if (options.now !== null) await page.clock.install({ time: new Date(options.now) });
-  return { photon, buildings };
+  return { photon, nominatim, buildings };
 }
 
 /** A second person: a fresh browser context (no storage, no cache) with the same mocks. */
@@ -342,8 +409,8 @@ export const test = base.extend<Options & Fixtures>({
     async ({}, use, testInfo) => {
       const guard = new ErrorGuard();
       await use(guard);
-      // Only add to a failure that is not already one: the first error is the useful one.
-      if (testInfo.status === testInfo.expectedStatus) {
+      // Only when the test body itself went through: otherwise its own error is the useful one.
+      if (testInfo.status === "passed") {
         expect(guard.strayRequests, "requests that left localhost without a mock").toEqual([]);
         expect(guard.problems, "uncaught page errors / console.error").toEqual([]);
       }
