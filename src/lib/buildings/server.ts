@@ -125,9 +125,12 @@ export async function handleBuildingsRequest(
     const query = buildOverpassQuery(area.center, area.radiusM);
     const deadline = Date.now() + budgetMs;
     let lastError: OverpassError | null = null;
+    // One entry per endpoint tried, for the `x-buildings-attempts` debug header.
+    const attempts: string[] = [];
 
     for (const endpoint of endpoints) {
       const remainingMs = deadline - Date.now();
+      const startedAt = Date.now();
       if (remainingMs < Math.min(MIN_ATTEMPT_MS, budgetMs)) break;
 
       let json: unknown;
@@ -144,6 +147,9 @@ export async function handleBuildingsRequest(
       } catch (error) {
         if (!(error instanceof OverpassError)) throw error;
         lastError = error;
+        attempts.push(
+          `${hostOf(endpoint)}=${error.kind}${error.status ? `/${error.status}` : ""}/${Date.now() - startedAt}ms`,
+        );
         continue;
       }
 
@@ -165,7 +171,7 @@ export async function handleBuildingsRequest(
         "No Overpass endpoint could be tried within the time budget.",
       );
     }
-    const extra: Record<string, string> = {};
+    const extra: Record<string, string> = { "x-buildings-attempts": attempts.join(", ") };
     if (lastError.endpoint) extra["x-buildings-source"] = hostOf(lastError.endpoint);
     if (lastError.kind === "rate-limited" && lastError.retryAfterS !== undefined) {
       extra["retry-after"] = String(lastError.retryAfterS);
