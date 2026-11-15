@@ -5,11 +5,18 @@ import { CrosshairIcon, LocateIcon, MinusIcon, PlusIcon } from "@/components/ui/
 import { showToast } from "@/components/ui/toast";
 import { pinSpot } from "@/hooks/placeActions";
 import { impreciseMessage, IMPRECISE_ACCURACY_M, useGeolocation } from "@/hooks/useGeolocation";
+import { useSettings } from "@/state";
 import { useMapUi } from "./mapUi";
 
 /** A floating map button: 48 px, opaque, hairline and shadow so it reads over any map. */
 const FAB =
   "flex h-12 w-12 items-center justify-center rounded-full border border-line bg-surface text-ink shadow-float transition-colors hover:bg-surface-2 disabled:opacity-60";
+
+/** Where the pin is, as a value: a new name for the same spot is not a new choice. */
+const currentSpot = () => {
+  const place = useSettings.getState().place;
+  return place ? `${place.lat},${place.lng}` : null;
+};
 
 interface MapControlsProps {
   /** "fabs": locate + 2D/3D (+ north when rotated), for phones. "full": also zoom, for desktop. */
@@ -33,12 +40,16 @@ export function MapControls({ variant, hasPlace, className = "" }: MapControlsPr
   const bearing = useMapUi((state) => state.bearing);
   const send = useMapUi((state) => state.send);
 
-  const { state, locate } = useGeolocation((spot, accuracyM) => {
-    pinSpot(spot);
-    if (accuracyM !== null && accuracyM > IMPRECISE_ACCURACY_M) {
-      showToast(impreciseMessage(accuracyM));
-    }
-  });
+  const { state, locate } = useGeolocation(
+    (spot, accuracyM) => {
+      pinSpot(spot);
+      if (accuracyM !== null && accuracyM > IMPRECISE_ACCURACY_M) {
+        showToast(impreciseMessage(accuracyM));
+      }
+    },
+    // A fix that arrives after the person moved the pin or opened another place is not wanted.
+    { getContext: currentSpot },
+  );
   // Problems are said once, as a toast: there is no room for them next to the button.
   const problem = state.status === "error" ? state.message : null;
   const locating = state.status === "locating";

@@ -1,5 +1,36 @@
 /** The shortcuts of the day menu: the days people actually want to compare. */
-import type { YearAnalysis } from "@/lib/types";
+import { dateFromDayIndex } from "@/lib/solar/timezone";
+import type { SunYearGrid } from "@/lib/types";
+
+/** One day's daylight, as coarse as the year grid measures it. */
+export interface CoarseDay {
+  /** "YYYY-MM-DD". */
+  date: string;
+  daylightMinutes: number;
+}
+
+/**
+ * Minutes of daylight (sun above the horizon) for every day of a sun grid.
+ * Depends only on the place and the year — not on buildings or the viewpoint —
+ * so it does not change while a viewpoint slider is dragged.
+ */
+export function daylightFromGrid(
+  grid: Pick<SunYearGrid, "year" | "dayCount" | "slotsPerDay" | "stepMinutes" | "altitudeDeg">,
+): CoarseDay[] {
+  const days: CoarseDay[] = new Array(grid.dayCount);
+  for (let day = 0; day < grid.dayCount; day++) {
+    const row = day * grid.slotsPerDay;
+    let slots = 0;
+    for (let slot = 0; slot < grid.slotsPerDay; slot++) {
+      if (grid.altitudeDeg[row + slot] > 0) slots++;
+    }
+    days[day] = {
+      date: dateFromDayIndex(grid.year, day),
+      daylightMinutes: slots * grid.stepMinutes,
+    };
+  }
+  return days;
+}
 
 export interface KeyDates {
   /** The day with the most / least daylight in the year, "YYYY-MM-DD". */
@@ -26,7 +57,7 @@ export type DayLength = (date: string) => number | null;
  * run has to do.
  */
 export function keyDates(
-  year: Pick<YearAnalysis, "year" | "days">,
+  year: { year: number; days: readonly CoarseDay[] },
   exactDayLength?: DayLength,
 ): KeyDates {
   const y = String(year.year).padStart(4, "0");

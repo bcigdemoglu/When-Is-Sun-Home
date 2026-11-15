@@ -5,9 +5,8 @@ import type { ButtonHTMLAttributes, ReactNode, Ref } from "react";
  * - "tonal":   everything else that should read as a button (inset fill).
  * - "outline": a quiet button on a surface (hairline).
  * - "ghost":   text only, until hovered.
- * ("secondary" is the old name of "outline".)
  */
-type Variant = "primary" | "tonal" | "outline" | "ghost" | "secondary";
+type Variant = "primary" | "tonal" | "outline" | "ghost";
 /** Height in px: 44 (default), 56 (the start screen's two big actions), 36 (dense rows). */
 type Size = "md" | "lg" | "sm";
 
@@ -24,7 +23,6 @@ const VARIANTS: Record<Variant, string> = {
   primary: "bg-ink text-surface border-transparent hover:opacity-90 active:opacity-80",
   tonal: "bg-surface-2 text-ink border-transparent hover:brightness-[0.97] active:brightness-95",
   outline: "bg-surface text-ink border-line hover:bg-surface-2",
-  secondary: "bg-surface text-ink border-line hover:bg-surface-2",
   ghost: "bg-transparent text-ink-2 border-transparent hover:bg-surface-2 hover:text-ink",
 };
 

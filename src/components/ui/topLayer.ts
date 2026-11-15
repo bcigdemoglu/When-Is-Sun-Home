@@ -73,8 +73,3 @@ const getServerTopModal = (): HTMLDialogElement | null => null;
 export function useTopModal(): HTMLDialogElement | null {
   return useSyncExternalStore(subscribe, getTopModal, getServerTopModal);
 }
-
-/** For tests and one-off checks: look again right now. */
-export function refreshTopLayer(): void {
-  if (typeof document !== "undefined") refresh();
-}

@@ -151,7 +151,11 @@ export interface RimMark {
 /** Everything the compass draws for one day — small, so it is cheap to pass around. */
 export interface SunPathModel {
   runs: SunPathRun[];
-  /** Where and when the sun comes up / goes down; null when it does neither. */
+  /**
+   * Where and when the sun comes up / goes down. Null when it does neither on
+   * this date (polar day or night, or the event falls across midnight): the
+   * path is still drawn, but no time is invented for an event that does not happen.
+   */
   rise: RimMark | null;
   set: RimMark | null;
 }
@@ -164,12 +168,13 @@ export function sunPathModel(
   const { first, last } = daylightEnds(day.samples);
   return {
     runs: sunPathRuns(day.samples, radius),
-    rise: first
-      ? { azimuthDeg: first.azimuthDeg, minute: day.sunriseMinute ?? first.minute }
-      : null,
+    rise:
+      first && day.sunriseMinute !== null
+        ? { azimuthDeg: first.azimuthDeg, minute: day.sunriseMinute }
+        : null,
     set:
-      last && last !== first
-        ? { azimuthDeg: last.azimuthDeg, minute: day.sunsetMinute ?? last.minute }
+      last && day.sunsetMinute !== null
+        ? { azimuthDeg: last.azimuthDeg, minute: day.sunsetMinute }
         : null,
   };
 }

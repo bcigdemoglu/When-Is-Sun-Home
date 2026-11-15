@@ -164,6 +164,30 @@ describe("shareLink", () => {
     expect(frozen.place).toBe(PLACE);
   });
 
+  test("an unnamed pin travels without a name, so the recipient's app looks the address up", () => {
+    const bare: Place = { lat: PLACE.lat, lng: PLACE.lng };
+    const unnamed = { ...input, place: bare, label: "", settings: { ...pinned, place: bare } };
+    expect(sharedSettings({ ...unnamed, includeDateTime: false }).place).toEqual(bare);
+
+    const url = new URL(shareLink({ ...unnamed, includeDateTime: false }));
+    expect(url.searchParams.has("n")).toBe(false);
+    // Nothing coordinate-shaped has been smuggled in as a name either.
+    expect(url.search).not.toMatch(/%C2%B0|°/);
+    // Round trip: what the recipient's app restores has no name to show …
+    const restored = searchParamsToSettings(url.searchParams);
+    expect(restored.place).toEqual({ lat: PLACE.lat, lng: PLACE.lng });
+    expect(restored.place).not.toHaveProperty("name");
+  });
+
+  test("a named place keeps its name through the same round trip", () => {
+    const url = new URL(shareLink({ ...input, settings: pinned, includeDateTime: false }));
+    expect(searchParamsToSettings(url.searchParams).place).toEqual({
+      lat: PLACE.lat,
+      lng: PLACE.lng,
+      name: "Elm St backyard",
+    });
+  });
+
   test("the place comes from the prop, not from whatever the store holds", () => {
     const elsewhere = { ...pinned, place: { lat: 1, lng: 2, name: "Old" } };
     const shared = sharedSettings({ ...input, settings: elsewhere, includeDateTime: false });

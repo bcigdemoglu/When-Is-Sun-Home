@@ -10,14 +10,20 @@ houses: every view is a shareable link.
 
 1. **Sun position** — an in-house Meeus/NOAA solar model, validated against JPL Horizons (< 0.01°),
    evaluated on a 5-minute grid for the whole year in the place's own time zone.
-2. **Surroundings** — building footprints and heights from OpenStreetMap (Overpass API) and ground
-   elevation from Terrarium DEM tiles.
+2. **Surroundings** — building footprints and heights from OpenStreetMap, read from OpenFreeMap's
+   static vector tiles (free, keyless, CDN-served), and ground elevation from Terrarium DEM tiles.
+   Public Overpass servers are only a last-resort fallback: since 2026 they block app-hosting
+   platforms and rate-limit aggressively.
 3. **Skyline** — from the pin, the highest obstruction in each of 720 compass directions is computed
    once. After that, "is the sun visible right now?" is a table lookup, so a full-year analysis takes
    a few milliseconds and every control stays responsive.
 
-Results are clear-sky geometry: clouds, trees and fences are not modelled, and building heights are
-estimates where OpenStreetMap has no measurement.
+Results are clear-sky geometry: clouds, trees and fences are not modelled, and buildings without a
+mapped height take the median height of their neighbours.
+
+Saved places, recent places and settings live in the browser (localStorage / IndexedDB); there is no
+account or server-side storage. A share link carries the pin, viewpoint, date and time, plus a compact
+copy of the headline numbers so link previews can show the answer.
 
 ## Project layout
 
@@ -45,4 +51,7 @@ pnpm format           # prettier
 pnpm fetch-fixture    # refresh the Overpass test fixture (needs network access to Overpass)
 ```
 
-`/dev/report` renders the sun report from the bundled fixture for design work.
+`/dev/report`, `/dev/places` and `/dev/share` are design harnesses; they exist only in development.
+
+Git hooks (husky): a commit runs `pnpm build`; a push runs `pnpm check`. Every push is deployed by
+Vercel, so neither may be skipped.

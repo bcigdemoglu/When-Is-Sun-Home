@@ -16,6 +16,7 @@ function RenameDialog({ entryId, onClose }: RenameDialogProps) {
   const entry = usePlaces((state) => selectEntry(state, entryId));
   const rename = usePlaces((state) => state.rename);
   const [text, setText] = useState(() => (entry ? entryLabel(entry) : ""));
+  const dialogRef = useRef<HTMLDialogElement>(null);
   const cardRef = useRef<HTMLFormElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const titleId = useId();
@@ -23,6 +24,13 @@ function RenameDialog({ entryId, onClose }: RenameDialogProps) {
   const gone = entry === null;
 
   useLayoutEffect(() => {
+    const dialog = dialogRef.current;
+    if (dialog && !dialog.open) {
+      // Engines without showModal (and jsdom) get a plain open dialog; the Tab
+      // and Escape handling below keeps it usable there.
+      if (typeof dialog.showModal === "function") dialog.showModal();
+      else dialog.setAttribute("open", "");
+    }
     const input = inputRef.current;
     if (!input) return;
     input.focus({ preventScroll: true });
@@ -44,7 +52,7 @@ function RenameDialog({ entryId, onClose }: RenameDialogProps) {
     onClose();
   };
 
-  const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+  const onKeyDown = (event: KeyboardEvent<HTMLDialogElement>) => {
     if (event.key === "Escape") {
       event.preventDefault();
       event.stopPropagation();
@@ -69,20 +77,29 @@ function RenameDialog({ entryId, onClose }: RenameDialogProps) {
   };
 
   return (
-    <div
-      className="fixed inset-0 z-[1100] flex items-start justify-center bg-[var(--backdrop)] px-4 pt-[max(16px,calc(env(safe-area-inset-top)+12dvh))] transition-opacity duration-150 ease-out motion-reduce:transition-none starting:opacity-0"
+    // A native modal dialog: it joins the browser's top layer, so it opens
+    // ABOVE whatever is already there (the Places sheet is a modal too) and
+    // takes the focus with it.
+    <dialog
+      ref={dialogRef}
+      className="app-dialog"
+      data-variant="prompt"
+      aria-modal="true"
+      aria-labelledby={titleId}
+      aria-describedby={hintId}
       onKeyDown={onKeyDown}
+      onCancel={(event) => {
+        event.preventDefault();
+        onClose();
+      }}
       onMouseDown={(event) => {
+        // A press on the dialog element itself is a press on its backdrop.
         if (event.target === event.currentTarget) onClose();
       }}
     >
       <form
         ref={cardRef}
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby={titleId}
-        aria-describedby={hintId}
-        className="w-full max-w-[400px] rounded-card border border-line bg-surface p-4 text-ink shadow-float"
+        className="p-4 text-ink"
         onSubmit={(event) => {
           event.preventDefault();
           submit();
@@ -126,7 +143,7 @@ function RenameDialog({ entryId, onClose }: RenameDialogProps) {
           </button>
         </div>
       </form>
-    </div>
+    </dialog>
   );
 }
 
@@ -145,7 +162,8 @@ export function closeRenameDialog(): void {
  * Ask for a new name for a saved place. The dialog mounts itself next to the
  * app (its own React root on `document.body`), so it opens no matter which
  * component asked — including from a toast that outlived the button that
- * raised it. Focus returns to `returnFocus` when it closes.
+ * raised it — and, being a native modal, on top of any sheet that is already
+ * open. Focus returns to `returnFocus` when it closes.
  */
 export function openRenameDialog(
   entryId: string,

@@ -28,7 +28,9 @@ export function Toaster({ className = "" }: { className?: string }) {
 
   useEffect(() => {
     const element = ref.current;
+    // Without the Popover API this stays an ordinary fixed element (see the class list).
     if (!element || typeof element.showPopover !== "function") return;
+    element.setAttribute("popover", "manual");
     const raise = () => {
       try {
         if (element.matches(":popover-open")) element.hidePopover();
@@ -58,7 +60,6 @@ export function Toaster({ className = "" }: { className?: string }) {
   const region = (
     <div
       ref={ref}
-      popover="manual"
       role="status"
       aria-live="polite"
       data-toaster=""

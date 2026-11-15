@@ -6,6 +6,7 @@ import { LocateIcon, SearchIcon, SunIcon, WarningIcon } from "@/components/ui/ic
 import { showToast } from "@/components/ui/toast";
 import { pinNamedPlace, pinSpot } from "@/hooks/placeActions";
 import { IMPRECISE_ACCURACY_M, impreciseMessage, useGeolocation } from "@/hooks/useGeolocation";
+import { useSettings } from "@/state";
 import type { PlaceEntry } from "@/state/places";
 
 /** A leafy block with mapped building heights: a good first look at what the app does. */
@@ -13,6 +14,12 @@ const EXAMPLE_PLACE = {
   lat: 37.79118,
   lng: -122.43011,
   name: "Example: a backyard in Pacific Heights, San Francisco",
+};
+
+/** Where the pin is, as a value: a new name for the same spot is not a new choice. */
+const currentSpot = () => {
+  const place = useSettings.getState().place;
+  return place ? `${place.lat},${place.lng}` : null;
 };
 
 interface StartIntroProps {
@@ -26,12 +33,16 @@ interface StartIntroProps {
  * fail is explained right here, next to the way round it.
  */
 export function StartIntro({ onEnterAddress }: StartIntroProps) {
-  const { state, locate } = useGeolocation((spot, accuracyM) => {
-    pinSpot(spot);
-    if (accuracyM !== null && accuracyM > IMPRECISE_ACCURACY_M) {
-      showToast(impreciseMessage(accuracyM));
-    }
-  });
+  const { state, locate } = useGeolocation(
+    (spot, accuracyM) => {
+      pinSpot(spot);
+      if (accuracyM !== null && accuracyM > IMPRECISE_ACCURACY_M) {
+        showToast(impreciseMessage(accuracyM));
+      }
+    },
+    // A fix that arrives after the person picked a place some other way is not wanted.
+    { getContext: currentSpot },
+  );
   const locating = state.status === "locating";
 
   return (

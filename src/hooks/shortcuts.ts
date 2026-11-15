@@ -6,8 +6,9 @@
  *   Shift + ← / →   move the time 1 hour
  *   /               focus the address search
  *
- * Nothing fires while the focus is somewhere that uses those keys itself: a
- * text field, a slider, a radio group, the map, an open dialog.
+ * Nothing fires while the focus is somewhere that uses those keys itself (a
+ * text field, a slider, a radio group, the map) or while any overlay is open
+ * (a dialog, the search takeover, a popover) — see `overlayIsOpen`.
  */
 
 export type ShortcutAction = { type: "time"; deltaMinutes: number } | { type: "focus-search" };
@@ -37,8 +38,37 @@ const OWN_KEYS_SELECTOR = [
   "[role='menu']",
   "[role='tablist']",
   "dialog[open]",
+  "[role='dialog']",
+  "[role='alertdialog']",
+  "[popover]",
   ".maplibregl-map",
 ].join(",");
+
+/** Anything that is "in front of" the page while it is open. */
+const OVERLAY_SELECTORS = [
+  "dialog[open]",
+  "[role='dialog']",
+  "[role='alertdialog']",
+  // Popovers that are showing — except the toasts, which are always there.
+  "[popover]:popover-open:not([data-toaster])",
+];
+
+/**
+ * True while any overlay is open — a native dialog, a custom one (the search
+ * takeover, a rename prompt), a popover (the share sheet). Shortcuts wait: the
+ * person is busy with what is in front, wherever the focus happens to be.
+ */
+export function overlayIsOpen(root: ParentNode | null | undefined): boolean {
+  if (!root || typeof root.querySelector !== "function") return false;
+  for (const selector of OVERLAY_SELECTORS) {
+    try {
+      if (root.querySelector(selector) !== null) return true;
+    } catch {
+      // An engine without `:popover-open` has no popovers to find either.
+    }
+  }
+  return false;
+}
 
 /** True when the focused element handles arrow keys / typing itself. */
 export function usesKeysItself(target: EventTarget | null): boolean {

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { LatLng } from "@/lib/types";
 
 /** A fix worse than this is worth a warning: it may be the wrong building. */
@@ -52,17 +52,43 @@ export function impreciseMessage(accuracyM: number): string {
   return `Your location is only accurate to about ${formatAccuracy(accuracyM)}. Drag the pin onto the exact spot.`;
 }
 
+export interface GeolocationOptions {
+  /**
+   * What the answer would replace (the pinned place, say). It is read when
+   * the request starts and again when the answer arrives: if it changed in
+   * between, the person has chosen something else meanwhile and the late
+   * answer is dropped.
+   */
+  getContext?: () => unknown;
+}
+
 /**
  * "Use my location": asks only when `locate()` is called (never on load),
  * and never throws. `onLocated` receives the spot and how accurate it is.
+ *
+ * A fix can take ten seconds. An answer is only delivered if it is still
+ * wanted: not after a newer `locate()`, not after the component is gone, and
+ * not after `getContext()` changed (see `GeolocationOptions`).
  */
-export function useGeolocation(onLocated: (spot: LatLng, accuracyM: number | null) => void): {
+export function useGeolocation(
+  onLocated: (spot: LatLng, accuracyM: number | null) => void,
+  options: GeolocationOptions = {},
+): {
   state: GeolocationState;
   locate(): void;
   /** Forget an error or warning (e.g. once the person has moved on). */
   clear(): void;
 } {
   const [state, setState] = useState<GeolocationState>({ status: "idle" });
+  /** Counts requests; an answer is only valid for the request that is still current. */
+  const request = useRef(0);
+  const getContext = options.getContext;
+  useEffect(
+    () => () => {
+      request.current = -1; // unmounted: every pending answer is stale
+    },
+    [],
+  );
 
   const fail = (problem: GeolocationProblem) =>
     setState({ status: "error", problem, message: geolocationMessage(problem) });
@@ -73,9 +99,18 @@ export function useGeolocation(onLocated: (spot: LatLng, accuracyM: number | nul
       return;
     }
     setState({ status: "locating" });
+    const id = (request.current = Math.max(0, request.current) + 1);
+    const context = getContext ? getContext() : undefined;
+    const current = () => request.current === id;
     try {
       navigator.geolocation.getCurrentPosition(
         (position) => {
+          if (!current()) return;
+          if (getContext && getContext() !== context) {
+            // Something else was chosen while we were looking: leave it alone.
+            setState({ status: "idle" });
+            return;
+          }
           const { latitude, longitude, accuracy } = position.coords;
           if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
             fail("unavailable");
@@ -89,7 +124,9 @@ export function useGeolocation(onLocated: (spot: LatLng, accuracyM: number | nul
           );
           onLocated({ lat: latitude, lng: longitude }, accuracyM);
         },
-        (error) => fail(geolocationProblem(error.code)),
+        (error) => {
+          if (current()) fail(geolocationProblem(error.code));
+        },
         { enableHighAccuracy: true, timeout: 12_000, maximumAge: 30_000 },
       );
     } catch {
@@ -97,5 +134,12 @@ export function useGeolocation(onLocated: (spot: LatLng, accuracyM: number | nul
     }
   };
 
-  return { state, locate, clear: () => setState({ status: "idle" }) };
+  return {
+    state,
+    locate,
+    clear: () => {
+      request.current = Math.max(0, request.current) + 1; // also forgets a pending request
+      setState({ status: "idle" });
+    },
+  };
 }

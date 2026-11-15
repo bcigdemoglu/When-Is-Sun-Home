@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { DaySummary } from "@/lib/types";
-import { keyDates, minuteRatio, thumbLeft } from "./dayMenu";
+import { daylightFromGrid, keyDates, minuteRatio, thumbLeft } from "./dayMenu";
 
 function day(date: string, daylightMinutes: number): DaySummary {
   return {
@@ -62,6 +62,19 @@ describe("keyDates", () => {
       longest: "2027-06-21",
       shortest: "2027-12-21",
     });
+  });
+});
+
+describe("daylightFromGrid", () => {
+  it("counts the slots with the sun up, per day, in minutes", () => {
+    // Two days of four 6-hour slots: [night, day, day, night] and [night, night, day, night].
+    const altitudeDeg = Float32Array.from([-10, 20, 30, -5, -10, -1, 15, NaN]);
+    expect(
+      daylightFromGrid({ year: 2026, dayCount: 2, slotsPerDay: 4, stepMinutes: 360, altitudeDeg }),
+    ).toEqual([
+      { date: "2026-01-01", daylightMinutes: 720 },
+      { date: "2026-01-02", daylightMinutes: 360 },
+    ]);
   });
 });
 

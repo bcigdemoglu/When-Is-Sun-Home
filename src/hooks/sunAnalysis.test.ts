@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { BuildingCollection } from "@/lib/types";
-import { buildingIdAt, resolveDateTime, usableBuildings } from "./sunAnalysis";
+import { buildingIdAt, isSameSpot, resolveDateTime, usableBuildings } from "./sunAnalysis";
 
 const NOW = { date: "2026-11-14", minuteOfDay: 930 };
 
@@ -59,6 +59,21 @@ describe("usableBuildings", () => {
     expect(usableBuildings({ status: "loading", buildings })).toBeNull();
     expect(usableBuildings({ status: "error", buildings: null })).toBeNull();
     expect(usableBuildings({ status: "idle", buildings: null })).toBeNull();
+  });
+});
+
+describe("isSameSpot", () => {
+  const a = { place: { lat: 37.79, lng: -122.43, name: "A" } };
+
+  it("compares where the pin is, not what it is called", () => {
+    expect(isSameSpot(a, { place: { lat: 37.79, lng: -122.43, name: "Renamed" } })).toBe(true);
+    expect(isSameSpot(a, { place: { lat: 37.8, lng: -122.43 } })).toBe(false);
+  });
+
+  it("treats nothing and nothing as the same, nothing and something as different", () => {
+    expect(isSameSpot(null, null)).toBe(true);
+    expect(isSameSpot(a, null)).toBe(false);
+    expect(isSameSpot(undefined, a)).toBe(false);
   });
 });
 

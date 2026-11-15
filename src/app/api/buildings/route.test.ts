@@ -130,10 +130,20 @@ describe("GET /api/buildings: success", () => {
     expect([...headers.keys()]).toEqual(["user-agent"]);
   });
 
-  test("the one accepted spelling of the URL is what the client sends", async () => {
+  test("accepts the URL the client sends", async () => {
     expect(buildingsApiUrl(AREA.key)).toBe(`/api/buildings?area=${AREA.key}`);
     const response = await GET(new Request(`${ORIGIN}${buildingsApiUrl(AREA.key)}`));
     expect(response.status).toBe(200);
+  });
+
+  test("accepts the same URL as Next.js hands it to a route handler", async () => {
+    // Next re-serialises the query string before the handler runs (observed
+    // on the dev server): whatever was sent, `request.url` holds the
+    // URLSearchParams spelling. So that spelling must be accepted, and the
+    // handler cannot tell which bytes the client really sent.
+    const asNextPassesIt = `?${new URLSearchParams({ area: AREA.key })}`;
+    expect(asNextPassesIt).toBe(`?area=${AREA.key.replaceAll(":", "%3A")}`);
+    expect((await get(asNextPassesIt)).status).toBe(200);
   });
 
   test("the centre queried is the cell's exact centre, not the rounded one in the key", async () => {
@@ -193,7 +203,6 @@ describe("GET /api/buildings: invalid requests", () => {
 
   test.each([
     ["no parameters", ""],
-    ["the colons percent-encoded", `?area=${encodeURIComponent(AREA.key)}`],
     ["one colon percent-encoded", `?area=${AREA.key.replace(":", "%3A")}`],
     ["a lower-case escape", `?area=${AREA.key.replace(":", "%3a")}`],
     ["a letter percent-encoded", `?area=${AREA.key.replace("v", "%76")}`],
@@ -226,6 +235,8 @@ describe("GET /api/buildings: invalid requests", () => {
     ["a key with a query smuggled in", `?area=${encodeURIComponent(`${AREA.key});node(1);out;(`)}`],
     ["a very long key", `?area=v4:${"9".repeat(5000)}:1`],
     ["out-of-range coordinates", "?area=v4:95.001:200.0010"],
+    // (These are told apart only where the handler sees the URL as sent;
+    // under Next.js the escaped forms all arrive in one normalised spelling.)
   ])("%s → 400, uncached, and Overpass is never contacted", async (_, query) => {
     const response = await get(query);
     expect(response.status).toBe(400);

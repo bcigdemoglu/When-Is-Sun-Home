@@ -59,9 +59,6 @@ export interface BuildingsRouteOptions {
   endpointTimeoutMs?: number;
 }
 
-/** How the query string must start; the rest of it is the key. */
-const AREA_QUERY = "?area=";
-
 const STATUS_BY_KIND: Record<BuildingsRouteErrorKind, number> = {
   "bad-area": 400,
   "rate-limited": 429,
@@ -135,23 +132,49 @@ function osmBaseOf(json: unknown): string | null {
   return typeof stamp === "string" && /^[\dT:Z.+-]{10,40}$/.test(stamp) ? stamp : null;
 }
 
+/**
+ * Handle `GET /api/buildings?area=<key>`.
+ *
+ * What protects Overpass (and our function time) from repeated work:
+ *  - only keys of real grid cells are accepted, in one or two spellings;
+ *  - successes are cached by the CDN for a week (per URL);
+ *  - upstream failures are remembered for 30 s, per area, in this instance,
+ *    and marked cacheable for 30 s for CDNs that cache error responses.
+ *
+ * What does NOT: a caller can still reach one area through differently
+ * escaped URLs (the framework normalises them before this code runs, the
+ * CDN does not), or simply walk through many valid keys. Bounding that
+ * needs a rate limit in front of the function.
+ */
 export async function handleBuildingsRequest(
   request: Request,
   options: BuildingsRouteOptions = {},
 ): Promise<Response> {
   try {
-    // The query string must be, byte for byte, `area=<key>`. Looked at before
-    // any decoding: `area=v3%3A…`, `area=%76…`, a trailing `&`, a second
-    // parameter and so on would all reach the same area through a different
-    // URL, i.e. a different CDN cache entry and a fresh Overpass query each.
-    const search = new URL(request.url).search;
-    const area = search.startsWith(AREA_QUERY)
-      ? areaFromKey(search.slice(AREA_QUERY.length))
-      : null;
+    // One area, one URL. The query string must be `area=<key>` and nothing
+    // else: an extra or repeated parameter, a stray `&`, a differently
+    // escaped key and so on would reach the same area through another URL,
+    // i.e. another CDN cache entry and a fresh Overpass query each.
+    //
+    // Two spellings are accepted: the key as it is (what our client sends),
+    // and the key as `URLSearchParams` writes it (colons as %3A). The second
+    // is not a concession: Next.js re-serialises the query string before a
+    // route handler sees it, so under Next EVERY spelling arrives as that
+    // one, and the original bytes cannot be checked here at all. See the
+    // note on `handleBuildingsRequest`.
+    const url = new URL(request.url);
+    const key = url.searchParams.get("area");
+    const candidate = key === null ? null : areaFromKey(key);
+    const area =
+      candidate &&
+      (url.search === `?area=${candidate.key}` ||
+        url.search === `?${new URLSearchParams({ area: candidate.key })}`)
+        ? candidate
+        : null;
     if (!area) {
       return errorResponse(
         "bad-area",
-        "The query string must be exactly `area=<key>`, with a current building area key, unencoded.",
+        "The query string must be exactly `area=<key>`, with a current building area key.",
       );
     }
 

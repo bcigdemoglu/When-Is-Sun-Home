@@ -82,6 +82,71 @@ describe("useGeolocation", () => {
     expect(result.current.state).toEqual({ status: "idle" });
   });
 
+  it("drops a late answer when something else was chosen in the meantime", () => {
+    let succeed: Success = () => {};
+    stubGeolocation((success) => (succeed = success));
+    const onLocated = vi.fn();
+    let place: object | null = null;
+    const { result } = renderHook(() => useGeolocation(onLocated, { getContext: () => place }));
+    act(() => result.current.locate());
+    place = { lat: 1, lng: 2 }; // the person picked a search result while waiting
+    act(() => succeed({ coords: { latitude: 37.79, longitude: -122.43, accuracy: 9 } }));
+    expect(onLocated).not.toHaveBeenCalled();
+    expect(result.current.state).toEqual({ status: "idle" });
+  });
+
+  it("delivers the answer when nothing changed while waiting", () => {
+    let succeed: Success = () => {};
+    stubGeolocation((success) => (succeed = success));
+    const onLocated = vi.fn();
+    const place = { lat: 1, lng: 2 };
+    const { result } = renderHook(() => useGeolocation(onLocated, { getContext: () => place }));
+    act(() => result.current.locate());
+    act(() => succeed({ coords: { latitude: 37.79, longitude: -122.43, accuracy: 9 } }));
+    expect(onLocated).toHaveBeenCalledTimes(1);
+  });
+
+  it("only honours the latest of several requests", () => {
+    const pending: Success[] = [];
+    stubGeolocation((success) => pending.push(success));
+    const onLocated = vi.fn();
+    const { result } = renderHook(() => useGeolocation(onLocated));
+    act(() => result.current.locate());
+    act(() => result.current.locate());
+    act(() => pending[0]({ coords: { latitude: 1, longitude: 1, accuracy: 5 } }));
+    expect(onLocated).not.toHaveBeenCalled();
+    expect(result.current.state).toEqual({ status: "locating" });
+    act(() => pending[1]({ coords: { latitude: 2, longitude: 2, accuracy: 5 } }));
+    expect(onLocated).toHaveBeenCalledWith({ lat: 2, lng: 2 }, 5);
+  });
+
+  it("ignores answers and errors that arrive after it is gone", () => {
+    let succeed: Success = () => {};
+    let failLater: Failure = () => {};
+    stubGeolocation((success, failure) => {
+      succeed = success;
+      failLater = failure;
+    });
+    const onLocated = vi.fn();
+    const { result, unmount } = renderHook(() => useGeolocation(onLocated));
+    act(() => result.current.locate());
+    unmount();
+    succeed({ coords: { latitude: 1, longitude: 1, accuracy: 5 } });
+    failLater({ code: 3 });
+    expect(onLocated).not.toHaveBeenCalled();
+  });
+
+  it("forgets a pending request when cleared", () => {
+    let succeed: Success = () => {};
+    stubGeolocation((success) => (succeed = success));
+    const onLocated = vi.fn();
+    const { result } = renderHook(() => useGeolocation(onLocated));
+    act(() => result.current.locate());
+    act(() => result.current.clear());
+    act(() => succeed({ coords: { latitude: 1, longitude: 1, accuracy: 5 } }));
+    expect(onLocated).not.toHaveBeenCalled();
+  });
+
   it("explains a refusal without calling back", () => {
     stubGeolocation((_success, failure) => failure({ code: 1 }));
     const onLocated = vi.fn();

@@ -9,7 +9,7 @@ import {
   type CSSProperties,
   type ReactNode,
 } from "react";
-import { keyDates as findKeyDates } from "@/components/controls/dayMenu";
+import { daylightFromGrid, keyDates as findKeyDates } from "@/components/controls/dayMenu";
 import { dayTrackBackground } from "@/components/controls/dayTrack";
 import { TimeBar } from "@/components/controls/TimeBar";
 import { ViewpointControls } from "@/components/controls/ViewpointControls";
@@ -36,10 +36,11 @@ import { showToast } from "@/components/ui/toast";
 import { Toaster } from "@/components/ui/Toaster";
 import { readLegacyPlace } from "@/hooks/legacyPlace";
 import { clearPlace, openSelection, pinNamedPlace } from "@/hooks/placeActions";
-import { shiftMinute, shortcutFor, usesKeysItself } from "@/hooks/shortcuts";
+import { overlayIsOpen, shiftMinute, shortcutFor, usesKeysItself } from "@/hooks/shortcuts";
 import { useIsDesktop } from "@/hooks/useMediaQuery";
 import { useNow } from "@/hooks/useNow";
 import { usePacedValue } from "@/hooks/usePacedValue";
+import { isSameSpot } from "@/hooks/sunAnalysis";
 import { useSunAnalysis } from "@/hooks/useSunAnalysis";
 import { summarizeYear, sunTimesFor } from "@/lib/analysis";
 import { selectObserver, selectPlace, useHydrateSettings, useSettings, useUrlSync } from "@/state";
@@ -52,6 +53,7 @@ import {
 } from "@/state/places";
 import { BottomSheet, type BottomSheetHandle } from "./BottomSheet";
 import { ErrorBoundary } from "./ErrorBoundary";
+import { REPORT_TABS_HEIGHT, ReportTabs } from "./ReportTabs";
 import { StartExtras, StartIntro } from "./StartPanel";
 
 /**
@@ -67,6 +69,8 @@ const RECORD_VISIT_DELAY_MS = 1200;
 
 /** Desktop: the floating time bar's height plus its margins, px. */
 const DESKTOP_TIMEBAR_CLEARANCE = 96;
+/** Phone: height of the sheet's sticky handle row, px (see BottomSheet). */
+const SHEET_HANDLE_HEIGHT = 28;
 /** Phone: where the sheet stops at "full" until the search pill has been measured, px. */
 const DEFAULT_TOP_INSET = 76;
 
@@ -154,7 +158,10 @@ function Workspace() {
   const place = useSettings(selectPlace);
   const liveObserver = useSettings(selectObserver);
   const analysis = useSunAnalysis();
-  const report = usePacedValue(analysis, REPORT_PACING);
+  const pacedAnalysis = usePacedValue(analysis, REPORT_PACING);
+  // Pacing is for ticks at ONE place. A new place is shown at once: the report
+  // must never sit under a new title with the previous place's numbers.
+  const report = isSameSpot(pacedAnalysis, analysis) ? pacedAnalysis : analysis;
 
   const sheetRef = useRef<BottomSheetHandle>(null);
   const searchRef = useRef<HTMLDivElement>(null);
@@ -178,21 +185,23 @@ function Workspace() {
   // ── Small, stable values for everything that redraws on a slider tick ───
   // (the day's analysis itself — 1440 samples — only travels to the report)
   const day = analysis ? analysis.day : null;
-  const year = analysis ? analysis.year : null;
   const timeZone = analysis ? analysis.timeZone : null;
   const track = useMemo(() => dayTrackBackground(day), [day]);
   const sunPath = useMemo(() => (day ? sunPathModel(day, COMPASS_RADIUS) : null), [day]);
-  const placeLat = analysis ? analysis.place.lat : null;
-  const placeLng = analysis ? analysis.place.lng : null;
+  // Solstices depend on the place and the year only — i.e. on the sun grid,
+  // which (unlike the year analysis) does not change while a viewpoint slider
+  // is dragged.
+  const grid = analysis ? analysis.grid : null;
   const keyDates = useMemo(() => {
-    if (!year || placeLat === null || placeLng === null || timeZone === null) return null;
-    return findKeyDates(year, (date) => {
-      const { sunriseMinute, sunsetMinute } = sunTimesFor(placeLat, placeLng, date, timeZone);
+    if (!grid) return null;
+    const { lat, lng, timeZone: zoneOfGrid } = grid;
+    return findKeyDates({ year: grid.year, days: daylightFromGrid(grid) }, (date) => {
+      const { sunriseMinute, sunsetMinute } = sunTimesFor(lat, lng, date, zoneOfGrid);
       return sunriseMinute !== null && sunsetMinute !== null && sunsetMinute > sunriseMinute
         ? sunsetMinute - sunriseMinute
         : null;
     });
-  }, [year, placeLat, placeLng, timeZone]);
+  }, [grid]);
   const now = useNow(timeZone);
   const zone = analysis
     ? zoneAbbreviation(analysis.timeZone, analysis.date, analysis.minuteOfDay)
@@ -229,9 +238,12 @@ function Workspace() {
   }, [analysedPlace, analysedObserver, summary]);
   const savedEntry = usePlaces((state) => selectSavedEntry(state, place));
   const activeId = place ? placeEntryId(place) : null;
-  const placeLabel = place
-    ? (savedEntry?.label ?? place.name ?? formatCoordinates(place.lat, place.lng))
-    : "";
+  // The place's REAL name — its saved label, else its address — or "" when it
+  // has none. Sharing gets exactly this: an unnamed pin must not travel under
+  // its coordinates as if they were a name (the recipient's app would then
+  // never look the address up). On screen, coordinates stand in.
+  const placeName = place ? (savedEntry?.label ?? place.name ?? "") : "";
+  const placeLabel = place ? placeName || formatCoordinates(place.lat, place.lng) : "";
 
   // ── Navigation between places ───────────────────────────────────────────
   const lat = place ? place.lat : null;
@@ -271,7 +283,8 @@ function Workspace() {
   }, [currentMinute]);
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      const action = shortcutFor(event, usesKeysItself(event.target));
+      const busy = usesKeysItself(event.target) || overlayIsOpen(document);
+      const action = shortcutFor(event, busy);
       if (!action) return;
       if (action.type === "focus-search") {
         event.preventDefault();
@@ -318,14 +331,32 @@ function Workspace() {
     [topInset],
   );
 
+  // Report jump tabs: where they stick, and where a section comes to rest below them.
+  const tabsTop = isDesktop ? 0 : topInset + SHEET_HANDLE_HEIGHT;
+  const anchorOffset = tabsTop + REPORT_TABS_HEIGHT + 12;
+
   const cssVariables: Record<string, string> = isDesktop
-    ? { "--map-inset-bottom": hasTimeBar ? `${DESKTOP_TIMEBAR_CLEARANCE}px` : "0px" }
+    ? {
+        "--map-inset-bottom": hasTimeBar ? `${DESKTOP_TIMEBAR_CLEARANCE}px` : "0px",
+        "--report-anchor-offset": `${anchorOffset}px`,
+      }
     : {
+        "--report-anchor-offset": `${anchorOffset}px`,
         "--timebar": hasTimeBar ? "calc(64px + var(--safe-bottom))" : "0px",
         "--map-inset-top": `${topInset}px`,
         "--map-inset-bottom": `calc(var(--timebar) + ${peek}px)`,
       };
   const rootStyle = cssVariables as CSSProperties;
+  // The toasts can be rendered outside this tree (inside an open dialog), so
+  // the one measurement they need lives on the document itself.
+  useEffect(() => {
+    const bottom = isDesktop
+      ? `${(hasTimeBar ? DESKTOP_TIMEBAR_CLEARANCE : 0) + 16}px`
+      : hasTimeBar
+        ? "calc(64px + env(safe-area-inset-bottom, 0px) + 12px)"
+        : "calc(env(safe-area-inset-bottom, 0px) + 12px)";
+    document.documentElement.style.setProperty("--toast-bottom", bottom);
+  }, [isDesktop, hasTimeBar]);
 
   // ── Pieces shared by both layouts ───────────────────────────────────────
   const search = (
@@ -396,7 +427,7 @@ function Workspace() {
     place && (
       <>
         <SaveButton place={place} observer={liveObserver} summary={summary} variant={variant} />
-        <ShareButton place={place} label={placeLabel} summary={summary} variant={variant} />
+        <ShareButton place={place} label={placeName} summary={summary} variant={variant} />
       </>
     );
 
@@ -427,10 +458,16 @@ function Workspace() {
               hasPlace={place !== null}
               className="absolute right-4 bottom-[calc(var(--map-inset-bottom,0px)+16px)] z-10"
             />
-            <Toaster className="absolute bottom-[calc(var(--map-inset-bottom,0px)+16px)] left-4 z-30" />
           </>
         )}
       </div>
+
+      {/*
+        One toaster for everything. It lives in the top layer (and inside the
+        top-most open dialog), so it is positioned against the viewport: bottom
+        centre above the time bar on phones, bottom left of the map on desktop.
+      */}
+      <Toaster className="fixed inset-x-4 bottom-[var(--toast-bottom,12px)] lg:right-auto lg:left-[456px]" />
 
       {isDesktop ? (
         <aside className={PANEL}>
@@ -462,6 +499,12 @@ function Workspace() {
                 <ViewpointSection summary={viewpointLabel(liveObserver)}>
                   {viewpoint}
                 </ViewpointSection>
+                <ReportTabs
+                  stickyTop={tabsTop}
+                  anchorOffset={anchorOffset}
+                  resetKey={activeId ?? ""}
+                  className="-mx-6 bg-page px-3"
+                />
                 {sunReport}
               </>
             ) : (
@@ -517,7 +560,13 @@ function Workspace() {
                 </div>
               }
             >
-              <main className="space-y-3 px-3 pb-6">{sunReport}</main>
+              <ReportTabs
+                stickyTop={tabsTop}
+                anchorOffset={anchorOffset}
+                resetKey={activeId ?? ""}
+                className="bg-surface px-1"
+              />
+              <main className="space-y-3 px-3 pt-3 pb-6">{sunReport}</main>
             </BottomSheet>
           ) : (
             <BottomSheet
@@ -545,7 +594,6 @@ function Workspace() {
               {timeBar}
             </div>
           )}
-          <Toaster className="fixed inset-x-4 bottom-[calc(var(--timebar)+12px)] z-50" />
 
           <Dialog open={viewpointOpen} onClose={() => setViewpointOpen(false)} title="Viewpoint">
             {viewpoint}

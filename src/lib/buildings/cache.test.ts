@@ -116,19 +116,19 @@ describe("building cache", () => {
     expect(await getCachedBuildings("v1:a")).toBeNull();
   });
 
-  test("keeps at most 40 areas, evicting the oldest", async () => {
-    expect(BUILDING_CACHE_MAX_AREAS).toBe(40);
-    for (let i = 0; i < 45; i++) {
+  test("keeps at most 20 areas, evicting the oldest", async () => {
+    expect(BUILDING_CACHE_MAX_AREAS).toBe(20);
+    for (let i = 0; i < 25; i++) {
       now = T0 + i * 1000;
       await setCachedBuildings(`v1:${i}`, collection(String(i)));
     }
-    expect(await storedKeys()).toHaveLength(80);
+    expect(await storedKeys()).toHaveLength(40);
     for (let i = 0; i < 5; i++) expect(await getCachedBuildings(`v1:${i}`)).toBeNull();
-    for (let i = 5; i < 45; i++) expect(await getCachedBuildings(`v1:${i}`)).not.toBeNull();
+    for (let i = 5; i < 25; i++) expect(await getCachedBuildings(`v1:${i}`)).not.toBeNull();
   });
 
   test("eviction goes by save time, not by key or insertion order", async () => {
-    for (let i = 0; i < 40; i++) {
+    for (let i = 0; i < BUILDING_CACHE_MAX_AREAS; i++) {
       now = T0 + (i + 10) * 1000;
       await setCachedBuildings(`v1:${i}`, collection(String(i)));
     }

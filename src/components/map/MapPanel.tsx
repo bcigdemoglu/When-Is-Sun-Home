@@ -81,7 +81,7 @@ function BuildingNotice({
           without shading for now.
         </span>
         {onRetry && (
-          <Button variant="primary" size="sm" onClick={onRetry} disabled={fetching}>
+          <Button variant="primary" onClick={onRetry} disabled={fetching}>
             {fetching ? "Retrying…" : "Retry"}
           </Button>
         )}

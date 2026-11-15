@@ -6,8 +6,6 @@ interface SliderProps {
   hideLabel?: boolean;
   /** Shown to the right of the label, e.g. "3:42 PM". */
   readout?: ReactNode;
-  /** Extra controls on the label row (presets, …), between label and readout. */
-  labelExtra?: ReactNode;
   value: number;
   min: number;
   max: number;
@@ -32,7 +30,6 @@ export function Slider({
   label,
   hideLabel = false,
   readout,
-  labelExtra,
   value,
   min,
   max,
@@ -52,7 +49,7 @@ export function Slider({
     <div className={className}>
       <div
         className={
-          hideLabel && readout === undefined && labelExtra === undefined
+          hideLabel && readout === undefined
             ? "sr-only"
             : "flex flex-wrap items-center justify-between gap-x-3 gap-y-1"
         }
@@ -63,7 +60,6 @@ export function Slider({
         >
           {label}
         </label>
-        {labelExtra}
         {readout !== undefined && (
           <span className="ml-auto text-[15px] leading-[22px] text-ink-2 tabular-nums">
             {readout}

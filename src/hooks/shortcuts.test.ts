@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from "vitest";
-import { shiftMinute, shortcutFor, usesKeysItself } from "./shortcuts";
+import { overlayIsOpen, shiftMinute, shortcutFor, usesKeysItself } from "./shortcuts";
 
 describe("shortcutFor", () => {
   it("moves the time with the arrow keys", () => {
@@ -55,6 +55,36 @@ describe("usesKeysItself", () => {
     expect(usesKeysItself(element("<button>Play</button>", "button"))).toBe(false);
     expect(usesKeysItself(document.body)).toBe(false);
     expect(usesKeysItself(null)).toBe(false);
+  });
+});
+
+describe("overlayIsOpen", () => {
+  function page(html: string): HTMLElement {
+    const host = document.createElement("div");
+    host.innerHTML = html;
+    return host;
+  }
+
+  it("is false for a plain page, closed dialogs and the always-present toasts", () => {
+    expect(overlayIsOpen(page("<main><button>Play</button></main>"))).toBe(false);
+    expect(overlayIsOpen(page("<dialog></dialog>"))).toBe(false);
+    expect(overlayIsOpen(page('<div popover="manual" data-toaster=""></div>'))).toBe(false);
+    expect(overlayIsOpen(null)).toBe(false);
+  });
+
+  it("sees native dialogs and custom ones, wherever the focus is", () => {
+    expect(overlayIsOpen(page("<dialog open></dialog>"))).toBe(true);
+    // The search takeover and other hand-built overlays announce themselves with a role.
+    expect(overlayIsOpen(page('<div role="dialog" aria-modal="true"></div>'))).toBe(true);
+    expect(overlayIsOpen(page('<form role="alertdialog"></form>'))).toBe(true);
+  });
+
+  it("treats focus inside a custom dialog or a popover as busy", () => {
+    const host = page(
+      '<div role="dialog"><button id="a">x</button></div><div popover="auto"><button id="b">y</button></div>',
+    );
+    expect(usesKeysItself(host.querySelector("#a"))).toBe(true);
+    expect(usesKeysItself(host.querySelector("#b"))).toBe(true);
   });
 });
 

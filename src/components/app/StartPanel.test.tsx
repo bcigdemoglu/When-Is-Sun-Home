@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen } from "@testing-library/react";
+import { act, cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useSettings } from "@/state";
@@ -57,6 +57,19 @@ describe("StartIntro", () => {
     render(<StartIntro onEnterAddress={() => {}} />);
     await userEvent.click(screen.getByRole("button", { name: "Use my location" }));
     expect(useSettings.getState().place).toEqual({ lat: 37.79, lng: -122.43 });
+  });
+
+  it("ignores a fix that arrives after another place was chosen", async () => {
+    let succeed: (p: {
+      coords: { latitude: number; longitude: number; accuracy: number };
+    }) => void = () => {};
+    stubGeolocation((success) => (succeed = success));
+    render(<StartIntro onEnterAddress={() => {}} />);
+    await userEvent.click(screen.getByRole("button", { name: "Use my location" }));
+    // Meanwhile the person taps the map (or picks a search result).
+    act(() => useSettings.getState().setPlace({ lat: 48.85, lng: 2.35, name: "Paris" }));
+    act(() => succeed({ coords: { latitude: 37.79, longitude: -122.43, accuracy: 8 } }));
+    expect(useSettings.getState().place).toEqual({ lat: 48.85, lng: 2.35, name: "Paris" });
   });
 
   it("shows that it is looking, and cannot be pressed twice", async () => {

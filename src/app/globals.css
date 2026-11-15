@@ -431,20 +431,21 @@ dialog.app-dialog[data-variant="prompt"] {
 
 /*
  * Toasts: a manual popover, so they sit in the top layer above every sheet
- * and dialog. Undo the browser's popover styling; the shell positions it.
+ * and dialog. Undo the browser's popover styling (in the base layer, so the
+ * shell's positioning utilities still win).
  */
-.toaster[popover] {
-  inset: auto;
-  margin: 0;
-  padding: 0;
-  border: 0;
-  overflow: visible;
-  color: inherit;
-  background: transparent;
-}
-.toaster:not([popover]),
-.toaster[popover]:not(:popover-open) {
-  display: flex;
+@layer base {
+  .toaster[popover] {
+    inset: auto;
+    width: auto;
+    height: auto;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    overflow: visible;
+    color: inherit;
+    background: transparent;
+  }
 }
 
 @media (prefers-reduced-motion: no-preference) {

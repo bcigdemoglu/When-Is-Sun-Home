@@ -37,7 +37,12 @@ export interface ShareLinkInput {
   /** The store's current settings (`pickSettings(useSettings.getState())`). */
   settings: Settings;
   place: Place;
-  /** What the user calls the place; becomes the name in the link. */
+  /**
+   * The place's real name — the user's saved label, or its address — which
+   * becomes the name in the link. Pass "" for an unnamed pin: the link then
+   * carries no name at all (never a coordinate string dressed up as one), and
+   * whoever opens it gets the address looked up afresh.
+   */
   label: string;
   /** Pin the day and time on screen into the link, or let it open on "today, now". */
   includeDateTime: boolean;
@@ -51,8 +56,11 @@ export interface ShareLinkInput {
 /** The settings a link will reproduce for its recipient. */
 export function sharedSettings(input: ShareLinkInput): Settings {
   const { settings, place, label, includeDateTime, now } = input;
+  const name = label.trim() === "" ? place.name : label;
   const named = mergeSettings(settings, {
-    place: { lat: place.lat, lng: place.lng, name: label.trim() === "" ? place.name : label },
+    // No `name` key at all for an unnamed pin (an explicit `undefined` would do too,
+    // but this way the shared settings say what they mean).
+    place: name ? { lat: place.lat, lng: place.lng, name } : { lat: place.lat, lng: place.lng },
   });
   if (!includeDateTime) return { ...named, date: null, minuteOfDay: null };
   return { ...named, ...viewedDateTime(settings, place, now) };
