@@ -8,11 +8,7 @@
  */
 import { parseCoordinates, type PlaceSuggestion } from "@/lib/geocode/photon";
 import { PLACE_SEARCH_MIN_LENGTH } from "@/lib/geocode/usePlaceSearch";
-import {
-  formatPlaceCoordinates,
-  placeEntryId,
-  type PlaceEntry,
-} from "@/state/places";
+import { formatPlaceCoordinates, placeEntryId, type PlaceEntry } from "@/state/places";
 
 export type SearchRow =
   | { kind: "location"; key: string }
@@ -84,9 +80,7 @@ export function buildSections({
   suggestions,
 }: BuildSectionsInput): SearchSection[] {
   const q = query.trim();
-  const sections: SearchSection[] = [
-    { id: "actions", title: null, rows: [LOCATION_ROW, MAP_ROW] },
-  ];
+  const sections: SearchSection[] = [{ id: "actions", title: null, rows: [LOCATION_ROW, MAP_ROW] }];
 
   const shown = new Set<string>();
   const entryRows = (kind: "saved" | "recent", entries: readonly PlaceEntry[]): SearchRow[] =>

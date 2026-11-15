@@ -69,7 +69,10 @@ export function bestLeastLine(summary: PlaceSummary): string {
 
 /** "Jun · 9.8 h" for the month with the most (or least) direct sun. */
 export function monthValue(summary: PlaceSummary, which: "best" | "least"): string {
-  const { name, hours } = monthAt(summary, which === "best" ? summary.bestMonth : summary.worstMonth);
+  const { name, hours } = monthAt(
+    summary,
+    which === "best" ? summary.bestMonth : summary.worstMonth,
+  );
   return `${name} · ${formatHoursUnit(hours)}`;
 }
 

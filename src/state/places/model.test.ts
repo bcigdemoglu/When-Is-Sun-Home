@@ -29,7 +29,6 @@ import {
   unsave,
   type PlacesData,
 } from "./model";
-import type { PlaceEntry } from "./types";
 
 const YARD: Observer = { ...DEFAULT_OBSERVER };
 const WINDOW: Observer = { mode: "window", heightM: 4.5, facingDeg: 180, fovDeg: 120 };
@@ -67,7 +66,9 @@ describe("ids and labels", () => {
 
   test("the default label is the first part of the address, else the coordinates", () => {
     expect(defaultPlaceLabel(ELM)).toBe("12 Elm St");
-    expect(defaultPlaceLabel({ lat: 1, lng: 2, name: "  ,  nowhere" })).toBe("1.0000° N, 2.0000° E");
+    expect(defaultPlaceLabel({ lat: 1, lng: 2, name: "  ,  nowhere" })).toBe(
+      "1.0000° N, 2.0000° E",
+    );
     expect(defaultPlaceLabel(PIN)).toBe("33.8700° S, 151.2100° E");
     expect(formatPlaceCoordinates({ lat: 0, lng: 0 })).toBe("0.0000° N, 0.0000° E");
   });
@@ -355,6 +356,10 @@ describe("sanitizePlacesData", () => {
     expect(data.saved[1]).toMatchObject({ label: "7 Oak Ave", savedAt: 20, visitedAt: 20 });
     expect("note" in data.saved[1]).toBe(false);
     expect(data.recent[0]).toMatchObject({ savedAt: null, visitedAt: 99 });
+    // -0 is not a timestamp JSON can carry.
+    const zero = sanitizePlacesData({ saved: [entry(ELM, { savedAt: -0, visitedAt: -0 })] });
+    expect(Object.is(zero.saved[0].savedAt, 0)).toBe(true);
+    expect(Object.is(zero.saved[0].visitedAt, 0)).toBe(true);
   });
 
   test("the id always comes from the coordinates", () => {

@@ -242,7 +242,9 @@ function SavedRow({
       ) : (
         <button
           type="button"
-          aria-label={entry.note ? `Edit note for ${label}: ${entry.note}` : `Add a note to ${label}`}
+          aria-label={
+            entry.note ? `Edit note for ${label}: ${entry.note}` : `Add a note to ${label}`
+          }
           className="-mt-1.5 flex min-h-11 w-full items-center gap-2 rounded-b-card pr-4 pb-2 pl-12 text-left text-[13px] leading-[18px]"
           onClick={() => onEditNote(true)}
         >

@@ -548,7 +548,9 @@ describe("SearchExperience — overlay (phones)", () => {
       expect(row()).toHaveAttribute("aria-busy", "true");
       expect(screen.getByRole("status")).toHaveTextContent("Finding you…");
       expect(screen.getByRole("dialog")).toBeInTheDocument();
-      act(() => geoCalls[0].success({ coords: { latitude: 37.7, longitude: -122.4, accuracy: 12 } }));
+      act(() =>
+        geoCalls[0].success({ coords: { latitude: 37.7, longitude: -122.4, accuracy: 12 } }),
+      );
       expect(onSelect).toHaveBeenCalledExactlyOnceWith({
         place: { lat: 37.7, lng: -122.4 },
         source: "location",

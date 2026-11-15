@@ -194,7 +194,9 @@ export function sanitizeObserver(value: unknown): Observer {
 }
 
 function timestamp(value: unknown): number | null {
-  return typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : null;
+  if (typeof value !== "number" || !Number.isFinite(value) || value < 0) return null;
+  // Never -0: it would not survive a JSON round trip unchanged.
+  return value === 0 ? 0 : value;
 }
 
 /** One stored entry made canonical for the list it is in, or null if unusable. */
@@ -581,7 +583,9 @@ export function reorder(data: PlacesData, ids: readonly string[]): PlacesData {
     next.push(entry);
   }
   for (const entry of data.saved) if (byId.has(entry.id)) next.push(entry);
-  return next.every((entry, index) => entry === data.saved[index]) ? data : { ...data, saved: next };
+  return next.every((entry, index) => entry === data.saved[index])
+    ? data
+    : { ...data, saved: next };
 }
 
 export function removeRecent(data: PlacesData, id: string): PlacesData {

@@ -14,12 +14,7 @@ import {
 } from "@/components/places/icons";
 import type { GeolocationState } from "@/hooks/useGeolocation";
 import { entryAddress, entryLabel, type PlaceEntry } from "@/state/places";
-import {
-  highlightParts,
-  type SearchRow,
-  type SearchSection,
-  type SuggestionsState,
-} from "./rows";
+import { highlightParts, type SearchRow, type SearchSection, type SuggestionsState } from "./rows";
 
 export interface SearchResultsProps {
   listId: string;
@@ -271,9 +266,7 @@ export function SearchResults({
             {...shared}
             name={[label, entryAddress(entry), metricLabel].filter(Boolean).join(", ")}
             trailingSlot
-            icon={
-              <RowIcon>{row.kind === "saved" ? <HeartIcon /> : <ClockIcon />}</RowIcon>
-            }
+            icon={<RowIcon>{row.kind === "saved" ? <HeartIcon /> : <ClockIcon />}</RowIcon>}
             primary={<Marked title text={label} query={query} />}
             secondary={
               <span className="block truncate">

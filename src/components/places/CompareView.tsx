@@ -301,14 +301,15 @@ export function CompareView({ entries, currentMonth, onBack, onOpen }: CompareVi
               );
             })}
             <div role="row" className="contents">
-              <div
-                role="rowheader"
-                className="col-span-full border-t border-line @2xl:col-span-1"
-              >
+              <div role="rowheader" className="col-span-full border-t border-line @2xl:col-span-1">
                 <span className="sr-only">Open</span>
               </div>
               {entries.map((entry) => (
-                <div key={entry.id} role="cell" className="snap-start px-3 py-3 @2xl:border-t @2xl:border-line">
+                <div
+                  key={entry.id}
+                  role="cell"
+                  className="snap-start px-3 py-3 @2xl:border-t @2xl:border-line"
+                >
                   <button
                     type="button"
                     aria-label={`Open ${entryLabel(entry)}`}
