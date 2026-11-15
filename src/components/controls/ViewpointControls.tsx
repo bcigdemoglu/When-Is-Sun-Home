@@ -7,6 +7,7 @@ import { MinusIcon, PlusIcon, ResetIcon, WarningIcon } from "@/components/ui/ico
 import { Segmented } from "@/components/ui/Segmented";
 import { Slider } from "@/components/ui/Slider";
 import { Switch } from "@/components/ui/Switch";
+import { TREES_SWITCH_LABEL, treesSwitchHint } from "@/components/map/trees";
 import type { ObserverMode } from "@/lib/types";
 import {
   DEFAULT_OBSERVER,
@@ -16,6 +17,7 @@ import {
   heightMToFloor,
   selectLayers,
   selectObserver,
+  selectPlace,
   useSettings,
 } from "@/state";
 import { FacingPicker } from "./FacingPicker";
@@ -45,12 +47,14 @@ interface ViewpointControlsProps {
 
 /**
  * Who is looking: a spot in the open, or a window on some floor facing some
- * way. Every control says in one line what it changes. Also home to the two
- * map layers, which belong to "how do I want to see this".
+ * way. Every control says in one line what it changes. Also home to the
+ * map layers (3D buildings, shadows, trees), which belong to "how do I want
+ * to see this".
  */
 export function ViewpointControls({ pinOnBuilding, pinBuildingHeightM }: ViewpointControlsProps) {
   const observer = useSettings(selectObserver);
   const layers = useSettings(selectLayers);
+  const place = useSettings(selectPlace);
   const setObserver = useSettings((s) => s.setObserver);
   const setLayer = useSettings((s) => s.setLayer);
 
@@ -243,6 +247,12 @@ export function ViewpointControls({ pinOnBuilding, pinBuildingHeightM }: Viewpoi
           hint="Show the shade buildings cast at the selected time"
           checked={layers.shadows}
           onChange={(value) => setLayer("shadows", value)}
+        />
+        <Switch
+          label={TREES_SWITCH_LABEL}
+          hint={treesSwitchHint(place)}
+          checked={layers.trees}
+          onChange={(value) => setLayer("trees", value)}
         />
       </div>
 

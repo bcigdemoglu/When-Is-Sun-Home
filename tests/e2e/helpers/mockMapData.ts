@@ -38,6 +38,14 @@ export const IMAGERY_DETAIL_URL =
 /** A region's own aerial photos (so far the City of Portland's), `…/MapServer/tile/<z>/<y>/<x>`. */
 export const IMAGERY_REGIONAL_URL =
   /^https:\/\/www\.portlandmaps\.com\/arcgis\/rest\/services\/Public\/Aerial_Photos_Summer_2025\/MapServer\/tile\/(\d+)\/(\d+)\/(\d+)$/;
+/** The host of the Trees layer's heights: the Oregon geology department's (DOGAMI) map server. */
+export const TREE_HOST = "gis.dogami.oregon.gov";
+/** The Trees layer's heights, cut to order: `…/CANOPY_HEIGHT_MODEL_MOSAIC/ImageServer/exportImage?bbox=…`. */
+export const TREE_HEIGHTS_URL =
+  /^https:\/\/gis\.dogami\.oregon\.gov\/arcgis\/rest\/services\/lidar\/CANOPY_HEIGHT_MODEL_MOSAIC\/ImageServer\/exportImage\?bbox=[-\d.,]+&bboxSR=3857&imageSR=3857&size=512,512&format=png32&pixelType=U8&interpolation=RSP_NearestNeighbor&f=image$/;
+/** "Which survey are the heights here from?": `…/CANOPY_HEIGHT_MODEL_MOSAIC/ImageServer/identify?geometry=…`. */
+export const TREE_SURVEY_URL =
+  /^https:\/\/gis\.dogami\.oregon\.gov\/arcgis\/rest\/services\/lidar\/CANOPY_HEIGHT_MODEL_MOSAIC\/ImageServer\/identify\?geometry=/;
 
 /**
  * Serve building data from `tests/fixtures/openfreemap`.
@@ -126,6 +134,62 @@ export async function mockImagery(page: Page): Promise<void> {
   await page.route(IMAGERY_BASE_URL, picture);
   await page.route(IMAGERY_DETAIL_URL, picture);
   await page.route(IMAGERY_REGIONAL_URL, picture);
+}
+
+/** What the survey lookup answers in tests: the survey on top in Portland, and one beneath it. */
+export const TREE_SURVEY_ANSWER = {
+  objectId: 0,
+  name: "Pixel",
+  value: "7.37999",
+  catalogItems: {
+    objectIdFieldName: "OBJECTID",
+    features: [
+      { attributes: { OBJECTID: 420, Name: "OLC_METRO_2014_CANOPY_OGIC_2011", ZOrder: 2014 } },
+      {
+        attributes: { OBJECTID: 376, Name: "OLC_WILLAMETTE_VALLEY_2009_CANOPY_OGIC_HARN" },
+      },
+    ],
+  },
+  catalogItemVisibilities: [1, 0],
+};
+
+/**
+ * The Trees layer's service (see `src/components/map/trees.ts`) answers at
+ * once: every heights picture is the same tiny grey one (a height all over,
+ * so there is something to draw), and every spot was surveyed by "OLC Metro"
+ * in 2014. Only its two exact addresses are served: any other request to
+ * that host stays unmocked, and an unmocked request fails the test (see
+ * `fixtures.ts`).
+ */
+export async function mockTrees(page: Page): Promise<void> {
+  await page.route(TREE_HEIGHTS_URL, (route) =>
+    route.fulfill({ body: TINY_IMAGE, contentType: "image/png", headers: CORS }),
+  );
+  await page.route(TREE_SURVEY_URL, (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      headers: CORS,
+      body: JSON.stringify(TREE_SURVEY_ANSWER),
+    }),
+  );
+}
+
+/**
+ * Record every request the page sends to the Trees layer's host, whatever
+ * its kind. Returns the list (it grows as the test goes on).
+ */
+export function watchTreeRequests(page: Page): string[] {
+  const requests: string[] = [];
+  page.on("request", (request) => {
+    let host = "";
+    try {
+      host = new URL(request.url()).hostname;
+    } catch {
+      return;
+    }
+    if (host === TREE_HOST) requests.push(request.url());
+  });
+  return requests;
 }
 
 /**

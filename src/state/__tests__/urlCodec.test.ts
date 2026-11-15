@@ -40,7 +40,7 @@ const FULL: Settings = {
   date: "2026-06-21",
   minuteOfDay: 570,
   observer: { mode: "window", heightM: 7.5, facingDeg: 90, fovDeg: 120 },
-  layers: { buildings3d: false, shadows: false },
+  layers: { buildings3d: false, shadows: false, trees: false },
 };
 
 describe("settingsToSearchParams", () => {
@@ -52,6 +52,24 @@ describe("settingsToSearchParams", () => {
     expect(settingsToSearchParams(FULL).toString()).toBe(
       "lat=40.71280&lng=-74.00600&n=New+York&d=2026-06-21&t=0930&m=w&h=7.5&dir=90&fov=120&b=0&sh=0",
     );
+  });
+
+  test("the Trees layer is written only when it is on (off is the default), after the other layers", () => {
+    const tr = (trees: boolean) =>
+      settingsToSearchParams({
+        ...DEFAULT_SETTINGS,
+        layers: { ...DEFAULT_SETTINGS.layers, trees },
+      }).toString();
+    expect(tr(true)).toBe("tr=1");
+    expect(tr(false)).toBe("");
+    const withTrees: Settings = { ...FULL, layers: { ...FULL.layers, trees: true } };
+    expect(settingsToSearchParams(withTrees).toString()).toBe(
+      "lat=40.71280&lng=-74.00600&n=New+York&d=2026-06-21&t=0930&m=w&h=7.5&dir=90&fov=120&b=0&sh=0&tr=1",
+    );
+    expect(parse(settingsToSearchParams(withTrees).toString())).toEqual({
+      ...withTrees,
+      layers: { buildings3d: false, shadows: false, trees: true },
+    });
   });
 
   test("omits every field that equals its default", () => {
@@ -190,19 +208,26 @@ describe("searchParamsToSettings (current format)", () => {
   test("returns only the fields that are present", () => {
     expect(parse("fov=90")).toEqual({ observer: { fovDeg: 90 } });
     expect(parse("sh=0")).toEqual({ layers: { shadows: false } });
+    expect(parse("tr=1")).toEqual({ layers: { trees: true } });
+    expect(parse("tr=0")).toEqual({ layers: { trees: false } });
+    // Anything else is not a flag, and so not in the patch.
+    expect(parse("tr=yes")).toEqual({});
+    expect(parse("tr=")).toEqual({});
     expect(parse("d=2026-06-21")).toEqual({ date: "2026-06-21" });
     expect(parse("t=0930")).toEqual({ minuteOfDay: 570 });
     expect(parse("m=w&h=4.5")).toEqual({ observer: { mode: "window", heightM: 4.5 } });
   });
 
   test("reads a full link", () => {
-    expect(parse(settingsToSearchParams(FULL).toString())).toEqual(FULL);
+    // Every field away from its default (the Trees layer's is "off").
+    const full: Settings = { ...FULL, layers: { ...FULL.layers, trees: true } };
+    expect(parse(settingsToSearchParams(full).toString())).toEqual(full);
   });
 
   test("explicit defaults are still returned (they can override stored values)", () => {
-    expect(parse("m=y&h=1&dir=180&fov=180&b=1&sh=1")).toEqual({
+    expect(parse("m=y&h=1&dir=180&fov=180&b=1&sh=1&tr=0")).toEqual({
       observer: { mode: "yard", heightM: 1, facingDeg: 180, fovDeg: 180 },
-      layers: { buildings3d: true, shadows: true },
+      layers: { buildings3d: true, shadows: true, trees: false },
     });
     expect(parse("m=window").observer).toEqual({ mode: "window" });
     expect(parse("m=yard").observer).toEqual({ mode: "yard" });
@@ -361,6 +386,9 @@ describe("legacy links", () => {
     expect(legacy("m=w&h=7.5&dir=90&fov=120&b=0&sh=0")).toBe(false);
     // flags shared by both formats are no markers
     expect(legacy("sh=1&b=0&dir=90&fov=120")).toBe(false);
+    // nor is the Trees flag, which only the current format has
+    expect(legacy("tr=1")).toBe(false);
+    expect(legacy("lat=45.5385&lng=-122.6265&tr=1")).toBe(false);
   });
 
   test("a typical old link converts completely", () => {
@@ -446,6 +474,20 @@ describe("legacy links", () => {
     expect(parse("z=15&sh=1&b=0").layers).toEqual({ buildings3d: false, shadows: true });
   });
 
+  test("an old link never mentions trees, and shows none", () => {
+    const patch = parse("lat=40.71280&lng=-74.00600&z=15&t=870&d=172&f=3&sh=1");
+    expect(patch.layers).toEqual({ shadows: true });
+    const stored: Settings = {
+      ...DEFAULT_SETTINGS,
+      layers: { ...DEFAULT_SETTINGS.layers, trees: true },
+    };
+    expect(overlayUrlSettings(stored, patch).layers).toEqual({
+      buildings3d: true,
+      shadows: true,
+      trees: false,
+    });
+  });
+
   test("current-format keys win when both are mixed", () => {
     expect(parse("f=3&h=10&m=y&d=2026-06-21").observer).toEqual({ mode: "yard", heightM: 10 });
     expect(parse("f=3&d=2026-06-21").date).toBe("2026-06-21");
@@ -518,7 +560,7 @@ describe("overlayUrlSettings", () => {
     date: "2026-03-20",
     minuteOfDay: 600,
     observer: { mode: "window", heightM: 10.5, facingDeg: 270, fovDeg: 90 },
-    layers: { buildings3d: false, shadows: false },
+    layers: { buildings3d: false, shadows: false, trees: true },
   };
 
   test("an empty patch keeps the stored settings", () => {
@@ -529,7 +571,12 @@ describe("overlayUrlSettings", () => {
     expect(overlayUrlSettings(stored, parse("fov=120&sh=1"))).toEqual({
       ...stored,
       observer: { ...stored.observer, fovDeg: 120 },
-      layers: { buildings3d: false, shadows: true },
+      layers: { buildings3d: false, shadows: true, trees: true },
+    });
+    expect(overlayUrlSettings(stored, parse("tr=0")).layers).toEqual({
+      buildings3d: false,
+      shadows: false,
+      trees: false,
     });
     expect(overlayUrlSettings(stored, parse("d=2026-12-21")).minuteOfDay).toBe(600);
   });

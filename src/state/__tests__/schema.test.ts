@@ -29,7 +29,11 @@ describe("types", () => {
     expectTypeOf<NonNullable<Settings["place"]>>().toEqualTypeOf<Place>();
     expectTypeOf<Settings["date"]>().toEqualTypeOf<string | null>();
     expectTypeOf<Settings["minuteOfDay"]>().toEqualTypeOf<number | null>();
-    expectTypeOf<Settings["layers"]>().toEqualTypeOf<{ buildings3d: boolean; shadows: boolean }>();
+    expectTypeOf<Settings["layers"]>().toEqualTypeOf<{
+      buildings3d: boolean;
+      shadows: boolean;
+      trees: boolean;
+    }>();
   });
 });
 
@@ -40,7 +44,8 @@ describe("defaults", () => {
       date: null,
       minuteOfDay: null,
       observer: { mode: "yard", heightM: 1, facingDeg: 180, fovDeg: 180 },
-      layers: { buildings3d: true, shadows: true },
+      // Trees are an extra a person asks for: off until then.
+      layers: { buildings3d: true, shadows: true, trees: false },
     });
     expect(isSettings(DEFAULT_SETTINGS)).toBe(true);
   });
@@ -372,17 +377,39 @@ describe("sanitizeSettings", () => {
     expect(Object.keys(s).sort()).toEqual(["date", "layers", "minuteOfDay", "observer", "place"]);
     expect(s.place).toEqual({ lat: 1, lng: 2 });
     expect(Object.keys(s.observer).sort()).toEqual(["facingDeg", "fovDeg", "heightM", "mode"]);
-    expect(Object.keys(s.layers).sort()).toEqual(["buildings3d", "shadows"]);
+    expect(Object.keys(s.layers).sort()).toEqual(["buildings3d", "shadows", "trees"]);
   });
 
   test("layers must be booleans", () => {
-    expect(sanitizeSettings({ layers: { buildings3d: 0, shadows: false } }).layers).toEqual({
+    expect(
+      sanitizeSettings({ layers: { buildings3d: 0, shadows: false, trees: "1" } }).layers,
+    ).toEqual({
       buildings3d: true,
       shadows: false,
+      trees: false,
     });
     expect(sanitizeSettings({ layers: "none" }).layers).toEqual({
       buildings3d: true,
       shadows: true,
+      trees: false,
+    });
+    expect(sanitizeSettings({ layers: { trees: true } }).layers).toEqual({
+      buildings3d: true,
+      shadows: true,
+      trees: true,
+    });
+  });
+
+  test("settings stored before there was a Trees layer have it off", () => {
+    const stored = {
+      ...DEFAULT_SETTINGS,
+      place: NYC,
+      layers: { buildings3d: false, shadows: true },
+    };
+    expect(sanitizeSettings(stored).layers).toEqual({
+      buildings3d: false,
+      shadows: true,
+      trees: false,
     });
   });
 
@@ -431,7 +458,7 @@ describe("sanitizeSettings", () => {
       date: "2026-06-21",
       minuteOfDay: 600,
       observer: { mode: "window", heightM: 7.5, facingDeg: 90, fovDeg: 120 },
-      layers: { buildings3d: false, shadows: true },
+      layers: { buildings3d: false, shadows: true, trees: true },
     };
     const s = sanitizeSettings(
       { date: "nope", minuteOfDay: null, observer: { fovDeg: 60, heightM: NaN } },
@@ -442,7 +469,7 @@ describe("sanitizeSettings", () => {
       date: "2026-06-21",
       minuteOfDay: null,
       observer: { mode: "window", heightM: 7.5, facingDeg: 90, fovDeg: 60 },
-      layers: { buildings3d: false, shadows: true },
+      layers: { buildings3d: false, shadows: true, trees: true },
     });
     expect(s.place).not.toBe(current.place);
   });
@@ -454,7 +481,7 @@ describe("mergeSettings", () => {
     date: "2026-06-21",
     minuteOfDay: 600,
     observer: { mode: "window", heightM: 7.5, facingDeg: 90, fovDeg: 120 },
-    layers: { buildings3d: false, shadows: true },
+    layers: { buildings3d: false, shadows: true, trees: false },
   };
 
   test("an empty patch changes nothing", () => {
@@ -464,7 +491,12 @@ describe("mergeSettings", () => {
   test("observer and layers are merged leaf by leaf", () => {
     const s = mergeSettings(base, { observer: { fovDeg: 45 }, layers: { shadows: false } });
     expect(s.observer).toEqual({ mode: "window", heightM: 7.5, facingDeg: 90, fovDeg: 45 });
-    expect(s.layers).toEqual({ buildings3d: false, shadows: false });
+    expect(s.layers).toEqual({ buildings3d: false, shadows: false, trees: false });
+    expect(mergeSettings(base, { layers: { trees: true } }).layers).toEqual({
+      buildings3d: false,
+      shadows: true,
+      trees: true,
+    });
     expect(s.place).toEqual(NYC);
   });
 

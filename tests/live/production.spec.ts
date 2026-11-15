@@ -206,6 +206,48 @@ test("in Portland the Satellite view shows the city's own, sharper photos", asyn
   expect(errors).toEqual([]);
 });
 
+test("in Oregon the Trees layer draws the state's measured tree heights", async ({ page }) => {
+  // The Oregon geology department's (DOGAMI) lidar server: public, no key, a
+  // second or two per picture when it is well. It is one small state server:
+  // when it does not answer, the app says nothing and neither does this
+  // check — only what the APP does is judged then.
+  const HEIGHTS =
+    "https://gis.dogami.oregon.gov/arcgis/rest/services/lidar/CANOPY_HEIGHT_MODEL_MOSAIC/ImageServer/exportImage?bbox=";
+  const errors = collectPageErrors(page);
+  const asked: string[] = [];
+  page.on("request", (request) => {
+    if (request.url().startsWith(HEIGHTS)) asked.push(request.url());
+  });
+  // (A picture can fail; the app asks again after 2 and 10 seconds. Any one good picture will do.)
+  const goodPicture = page
+    .waitForResponse((response) => response.url().startsWith(HEIGHTS) && response.ok(), {
+      timeout: 45_000,
+    })
+    .catch(() => null);
+
+  // 2124 NE 36th Ave, Portland, with the Trees switch on in the link.
+  await page.goto("/?lat=45.5385&lng=-122.6265&tr=1");
+  await expect(page.getByText(/of direct sun/).first()).toBeVisible();
+  // The legend and the credit are the app's own: there whatever the server does.
+  await expect(page.getByRole("group", { name: "Tree height legend" })).toBeVisible({
+    timeout: 30_000,
+  });
+  await expect(page.locator(".maplibregl-ctrl-attrib")).toContainText(
+    "Tree heights: Oregon DOGAMI lidar",
+  );
+  await expect.poll(() => asked.length, { timeout: 30_000 }).toBeGreaterThan(0);
+  expect(asked[0]).toContain("&size=512,512&format=png32&pixelType=U8");
+
+  const picture = await goodPicture;
+  await expect(page.getByText("The map can’t be shown")).toHaveCount(0);
+  expect(errors).toEqual([]);
+  test.skip(picture === null, "the Oregon lidar server did not answer with a picture in time");
+  expect(picture?.status()).toBe(200);
+  expect(picture?.headers()["content-type"]).toMatch(/^image\/png/);
+  // The trees are a picture: the estimate still says they are not in the numbers.
+  await expect(page.getByText(/but not trees/).first()).toBeAttached();
+});
+
 test("a shared link shows the answer in its preview", async ({ request }) => {
   const summary = "1.1t1i401u9.00011p3a3j3h3i3f2e0d0000.2p2z3a3n3x423z3q3f322s2m";
   const page = await request.get(`${PLACE}&n=Pacific+Ave+backyard&s=${summary}`, {

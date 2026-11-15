@@ -19,7 +19,7 @@ const STORED: Settings = {
   date: "2026-03-20",
   minuteOfDay: 600,
   observer: { mode: "window", heightM: 10.5, facingDeg: 270, fovDeg: 90 },
-  layers: { buildings3d: false, shadows: false },
+  layers: { buildings3d: false, shadows: false, trees: true },
 };
 
 /** A fresh copy of the store module: new store, new hydration flags. */
@@ -193,12 +193,16 @@ describe("actions", () => {
     const { useSettings } = await loadStore();
     const s = () => useSettings.getState();
     s().setLayer("shadows", false);
-    expect(s().layers).toEqual({ buildings3d: true, shadows: false });
+    expect(s().layers).toEqual({ buildings3d: true, shadows: false, trees: false });
     s().setLayer("buildings3d", false);
-    expect(s().layers).toEqual({ buildings3d: false, shadows: false });
+    expect(s().layers).toEqual({ buildings3d: false, shadows: false, trees: false });
     s().setLayer("shadows", "yes" as never);
     s().setLayer("terrain" as never, true);
-    expect(s().layers).toEqual({ buildings3d: false, shadows: false });
+    expect(s().layers).toEqual({ buildings3d: false, shadows: false, trees: false });
+    s().setLayer("trees", true);
+    expect(s().layers).toEqual({ buildings3d: false, shadows: false, trees: true });
+    s().setLayer("trees", false);
+    expect(s().layers).toEqual({ buildings3d: false, shadows: false, trees: false });
   });
 
   test("reset restores the defaults, optionally keeping the place", async () => {
@@ -233,7 +237,7 @@ describe("actions", () => {
       ...STORED,
       minuteOfDay: null,
       observer: { ...STORED.observer, fovDeg: 360 },
-      layers: { buildings3d: false, shadows: true },
+      layers: { buildings3d: false, shadows: true, trees: true },
     });
     s().hydrate({});
     s().hydrate(null as never);
@@ -526,7 +530,7 @@ describe("hydration", () => {
       {
         ...STORED,
         observer: { ...STORED.observer, fovDeg: 120 },
-        layers: { buildings3d: false, shadows: true },
+        layers: { buildings3d: false, shadows: true, trees: true },
       },
     ]);
     expect(settingsOf(m)).toEqual(seen[1]);
@@ -534,7 +538,7 @@ describe("hydration", () => {
 
   test("the URL wins over storage for every field it carries", async () => {
     persist(STORED);
-    setUrl("/?d=2026-12-21&t=0815&m=y&h=2&dir=45&fov=60&b=1&sh=1");
+    setUrl("/?d=2026-12-21&t=0815&m=y&h=2&dir=45&fov=60&b=1&sh=1&tr=0");
     const m = await loadStore();
     m.hydrateSettings();
     expect(settingsOf(m)).toEqual({
@@ -542,7 +546,7 @@ describe("hydration", () => {
       date: "2026-12-21",
       minuteOfDay: 495,
       observer: { mode: "yard", heightM: 2, facingDeg: 45, fovDeg: 60 },
-      layers: { buildings3d: true, shadows: true },
+      layers: { buildings3d: true, shadows: true, trees: false },
     });
   });
 
@@ -575,7 +579,8 @@ describe("hydration", () => {
       date: "2026-06-21",
       minuteOfDay: 870,
       observer: { mode: "window", heightM: 7.5, facingDeg: 90, fovDeg: 180 },
-      layers: { buildings3d: true, shadows: true },
+      // (The old app had no Trees layer: a link of its never switches one on.)
+      layers: { buildings3d: true, shadows: true, trees: false },
     });
   });
 
@@ -764,7 +769,7 @@ describe("corrupt localStorage never crashes", () => {
     [
       "an older version with garbage",
       JSON.stringify({ state: { place: "home", layers: { shadows: false } }, version: 0 }),
-      { ...DEFAULT_SETTINGS, layers: { buildings3d: true, shadows: false } },
+      { ...DEFAULT_SETTINGS, layers: { buildings3d: true, shadows: false, trees: false } },
     ],
     [
       "the old app's state shape under the new key",

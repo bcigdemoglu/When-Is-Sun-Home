@@ -121,6 +121,9 @@ test.describe("Viewpoint", () => {
     await viewpoint.open();
     await viewpoint.face("east");
     await viewpoint.close();
+    // The answer follows the new facing a moment later: wait for it to leave the north's "0 m".
+    await expect(viewpoint.toggle).toContainText("Window · 3rd floor · facing E");
+    await expect(app.summaryFigure).not.toHaveText("0 m");
     const east = minutes((await app.summaryFigure.textContent()) ?? "");
     expect(east).toBeGreaterThan(0);
     expect(east).toBeLessThan(south);

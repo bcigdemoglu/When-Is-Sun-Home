@@ -49,6 +49,13 @@ export function buildingStatsText(stats: NonNullable<BuildingDataStatus["stats"]
   return `${head} \u2014 ${formatCount(mapped)} with a mapped height${floors}, ${estimated}`;
 }
 
+/**
+ * Trees are not in the numbers, anywhere. The one thing the app does know
+ * about them is a picture: the map's Trees layer (see `trees.ts`).
+ */
+export const TREES_ABOUT_SENTENCE =
+  "Never part of these numbers; in Oregon, the Trees switch under Viewpoint draws measured tree heights on the map.";
+
 /** What the ground-height data means for the numbers, in one sentence. */
 export function terrainText(terrain: TerrainStatus, hasTerrain: boolean): string {
   if (terrain === "ready" || hasTerrain) return "Hills and slopes around the spot are included.";
@@ -130,6 +137,9 @@ export function AboutCard({
           <li>
             <strong className="font-semibold text-ink">Ground.</strong>{" "}
             {terrainText(terrain, hasTerrain)}
+          </li>
+          <li>
+            <strong className="font-semibold text-ink">Trees.</strong> {TREES_ABOUT_SENTENCE}
           </li>
           <li>
             <strong className="font-semibold text-ink">One point, not the whole yard.</strong> The

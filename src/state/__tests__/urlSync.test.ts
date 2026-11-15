@@ -16,7 +16,7 @@ const STORED: Settings = {
   date: null,
   minuteOfDay: null,
   observer: { mode: "window", heightM: 10.5, facingDeg: 270, fovDeg: 90 },
-  layers: { buildings3d: true, shadows: true },
+  layers: { buildings3d: true, shadows: true, trees: false },
 };
 const STORED_QUERY = "?lat=48.85660&lng=2.35220&n=Paris&m=w&h=10.5&dir=270&fov=90";
 

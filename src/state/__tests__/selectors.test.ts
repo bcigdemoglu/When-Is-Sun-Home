@@ -23,7 +23,7 @@ describe("selectors", () => {
     date: "2026-06-21",
     minuteOfDay: 600,
     observer: { mode: "window", heightM: 4.5, facingDeg: 90, fovDeg: 120 },
-    layers: { buildings3d: false, shadows: true },
+    layers: { buildings3d: false, shadows: true, trees: true },
   };
 
   test("return the stored slices themselves (stable references)", () => {

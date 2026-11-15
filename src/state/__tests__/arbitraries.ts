@@ -57,6 +57,7 @@ export const arbObserver: fc.Arbitrary<Observer> = fc.record({
 export const arbLayers: fc.Arbitrary<Layers> = fc.record({
   buildings3d: fc.boolean(),
   shadows: fc.boolean(),
+  trees: fc.boolean(),
 });
 
 /** Arbitrary canonical settings. */
@@ -96,7 +97,7 @@ export const arbWildPatch: fc.Arbitrary<SettingsPatch> = fc.record(
       arbJunk,
     ),
     layers: fc.oneof(
-      fc.record({ buildings3d: arbJunk, shadows: arbJunk }, { requiredKeys: [] }),
+      fc.record({ buildings3d: arbJunk, shadows: arbJunk, trees: arbJunk }, { requiredKeys: [] }),
       arbJunk,
     ),
   },

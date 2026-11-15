@@ -176,6 +176,8 @@ export const observerSchema = z.object({
 export const layersSchema = z.object({
   buildings3d: z.boolean(),
   shadows: z.boolean(),
+  /** Measured tree heights drawn on the map (Oregon only; never part of the sun hours). */
+  trees: z.boolean(),
 });
 
 export const settingsSchema = z.object({
@@ -216,6 +218,7 @@ export const DEFAULT_OBSERVER: Readonly<Observer> = Object.freeze({
 export const DEFAULT_LAYERS: Readonly<Layers> = Object.freeze({
   buildings3d: true,
   shadows: true,
+  trees: false,
 });
 
 /** Frozen. Use `defaultSettings()` when you need a copy you can hand out. */
@@ -306,6 +309,7 @@ function sanitizeLayers(value: unknown, fallback: Layers): Layers {
   return {
     buildings3d: typeof bag.buildings3d === "boolean" ? bag.buildings3d : fallback.buildings3d,
     shadows: typeof bag.shadows === "boolean" ? bag.shadows : fallback.shadows,
+    trees: typeof bag.trees === "boolean" ? bag.trees : fallback.trees,
   };
 }
 
