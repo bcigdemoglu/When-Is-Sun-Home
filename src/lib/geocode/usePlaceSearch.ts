@@ -42,6 +42,10 @@ export function usePlaceSearch(query: string, bias?: LatLng | null): UsePlaceSea
     queryFn: ({ signal }) => searchPlaces(debounced, { signal, bias: near }),
     enabled,
     staleTime: PLACE_SEARCH_STALE_TIME_MS,
+    // One quick retry: a typed search should fail fast and visibly, not after
+    // the default three attempts with backoff (~7 s of skeleton rows).
+    retry: 1,
+    retryDelay: 400,
     placeholderData: keepPreviousData,
   });
 
