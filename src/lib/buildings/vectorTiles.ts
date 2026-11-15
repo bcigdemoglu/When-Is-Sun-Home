@@ -327,7 +327,8 @@ interface Piece {
 }
 
 interface DecodedTile {
-  extent: number;
+  /** Null when the tile has no building layer at all. */
+  extent: number | null;
   pieces: Piece[];
 }
 
@@ -358,7 +359,7 @@ function decodeTile(data: ArrayBuffer | Uint8Array, tile: TileRef): DecodedTile 
       cause,
     });
   }
-  if (!layer) return { extent: 4096, pieces: [] };
+  if (!layer) return { extent: null, pieces: [] };
 
   const extent = layer.extent;
   const offsetX = tile.col * extent;
@@ -517,24 +518,28 @@ const NEIGHBOUR = [
  * Pieces only ever join when their height attributes agree.
  */
 function groupPieces(tiles: DecodedTile[]): Piece[][] {
-  const seen = new Set<string>();
+  // Step 1. `canonical` maps every copy of a polygon to the one that is kept.
+  const firstByFingerprint = new Map<string, Piece>();
+  const canonical = new Map<Piece, Piece>();
   const pieces: Piece[] = [];
+  // Every tile's own pieces (copies included), for the lookup in step 2.
+  const byTile = new Map<string, Piece[]>();
   for (const tile of tiles) {
     for (const piece of tile.pieces) {
       const key = fingerprint(piece);
-      if (seen.has(key)) continue;
-      seen.add(key);
-      pieces.push(piece);
+      const first = firstByFingerprint.get(key);
+      if (first) {
+        canonical.set(piece, first);
+      } else {
+        firstByFingerprint.set(key, piece);
+        canonical.set(piece, piece);
+        pieces.push(piece);
+      }
+      const tileKey = `${piece.col}/${piece.row}/${piece.attributes}`;
+      const list = byTile.get(tileKey);
+      if (list) list.push(piece);
+      else byTile.set(tileKey, [piece]);
     }
-  }
-
-  // Candidates for the lookup in step 2, by tile and attributes.
-  const byTile = new Map<string, Piece[]>();
-  for (const piece of pieces) {
-    const key = `${piece.col}/${piece.row}/${piece.attributes}`;
-    const list = byTile.get(key);
-    if (list) list.push(piece);
-    else byTile.set(key, [piece]);
   }
 
   const parent = new Map<Piece, Piece>();
@@ -551,18 +556,17 @@ function groupPieces(tiles: DecodedTile[]): Piece[][] {
       const cuts = piece.cutEdges[side];
       if (cuts.length === 0) continue;
       const [dCol, dRow] = NEIGHBOUR[side];
-      const neighbours = byTile.get(
-        `${piece.col + dCol}/${piece.row + dRow}/${piece.attributes}`,
-      );
+      const neighbours = byTile.get(`${piece.col + dCol}/${piece.row + dRow}/${piece.attributes}`);
       if (!neighbours) continue;
       for (const [x, y] of cuts) {
         const other = neighbours.find((candidate) => pieceContains(candidate, x, y));
         if (!other) continue;
         if (!isCut(other)) {
+          // The neighbour has the whole building.
           dropped.add(piece);
         } else {
           const a = find(piece);
-          const b = find(other);
+          const b = find(canonical.get(other) ?? other);
           if (a !== b) parent.set(b, a);
         }
       }
@@ -629,13 +633,17 @@ export function decodeBuildingTiles(
   const decoded = tiles
     // An empty body is an empty tile (open water, or a 204 from the server).
     .filter(({ data }) => data.byteLength > 0)
-    .map(({ tile, data }) => ({ tile, ...decodeTile(data, tile) }));
+    .map(({ tile, data }) => ({ tile, ...decodeTile(data, tile) }))
+    .filter((tile): tile is typeof tile & { extent: number } => tile.extent !== null);
   if (decoded.length === 0) return { type: "FeatureCollection", features: [] };
 
   const extent = decoded[0].extent;
   const zoom = decoded[0].tile.z;
   if (decoded.some((tile) => tile.extent !== extent || tile.tile.z !== zoom)) {
-    throw new BuildingTilesError("malformed", "Tiles of different zooms or extents cannot be mixed");
+    throw new BuildingTilesError(
+      "malformed",
+      "Tiles of different zooms or extents cannot be mixed",
+    );
   }
   const worldSize = extent * 2 ** zoom;
   const toPosition = ([x, y]: [number, number]): Position => [

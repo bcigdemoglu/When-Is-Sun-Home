@@ -197,7 +197,7 @@ const MIN_RING_AREA_DEG2 = 1e-12;
  * Turn a list of points into a valid closed GeoJSON linear ring with the
  * requested winding, or null if it is degenerate.
  */
-function normalizeRing(points: readonly Position[], winding: "ccw" | "cw"): Position[] | null {
+export function normalizeRing(points: readonly Position[], winding: "ccw" | "cw"): Position[] | null {
   const ring: Position[] = [];
   for (const p of points) {
     if (ring.length === 0 || !samePosition(ring[ring.length - 1], p)) ring.push([p[0], p[1]]);
