@@ -11,7 +11,13 @@
 import type { MultiPolygon, Polygon, Position } from "geojson";
 import { z } from "zod";
 import type { BuildingCollection, BuildingFeature, BuildingProperties, LatLng } from "@/lib/types";
-import { buildingKind, estimateHeight, type OsmTags } from "./height";
+import {
+  FALLBACK_HEIGHT_M,
+  buildingKind,
+  estimateHeight,
+  isGenericKind,
+  type OsmTags,
+} from "./height";
 
 // ─── Errors ────────────────────────────────────────────────────────────────
 
@@ -23,17 +29,20 @@ export class OverpassError extends Error {
   readonly status?: number;
   /** The endpoint that produced the error. */
   readonly endpoint?: string;
+  /** Seconds the server asked us to wait (`Retry-After`), when it said so. */
+  readonly retryAfterS?: number;
 
   constructor(
     kind: OverpassErrorKind,
     message: string,
-    details: { status?: number; endpoint?: string; cause?: unknown } = {},
+    details: { status?: number; endpoint?: string; retryAfterS?: number; cause?: unknown } = {},
   ) {
     super(message, details.cause === undefined ? undefined : { cause: details.cause });
     this.name = "OverpassError";
     this.kind = kind;
     this.status = details.status;
     this.endpoint = details.endpoint;
+    this.retryAfterS = details.retryAfterS;
   }
 }
 
@@ -203,8 +212,17 @@ function normalizeRing(points: readonly Position[], winding: "ccw" | "cw"): Posi
   return ring;
 }
 
+/**
+ * OSM stores coordinates with 7 decimal places (about 1 cm). Rounding to that
+ * is a no-op for real data and strips floating-point noise from anything else,
+ * which keeps the serialised collection compact.
+ */
+function roundCoordinate(value: number): number {
+  return Math.round(value * 1e7) / 1e7;
+}
+
 function toPositions(geometry: readonly { lat: number; lon: number }[]): Position[] {
-  return geometry.map((p) => [p.lon, p.lat]);
+  return geometry.map((p) => [roundCoordinate(p.lon), roundCoordinate(p.lat)]);
 }
 
 function positionKey(p: Position): string {
@@ -452,7 +470,88 @@ export function parseOverpassResponse(json: unknown): BuildingCollection {
     });
   }
 
-  return { type: "FeatureCollection", features };
+  return refineDefaultHeights({ type: "FeatureCollection", features });
+}
+
+// ─── Neighbourhood-aware default heights ───────────────────────────────────
+
+/** Reference buildings (with a tagged or level-based height) needed to trust their median. */
+export const MIN_REFERENCE_BUILDINGS = 10;
+/** The neighbourhood median is only believed within this range, metres. */
+export const NEIGHBOURHOOD_HEIGHT_RANGE_M: readonly [number, number] = [4, 40];
+/** A generic building with a smaller footprint is taken to be a shed or garage. */
+export const OUTBUILDING_MAX_AREA_M2 = 25;
+export const OUTBUILDING_HEIGHT_M = 3;
+/** Below this footprint a generic building is never raised above the global fallback. */
+export const SMALL_FOOTPRINT_MAX_AREA_M2 = 50;
+
+const METERS_PER_DEG_LAT = 110_574;
+const METERS_PER_DEG_LNG_AT_EQUATOR = 111_320;
+
+/** Footprint area in m² (outer rings minus holes), accurate to a percent or so. */
+export function footprintAreaM2(geometry: Polygon | MultiPolygon): number {
+  const polygons = geometry.type === "Polygon" ? [geometry.coordinates] : geometry.coordinates;
+  let area = 0;
+  for (const rings of polygons) {
+    const lat = rings[0]?.[0]?.[1] ?? 0;
+    const scale =
+      METERS_PER_DEG_LAT * METERS_PER_DEG_LNG_AT_EQUATOR * Math.cos((lat * Math.PI) / 180);
+    rings.forEach((ring, index) => {
+      const ringArea = Math.abs(signedRingArea(ring)) * scale;
+      area += index === 0 ? ringArea : -ringArea;
+    });
+  }
+  return Math.max(0, area);
+}
+
+function median(values: number[]): number {
+  const sorted = [...values].sort((a, b) => a - b);
+  const mid = sorted.length >> 1;
+  return sorted.length % 2 === 1 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+}
+
+/**
+ * Replace the global 7 m guess for buildings that are tagged only as "a
+ * building" (`building=yes` or an unknown value, no height, no levels) with
+ * something informed by their surroundings and their size:
+ *
+ *  - footprint under 25 m²: an outbuilding, 3 m;
+ *  - otherwise, when at least 10 buildings in the same response have a tagged
+ *    or level-based height: the median of those heights, clamped to 4–40 m
+ *    (footprints under 50 m² are never raised above 7 m by this);
+ *  - otherwise unchanged (7 m).
+ *
+ * `heightSource` stays "default". Buildings with a specific kind (garage,
+ * house, church, …) keep their table value. Returns a new collection.
+ */
+export function refineDefaultHeights(collection: BuildingCollection): BuildingCollection {
+  const reference: number[] = [];
+  for (const { properties } of collection.features) {
+    if (properties.heightSource !== "default") reference.push(properties.heightM);
+  }
+  const [minM, maxM] = NEIGHBOURHOOD_HEIGHT_RANGE_M;
+  const neighbourhoodM =
+    reference.length >= MIN_REFERENCE_BUILDINGS
+      ? Math.round(Math.min(maxM, Math.max(minM, median(reference))) * 10) / 10
+      : null;
+
+  const features = collection.features.map((feature) => {
+    const { properties } = feature;
+    if (properties.heightSource !== "default" || !isGenericKind(properties.kind)) return feature;
+
+    const areaM2 = footprintAreaM2(feature.geometry);
+    let heightM = properties.heightM;
+    if (areaM2 < OUTBUILDING_MAX_AREA_M2) heightM = OUTBUILDING_HEIGHT_M;
+    else if (neighbourhoodM === null) return feature;
+    else if (areaM2 < SMALL_FOOTPRINT_MAX_AREA_M2) {
+      heightM = Math.min(FALLBACK_HEIGHT_M, neighbourhoodM);
+    } else heightM = neighbourhoodM;
+
+    return heightM === properties.heightM
+      ? feature
+      : { ...feature, properties: { ...properties, heightM } };
+  });
+  return { ...collection, features };
 }
 
 // ─── Network ───────────────────────────────────────────────────────────────
@@ -473,10 +572,24 @@ function abortErrorFrom(signal: AbortSignal): unknown {
     : new DOMException("The operation was aborted.", "AbortError");
 }
 
-function errorForStatus(status: number, body: string, endpoint: string): OverpassError {
+/** `Retry-After` as whole seconds (it may be a number or an HTTP date), if usable. */
+function parseRetryAfter(value: string | null): number | undefined {
+  if (!value) return undefined;
+  const text = value.trim();
+  const seconds = /^\d+$/.test(text)
+    ? Number(text)
+    : Math.ceil((Date.parse(text) - Date.now()) / 1000);
+  return Number.isFinite(seconds) && seconds >= 0 && seconds <= 86_400 ? seconds : undefined;
+}
+
+function errorForStatus(response: Response, body: string, endpoint: string): OverpassError {
+  const { status } = response;
   const detail = excerpt(body);
   const message = `Overpass answered HTTP ${status}${detail ? `: ${detail}` : ""}`;
-  if (status === 429) return new OverpassError("rate-limited", message, { status, endpoint });
+  if (status === 429) {
+    const retryAfterS = parseRetryAfter(response.headers.get("retry-after"));
+    return new OverpassError("rate-limited", message, { status, endpoint, retryAfterS });
+  }
   if (status === 504 || status === 408) {
     return new OverpassError("timeout", message, { status, endpoint });
   }
@@ -536,7 +649,7 @@ async function queryEndpoint(
       });
     }
 
-    if (!response.ok) throw errorForStatus(response.status, body, endpoint);
+    if (!response.ok) throw errorForStatus(response, body, endpoint);
 
     const trimmed = body.trimStart();
     if (trimmed.startsWith("<")) {

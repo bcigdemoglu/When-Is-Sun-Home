@@ -1,10 +1,16 @@
 import path from "node:path";
 import { expect, test, type Page } from "@playwright/test";
 
-const OVERPASS_FIXTURE = path.join(__dirname, "..", "fixtures", "pacific-heights.overpass.json");
+const FIXTURES = path.join(__dirname, "..", "fixtures");
+const OVERPASS_FIXTURE = path.join(FIXTURES, "pacific-heights.overpass.json");
+const BUILDINGS_FIXTURE = path.join(FIXTURES, "pacific-heights.buildings.json");
 
 /** Serve building data from the fixture and keep the ground flat, so results are deterministic. */
 async function mockData(page: Page) {
+  // The app asks its own cached route first, then Overpass directly.
+  await page.route(/\/api\/buildings/, (route) =>
+    route.fulfill({ path: BUILDINGS_FIXTURE, contentType: "application/json" }),
+  );
   await page.route(/\/api\/interpreter/, (route) =>
     route.fulfill({ path: OVERPASS_FIXTURE, contentType: "application/json" }),
   );

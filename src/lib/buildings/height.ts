@@ -205,6 +205,14 @@ export function defaultHeightForKind(kind: string): number {
     : FALLBACK_HEIGHT_M;
 }
 
+/**
+ * True for `building=yes` and for values without a table entry: the tag says
+ * "a building" but nothing about what kind.
+ */
+export function isGenericKind(kind: string): boolean {
+  return !Object.hasOwn(DEFAULT_HEIGHT_BY_KIND, kind);
+}
+
 function roofAllowance(tags: OsmTags, kind: string): number {
   const roofLevels = parseLevels(tags["roof:levels"]);
   if (roofLevels !== null) return roofLevels * METERS_PER_LEVEL;

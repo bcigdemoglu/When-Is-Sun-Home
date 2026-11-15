@@ -6,7 +6,8 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
-import type { LatLng } from "@/lib/types";
+import type { BuildingCollection, LatLng } from "@/lib/types";
+import { BuildingsApiError } from "./api";
 import { clearBuildingCache, getCachedBuildings, setCachedBuildings } from "./cache";
 import { OVERPASS_ENDPOINTS, OverpassError, parseOverpassResponse } from "./overpass";
 import { AREA_LAT_STEP_DEG, fetchAreaFor } from "./tiles";
@@ -39,8 +40,37 @@ function overpassBody(...ids: number[]): string {
   });
 }
 
+/** What the API route would send for the same buildings: the parsed collection. */
+function apiBody(...ids: number[]): string {
+  return JSON.stringify(parseOverpassResponse(JSON.parse(overpassBody(...ids))));
+}
+
+type Reply = (init?: RequestInit) => Response | Promise<Response>;
+
+/** Answers of the two network routes; each test adjusts them as needed. */
+let api: Reply;
+let overpass: Reply;
 let fetchMock: ReturnType<typeof vi.fn<typeof fetch>>;
 let queryClient: QueryClient;
+
+const isApiCall = ([input]: Parameters<typeof fetch>) => String(input).startsWith("/api/buildings");
+const apiCalls = () => fetchMock.mock.calls.filter(isApiCall);
+const overpassCalls = () => fetchMock.mock.calls.filter((call) => !isApiCall(call));
+
+const respond =
+  (body: string, status = 200) =>
+  () =>
+    new Response(body, { status });
+const offline: Reply = () => {
+  throw new TypeError("Failed to fetch");
+};
+/** Never answers, but honours the abort signal like the real fetch. */
+const hang: Reply = (init) =>
+  new Promise<Response>((_, reject) => {
+    init?.signal?.addEventListener("abort", () =>
+      reject(new DOMException("The operation was aborted.", "AbortError")),
+    );
+  });
 
 function wrapper({ children }: { children: ReactNode }) {
   return <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>;
@@ -53,6 +83,9 @@ function renderBuildings(initial: LatLng | null) {
   });
 }
 
+const ids = (result: { current: { buildings: BuildingCollection | null } }) =>
+  result.current.buildings?.features.map((f) => f.properties.id);
+
 /** The cache write is fire-and-forget; wait for it to land. */
 async function waitForCached(key: string) {
   await waitFor(async () => expect(await getCachedBuildings(key)).not.toBeNull());
@@ -61,7 +94,11 @@ async function waitForCached(key: string) {
 beforeEach(async () => {
   await clearBuildingCache();
   queryClient = new QueryClient();
-  fetchMock = vi.fn<typeof fetch>(async () => new Response(overpassBody(1, 2, 3)));
+  api = respond(apiBody(1, 2, 3));
+  overpass = respond(overpassBody(1, 2, 3));
+  fetchMock = vi.fn<typeof fetch>(async (input, init) =>
+    isApiCall([input, init]) ? api(init) : overpass(init),
+  );
   vi.stubGlobal("fetch", fetchMock);
 });
 
@@ -77,7 +114,8 @@ describe("buildingsQueryOptions", () => {
     const options = buildingsQueryOptions(PIN);
     expect(options.queryKey).toEqual(["buildings", AREA.key]);
     expect(
-      buildingsQueryOptions({ lat: PIN.lat + 0.0002, lng: PIN.lng + 0.0002 }).queryKey,
+      buildingsQueryOptions({ lat: AREA.center.lat + 0.0002, lng: AREA.center.lng + 0.0002 })
+        .queryKey,
     ).toEqual(options.queryKey);
     expect(buildingsQueryOptions(NEIGHBOUR).queryKey).not.toEqual(options.queryKey);
   });
@@ -88,15 +126,21 @@ describe("buildingsQueryOptions", () => {
     expect(options.gcTime).toBe(30 * 60 * 1000);
   });
 
-  test("retries once, with backoff, but never after an abort", () => {
+  test("retries once with backoff, but not after an abort, a timeout or a refused request", () => {
     const { retry, retryDelay } = buildingsQueryOptions(PIN);
-    const failed = new OverpassError("network", "down");
-    const aborted = new DOMException("Aborted", "AbortError");
-    expect(typeof retry === "function" && retry(0, failed)).toBe(true);
-    expect(typeof retry === "function" && retry(1, failed)).toBe(false);
-    expect(typeof retry === "function" && retry(0, aborted)).toBe(false);
-    expect(typeof retryDelay === "function" && retryDelay(0, failed)).toBe(1000);
-    expect(typeof retryDelay === "function" && retryDelay(1, failed)).toBe(2000);
+    if (typeof retry !== "function" || typeof retryDelay !== "function") {
+      throw new Error("expected retry functions");
+    }
+    const down = new OverpassError("network", "down");
+    expect(retry(0, down)).toBe(true);
+    expect(retry(1, down)).toBe(false);
+    expect(retry(0, new OverpassError("rate-limited", "busy"))).toBe(true);
+    expect(retry(0, new BuildingsApiError("http", "bad gateway", { status: 502 }))).toBe(true);
+    expect(retry(0, new OverpassError("timeout", "slow"))).toBe(false);
+    expect(retry(0, new BuildingsApiError("bad-request", "no", { status: 400 }))).toBe(false);
+    expect(retry(0, new DOMException("Aborted", "AbortError"))).toBe(false);
+    expect(retryDelay(0, down)).toBe(1000);
+    expect(retryDelay(1, down)).toBe(2000);
   });
 
   test("no place, or a nonsensical one: a disabled query", () => {
@@ -131,26 +175,21 @@ describe("useBuildings", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  test("loads the area around the place, reports stats, and fills the cache", async () => {
+  test("loads the area from the API route, reports stats, and fills the cache", async () => {
     const { result } = renderBuildings(PIN);
     expect(result.current).toMatchObject({ buildings: null, status: "loading", isFetching: true });
 
     await waitFor(() => expect(result.current.status).toBe("ready"));
-    expect(result.current.buildings?.features.map((f) => f.properties.id)).toEqual([
-      "way/1",
-      "way/2",
-      "way/3",
-    ]);
+    expect(ids(result)).toEqual(["way/1", "way/2", "way/3"]);
     expect(result.current.stats).toEqual({ total: 3, tagged: 1, levels: 1, default: 1 });
     expect(result.current).toMatchObject({ error: null, isFetching: false, isPlaceholder: false });
 
+    // One same-origin request; Overpass is not contacted from the browser.
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const [url, init] = fetchMock.mock.calls[0];
-    expect(url).toBe(OVERPASS_ENDPOINTS[0]);
-    const query = (init?.body as URLSearchParams).get("data");
-    expect(query).toContain(
-      `(around:500,${AREA.center.lat.toFixed(6)},${AREA.center.lng.toFixed(6)})`,
-    );
+    expect(url).toBe(`/api/buildings?area=${encodeURIComponent(AREA.key)}`);
+    expect(Object.keys(init ?? {})).toEqual(["signal"]);
+    expect(overpassCalls()).toHaveLength(0);
 
     await waitForCached(AREA.key);
     expect(await getCachedBuildings(AREA.key)).toEqual(result.current.buildings);
@@ -171,7 +210,7 @@ describe("useBuildings", () => {
 
   test("a second component on the same area shares the request", async () => {
     const a = renderBuildings(PIN);
-    const b = renderBuildings({ lat: PIN.lat + 0.0001, lng: PIN.lng });
+    const b = renderBuildings({ lat: AREA.center.lat + 0.0001, lng: AREA.center.lng });
     await waitFor(() => expect(a.result.current.status).toBe("ready"));
     await waitFor(() => expect(b.result.current.status).toBe("ready"));
     expect(fetchMock).toHaveBeenCalledTimes(1);
@@ -193,7 +232,7 @@ describe("useBuildings", () => {
     await waitFor(() => expect(result.current.status).toBe("ready"));
     const first = result.current.buildings;
 
-    fetchMock.mockImplementation(async () => new Response(overpassBody(10, 11)));
+    api = respond(apiBody(10, 11));
     rerender({ place: NEIGHBOUR });
 
     // Not "ready": these are the neighbouring area's buildings.
@@ -207,10 +246,7 @@ describe("useBuildings", () => {
 
     await waitFor(() => expect(result.current.status).toBe("ready"));
     expect(result.current.isPlaceholder).toBe(false);
-    expect(result.current.buildings?.features.map((f) => f.properties.id)).toEqual([
-      "way/10",
-      "way/11",
-    ]);
+    expect(ids(result)).toEqual(["way/10", "way/11"]);
     expect(result.current.stats?.total).toBe(2);
     expect(fetchMock).toHaveBeenCalledTimes(2);
 
@@ -242,71 +278,89 @@ describe("useBuildings", () => {
     expect(result.current).toMatchObject({ status: "idle", buildings: null, stats: null });
   });
 
-  test("reports an error after every endpoint failed twice", async () => {
-    fetchMock.mockImplementation(async () => new Response("busy", { status: 429 }));
+  test("end to end with the Pacific Heights fixture", async () => {
+    // (jsdom replaces the global URL class, so resolve from the project root instead.)
+    const raw = readFileSync(
+      path.resolve(process.cwd(), "tests/fixtures/pacific-heights.overpass.json"),
+      "utf8",
+    );
+    api = respond(JSON.stringify(parseOverpassResponse(JSON.parse(raw))));
     const { result } = renderBuildings(PIN);
+    await waitFor(() => expect(result.current.status).toBe("ready"));
+    expect(result.current.stats).toEqual({ total: 384, tagged: 321, levels: 8, default: 55 });
+    expect(overpassCalls()).toHaveLength(0);
+    await waitForCached(AREA.key);
+    expect((await getCachedBuildings(AREA.key))?.features).toHaveLength(384);
+  });
+});
 
-    await waitFor(() => expect(result.current.status).toBe("error"), { timeout: 4000 });
-    expect(result.current.error).toBeInstanceOf(OverpassError);
-    expect((result.current.error as OverpassError).kind).toBe("rate-limited");
-    expect(result.current).toMatchObject({ buildings: null, stats: null, isFetching: false });
-    // Three endpoints, tried on the first attempt and on the single retry.
-    expect(fetchMock).toHaveBeenCalledTimes(6);
-    expect(await getCachedBuildings(AREA.key)).toBeNull();
+describe("useBuildings: falling back from the API route to Overpass", () => {
+  beforeEach(() => {
+    overpass = respond(overpassBody(40, 41));
   });
 
-  test("refetch() after an error tries again", async () => {
-    fetchMock.mockImplementation(async () => new Response("busy", { status: 504 }));
-    const { result } = renderBuildings(PIN);
-    await waitFor(() => expect(result.current.status).toBe("error"), { timeout: 4000 });
-
-    fetchMock.mockImplementation(async () => new Response(overpassBody(5)));
-    act(() => result.current.refetch());
+  async function expectDirectResult(result: ReturnType<typeof renderBuildings>["result"]) {
     await waitFor(() => expect(result.current.status).toBe("ready"));
+    expect(ids(result)).toEqual(["way/40", "way/41"]);
     expect(result.current.error).toBeNull();
-    expect(result.current.buildings?.features).toHaveLength(1);
+    expect(apiCalls()).toHaveLength(1);
+    expect(overpassCalls()).toHaveLength(1);
+    // The direct path is the unchanged browser → Overpass request.
+    const [url, init] = overpassCalls()[0];
+    expect(url).toBe(OVERPASS_ENDPOINTS[0]);
+    expect((init?.body as URLSearchParams).get("data")).toContain(
+      `(around:500,${AREA.center.lat.toFixed(6)},${AREA.center.lng.toFixed(6)})`,
+    );
+    await waitForCached(AREA.key);
+    expect((await getCachedBuildings(AREA.key))?.features).toHaveLength(2);
+  }
+
+  test.each([429, 500, 502, 503, 504, 401, 404])("API answers HTTP %d", async (status) => {
+    api = respond(JSON.stringify({ error: "x", message: "no" }), status);
+    const { result } = renderBuildings(PIN);
+    await expectDirectResult(result);
   });
 
-  test("refetch() bypasses the cache and replaces it", async () => {
+  test("API unreachable", async () => {
+    api = offline;
+    const { result } = renderBuildings(PIN);
+    await expectDirectResult(result);
+  });
+
+  test.each([
+    ["an HTML page", "<!doctype html><title>Sign in</title>"],
+    ["JSON of the wrong shape", '{"ok":true}'],
+    ["a raw Overpass document", overpassBody(1, 2)],
+    ["a collection of unusable features", '{"type":"FeatureCollection","features":[{},{}]}'],
+    ["truncated JSON", '{"type":"FeatureCollection","features":['],
+  ])("API sends %s", async (_, body) => {
+    api = respond(body);
+    const { result } = renderBuildings(PIN);
+    await expectDirectResult(result);
+  });
+
+  test("an invalid feature in an otherwise good API payload is dropped, with no fallback", async () => {
+    const payload = JSON.parse(apiBody(1, 2));
+    payload.features.push({ type: "Feature", properties: {}, geometry: null });
+    api = respond(JSON.stringify(payload));
     const { result } = renderBuildings(PIN);
     await waitFor(() => expect(result.current.status).toBe("ready"));
-    await waitForCached(AREA.key);
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-
-    fetchMock.mockImplementation(async () => new Response(overpassBody(21, 22, 23, 24)));
-    act(() => result.current.refetch());
-    await waitFor(() => expect(result.current.buildings?.features).toHaveLength(4));
-    expect(result.current.status).toBe("ready");
-    expect(fetchMock).toHaveBeenCalledTimes(2);
-    await waitFor(async () =>
-      expect((await getCachedBuildings(AREA.key))?.features).toHaveLength(4),
-    );
+    expect(ids(result)).toEqual(["way/1", "way/2"]);
+    expect(overpassCalls()).toHaveLength(0);
   });
 
-  test("a failed refetch() keeps the buildings and the cached copy", async () => {
+  test("API answers 400: no fallback, no retry", async () => {
+    api = respond(JSON.stringify({ error: "bad-area", message: "not a key" }), 400);
     const { result } = renderBuildings(PIN);
-    await waitFor(() => expect(result.current.status).toBe("ready"));
-    await waitForCached(AREA.key);
-
-    fetchMock.mockImplementation(async () => new Response("down", { status: 500 }));
-    act(() => result.current.refetch());
-    await waitFor(() => expect(result.current.error).toBeInstanceOf(OverpassError), {
-      timeout: 4000,
-    });
-    expect(result.current.status).toBe("ready");
-    expect(result.current.buildings?.features).toHaveLength(3);
-    expect((await getCachedBuildings(AREA.key))?.features).toHaveLength(3);
+    await waitFor(() => expect(result.current.status).toBe("error"));
+    expect(result.current.error).toBeInstanceOf(BuildingsApiError);
+    expect(result.current.error).toMatchObject({ kind: "bad-request", status: 400 });
+    expect(apiCalls()).toHaveLength(1);
+    expect(overpassCalls()).toHaveLength(0);
   });
 
-  test("unmounting aborts the request in flight", async () => {
-    fetchMock.mockImplementation(
-      (_input, init) =>
-        new Promise<Response>((_, reject) => {
-          init?.signal?.addEventListener("abort", () =>
-            reject(new DOMException("The operation was aborted.", "AbortError")),
-          );
-        }),
-    );
+  test("an abort during the API request does not fall back", async () => {
+    api = hang;
     const { result, unmount } = renderBuildings(PIN);
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
     expect(result.current.status).toBe("loading");
@@ -315,23 +369,121 @@ describe("useBuildings", () => {
 
     unmount();
     await waitFor(() => expect(signal.aborted).toBe(true));
-    await new Promise((resolve) => setTimeout(resolve, 20));
-    // No fallback to the other endpoints, no retry.
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    expect(apiCalls()).toHaveLength(1);
+    expect(overpassCalls()).toHaveLength(0);
+    expect(await getCachedBuildings(AREA.key)).toBeNull();
   });
 
-  test("end to end with the Pacific Heights fixture", async () => {
-    // (jsdom replaces the global URL class, so resolve from the project root instead.)
-    const raw = readFileSync(
-      path.resolve(process.cwd(), "tests/fixtures/pacific-heights.overpass.json"),
-      "utf8",
-    );
-    fetchMock.mockImplementation(async () => new Response(raw));
+  test("an abort during the fallback stops there too", async () => {
+    api = offline;
+    overpass = hang;
+    const { unmount } = renderBuildings(PIN);
+    await waitFor(() => expect(overpassCalls()).toHaveLength(1));
+    const signal = overpassCalls()[0][1]?.signal as AbortSignal;
+
+    unmount();
+    await waitFor(() => expect(signal.aborted).toBe(true));
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    // Neither the other Overpass endpoints nor a retry.
+    expect(apiCalls()).toHaveLength(1);
+    expect(overpassCalls()).toHaveLength(1);
+  });
+
+  test("both routes fail: the Overpass error is reported, after one retry", async () => {
+    api = respond(JSON.stringify({ error: "network", message: "upstream" }), 502);
+    overpass = respond("busy", 429);
+    const { result } = renderBuildings(PIN);
+
+    await waitFor(() => expect(result.current.status).toBe("error"), { timeout: 4000 });
+    expect(result.current.error).toBeInstanceOf(OverpassError);
+    expect((result.current.error as OverpassError).kind).toBe("rate-limited");
+    expect(result.current).toMatchObject({ buildings: null, stats: null, isFetching: false });
+    // Two rounds, each: the API route once, then all three Overpass endpoints.
+    expect(apiCalls()).toHaveLength(2);
+    expect(overpassCalls()).toHaveLength(6);
+    expect(await getCachedBuildings(AREA.key)).toBeNull();
+  });
+
+  test("both routes fail on timeouts: reported at once, without a second round", async () => {
+    api = respond(JSON.stringify({ error: "timeout", message: "slow" }), 504);
+    overpass = respond("gateway timeout", 504);
+    const { result } = renderBuildings(PIN);
+
+    await waitFor(() => expect(result.current.status).toBe("error"));
+    expect((result.current.error as OverpassError).kind).toBe("timeout");
+    expect(apiCalls()).toHaveLength(1);
+    expect(overpassCalls()).toHaveLength(3);
+  });
+
+  test("refetch() after an error tries again", async () => {
+    api = respond("down", 504);
+    overpass = respond("busy", 504);
+    const { result } = renderBuildings(PIN);
+    await waitFor(() => expect(result.current.status).toBe("error"));
+
+    overpass = respond(overpassBody(5));
+    act(() => result.current.refetch());
+    await waitFor(() => expect(result.current.status).toBe("ready"));
+    expect(result.current.error).toBeNull();
+    expect(ids(result)).toEqual(["way/5"]);
+  });
+});
+
+describe("useBuildings: refetch()", () => {
+  test("goes straight to Overpass, past both caches, and replaces the cached copy", async () => {
     const { result } = renderBuildings(PIN);
     await waitFor(() => expect(result.current.status).toBe("ready"));
-    expect(result.current.stats).toEqual({ total: 384, tagged: 321, levels: 8, default: 55 });
     await waitForCached(AREA.key);
-    expect((await getCachedBuildings(AREA.key))?.features).toHaveLength(384);
+    expect(apiCalls()).toHaveLength(1);
+
+    overpass = respond(overpassBody(21, 22, 23, 24));
+    act(() => result.current.refetch());
+    await waitFor(() => expect(result.current.buildings?.features).toHaveLength(4));
+    expect(result.current.status).toBe("ready");
+    // The CDN-cached route is not asked again.
+    expect(apiCalls()).toHaveLength(1);
+    expect(overpassCalls()).toHaveLength(1);
+    await waitFor(async () =>
+      expect((await getCachedBuildings(AREA.key))?.features).toHaveLength(4),
+    );
+  });
+
+  test("falls back to the API route (skipping the HTTP cache) when Overpass is down", async () => {
+    const { result } = renderBuildings(PIN);
+    await waitFor(() => expect(result.current.status).toBe("ready"));
+    await waitForCached(AREA.key);
+
+    overpass = respond("down", 500);
+    api = respond(apiBody(31, 32));
+    act(() => result.current.refetch());
+    await waitFor(() => expect(ids(result)).toEqual(["way/31", "way/32"]));
+    expect(result.current).toMatchObject({ status: "ready", error: null });
+    expect(overpassCalls()).toHaveLength(3);
+    expect(apiCalls()).toHaveLength(2);
+    expect(apiCalls()[1][1]?.cache).toBe("reload");
+  });
+
+  test("a failed refetch() keeps the buildings and the cached copy", async () => {
+    const { result } = renderBuildings(PIN);
+    await waitFor(() => expect(result.current.status).toBe("ready"));
+    await waitForCached(AREA.key);
+
+    overpass = respond("down", 500);
+    api = respond("down", 500);
+    act(() => result.current.refetch());
+    await waitFor(() => expect(result.current.error).toBeInstanceOf(OverpassError), {
+      timeout: 4000,
+    });
+    expect(result.current.status).toBe("ready");
+    expect(result.current.buildings?.features).toHaveLength(3);
+    expect((await getCachedBuildings(AREA.key))?.features).toHaveLength(3);
+
+    // The next refetch still bypasses the cache, and now succeeds.
+    overpass = respond(overpassBody(50));
+    act(() => result.current.refetch());
+    await waitFor(() => expect(ids(result)).toEqual(["way/50"]));
+    expect(result.current.error).toBeNull();
   });
 });
 

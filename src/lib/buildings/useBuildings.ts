@@ -9,8 +9,9 @@
 import { keepPreviousData, queryOptions, skipToken, useQuery } from "@tanstack/react-query";
 import { useCallback, useMemo } from "react";
 import type { BuildingCollection, LatLng } from "@/lib/types";
+import { BuildingsApiError, fetchBuildingsFromApi } from "./api";
 import { getCachedBuildings, setCachedBuildings } from "./cache";
-import { fetchBuildings, isAbortError, type OverpassError } from "./overpass";
+import { OverpassError, fetchBuildings, isAbortError } from "./overpass";
 import { areAreasAdjacent, fetchAreaFor, type FetchArea } from "./tiles";
 
 export const BUILDINGS_GC_TIME_MS = 30 * 60 * 1000;
@@ -34,12 +35,16 @@ export interface UseBuildingsResult {
   buildings: BuildingCollection | null;
   /** "ready" only when `buildings` is the real data for the current place. */
   status: BuildingsStatus;
-  /** Set when the last fetch failed. Can accompany "ready" after a failed `refetch()`. */
+  /**
+   * Set when the last fetch failed. Can accompany "ready" after a failed
+   * `refetch()`. Usually an `OverpassError`; a `BuildingsApiError` (an
+   * `Error`) when only the API route could be tried.
+   */
   error: OverpassError | Error | null;
   isFetching: boolean;
   /** True while `buildings` is the neighbouring area's data. */
   isPlaceholder: boolean;
-  /** Fetch again from the network, bypassing the cache. */
+  /** Fetch again, bypassing every cache: straight from Overpass if at all possible. */
   refetch(): void;
   /** Counts for `buildings`, or null when there are none to count. */
   stats: BuildingStats | null;
@@ -56,16 +61,81 @@ function areaFor(place: LatLng | null): FetchArea | null {
  */
 const forcedRefresh = new Set<string>();
 
-/** Cache first, then the network; a network result is written back to the cache. */
+/** The app's own API route: one same-origin request, usually answered by the CDN. */
+function viaApi(area: FetchArea, signal: AbortSignal, reload: boolean) {
+  return fetchBuildingsFromApi(area.key, { signal, reload });
+}
+
+/** Straight from the browser to the public Overpass servers. */
+function viaOverpass(area: FetchArea, signal: AbortSignal) {
+  return fetchBuildings(area.center, area.radiusM, { signal });
+}
+
+/** A request the server refused as invalid; asking again or elsewhere cannot help. */
+function isBadRequest(error: unknown): boolean {
+  return error instanceof BuildingsApiError && error.kind === "bad-request";
+}
+
+/**
+ * Fetch an area from the network, trying a second route when the first fails.
+ *
+ * Normally the API route goes first (fast, shared CDN cache) and the direct
+ * Overpass path is the fallback. A refresh the user asked for goes the other
+ * way round: the CDN may hold a copy that is days old, and only Overpass
+ * itself has their latest edits.
+ *
+ * An abort is never followed by a second attempt, and neither is a 400 from
+ * the API. When both routes fail the Overpass error is the one reported: it
+ * says what is actually wrong (rate limit, timeout, …).
+ */
+async function fetchFromNetwork(
+  area: FetchArea,
+  signal: AbortSignal,
+  fresh: boolean,
+): Promise<BuildingCollection> {
+  const attempts = fresh
+    ? [() => viaOverpass(area, signal), () => viaApi(area, signal, true)]
+    : [() => viaApi(area, signal, false), () => viaOverpass(area, signal)];
+
+  let firstError: unknown;
+  try {
+    return await attempts[0]();
+  } catch (error) {
+    if (signal.aborted || isAbortError(error) || isBadRequest(error)) throw error;
+    firstError = error;
+  }
+  try {
+    return await attempts[1]();
+  } catch (error) {
+    if (signal.aborted || isAbortError(error)) throw error;
+    throw [firstError, error].find((e) => e instanceof OverpassError) ?? error;
+  }
+}
+
+/**
+ * IndexedDB cache → API route → direct Overpass. Whatever the network
+ * returned is written back to the cache.
+ */
 async function loadBuildings(area: FetchArea, signal: AbortSignal): Promise<BuildingCollection> {
-  if (!forcedRefresh.has(area.key)) {
+  const fresh = forcedRefresh.has(area.key);
+  if (!fresh) {
     const cached = await getCachedBuildings(area.key);
     if (cached) return cached;
   }
-  const buildings = await fetchBuildings(area.center, area.radiusM, { signal });
+  const buildings = await fetchFromNetwork(area, signal, fresh);
   forcedRefresh.delete(area.key);
   void setCachedBuildings(area.key, buildings);
   return buildings;
+}
+
+/**
+ * One more round is plenty: each round has already tried the API route and
+ * every Overpass endpoint. Never after an abort, a refused request, or a
+ * timeout (the user has waited long enough by then).
+ */
+function shouldRetry(failureCount: number, error: unknown): boolean {
+  if (failureCount >= 1 || isAbortError(error) || isBadRequest(error)) return false;
+  return !(error instanceof OverpassError && error.kind === "timeout");
 }
 
 export function buildingsQueryKey(area: FetchArea | null) {
@@ -86,8 +156,7 @@ export function buildingsQueryOptions(place: LatLng | null) {
     // OSM buildings change slowly; freshness is the cache's job (14 days).
     staleTime: Infinity,
     gcTime: BUILDINGS_GC_TIME_MS,
-    // `fetchBuildings` has already tried every endpoint, so one more round is plenty.
-    retry: (failureCount, error) => failureCount < 1 && !isAbortError(error),
+    retry: shouldRetry,
     retryDelay: (attempt) => Math.min(1000 * 2 ** attempt, 8000),
     // Keep showing the previous buildings while the next cell loads, but
     // only if that cell is a neighbour. After a jump to another part of

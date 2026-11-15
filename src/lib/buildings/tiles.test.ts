@@ -4,7 +4,9 @@ import {
   AREA_LAT_STEP_DEG,
   AREA_MIN_MARGIN_M,
   AREA_RADIUS_M,
+  AREA_SCHEMA_VERSION,
   areAreasAdjacent,
+  areaFromKey,
   fetchAreaFor,
   parseAreaKey,
 } from "./tiles";
@@ -29,7 +31,7 @@ describe("fetchAreaFor", () => {
   test("Pacific Heights", () => {
     const area = fetchAreaFor({ lat: 37.7906, lng: -122.4294 });
     expect(area.radiusM).toBe(500);
-    expect(area.key).toBe("v1:37.791:-122.4297");
+    expect(area.key).toBe("v2:37.791:-122.4300");
     expect(area.center.lat).toBeCloseTo(37.791, 9);
     expect(distanceM(area.center, { lat: 37.7906, lng: -122.4294 })).toBeLessThan(160);
   });
@@ -104,7 +106,7 @@ describe("fetchAreaFor", () => {
         const area = fetchAreaFor(place);
         expect(fetchAreaFor(place)).toEqual(area);
         expect(fetchAreaFor(area.center).key).toBe(area.key);
-        expect(area.key).toMatch(/^v1:-?\d{1,2}\.\d{3}:-?\d{1,3}\.\d{4}$/);
+        expect(area.key).toMatch(/^v2:-?\d{1,2}\.\d{3}:-?\d{1,3}\.\d{4}$/);
         expect(area.radiusM).toBe(AREA_RADIUS_M);
         expect(Math.abs(area.center.lat)).toBeLessThanOrEqual(90);
         expect(area.center.lng).toBeGreaterThanOrEqual(-180);
@@ -144,8 +146,8 @@ describe("fetchAreaFor", () => {
       fetchAreaFor({ lat: -e, lng: -e }),
     ].map((area) => area.key);
     expect(new Set(keys).size).toBe(4);
-    expect(keys).toContain("v1:0.001:0.0010");
-    expect(keys).toContain("v1:-0.001:-0.0010");
+    expect(keys).toContain("v2:0.001:0.0010");
+    expect(keys).toContain("v2:-0.001:-0.0010");
   });
 
   test("negative coordinates", () => {
@@ -194,6 +196,84 @@ describe("fetchAreaFor", () => {
   test("rejects non-finite input", () => {
     expect(() => fetchAreaFor({ lat: Number.NaN, lng: 0 })).toThrow(RangeError);
     expect(() => fetchAreaFor({ lat: 0, lng: Number.POSITIVE_INFINITY })).toThrow(RangeError);
+  });
+});
+
+describe("areaFromKey", () => {
+  test("round-trips every key fetchAreaFor can produce", () => {
+    fc.assert(
+      fc.property(anyPlace, (place) => {
+        const area = fetchAreaFor(place);
+        expect(areaFromKey(area.key)).toEqual(area);
+      }),
+      { numRuns: 3000 },
+    );
+  });
+
+  test("round-trips at the awkward places", () => {
+    for (const place of [
+      { lat: 37.7906, lng: -122.4294 },
+      { lat: 0, lng: 0 },
+      { lat: -0.0001, lng: -0.0001 },
+      { lat: 90, lng: 0 },
+      { lat: -90, lng: 180 },
+      { lat: 89.9999, lng: -179.9999 },
+      { lat: -16.8, lng: 179.99999 },
+      { lat: -16.8, lng: -180 },
+      { lat: 66.01, lng: 179.9999 },
+      { lat: 51.9, lng: -179.99999 },
+    ]) {
+      const area = fetchAreaFor(place);
+      expect(areaFromKey(area.key), JSON.stringify(place)).toEqual(area);
+    }
+  });
+
+  test("every cell contains its own centre, also at the antimeridian", () => {
+    fc.assert(
+      fc.property(
+        fc.double({ min: -90, max: 90, noNaN: true }),
+        fc.double({ min: 0, max: 0.01, noNaN: true }),
+        fc.boolean(),
+        (lat, offset, east) => {
+          const area = fetchAreaFor({ lat, lng: east ? 180 - offset : -180 + offset });
+          expect(area.center.lng).toBeGreaterThan(-180);
+          expect(area.center.lng).toBeLessThan(180);
+          expect(fetchAreaFor(area.center)).toEqual(area);
+        },
+      ),
+      { numRuns: 1000 },
+    );
+  });
+
+  test.each([
+    ["an older schema version", "v1:37.791:-122.4300"],
+    ["a future schema version", `v${AREA_SCHEMA_VERSION + 1}:37.791:-122.4300`],
+    ["no version", "37.791:-122.4300"],
+    ["a point that is not a cell centre", "v2:37.790:-122.4300"],
+    ["a longitude that is not a cell centre", "v2:37.791:-122.4290"],
+    ["extra precision", "v2:37.7910:-122.4300"],
+    ["too little precision", "v2:37.791:-122.43"],
+    ["arbitrary coordinates", "v2:37.7906:-122.4294"],
+    ["a leading plus", "v2:+37.791:-122.4300"],
+    ["leading zeros", "v2:037.791:-122.4300"],
+    ["surrounding whitespace", " v2:37.791:-122.4300"],
+    ["a trailing newline", "v2:37.791:-122.4300\n"],
+    ["latitude out of range", "v2:91.001:0.0010"],
+    ["longitude out of range", "v2:0.001:181.0010"],
+    ["negative zero", "v2:-0.001:-0.0000"],
+    ["exponent notation", "v2:3e1:1e1"],
+    ["text", "v2:abc:def"],
+    ["the placeholder key", "none"],
+    ["nothing", ""],
+    ["something enormous", `v2:${"1".repeat(500)}:0.0010`],
+  ])("rejects %s", (_, key) => {
+    expect(areaFromKey(key)).toBeNull();
+  });
+
+  test("rejects non-strings without throwing", () => {
+    expect(areaFromKey(undefined as unknown as string)).toBeNull();
+    expect(areaFromKey(null as unknown as string)).toBeNull();
+    expect(areaFromKey(42 as unknown as string)).toBeNull();
   });
 });
 
