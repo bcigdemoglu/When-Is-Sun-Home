@@ -172,6 +172,40 @@ test("the Satellite view shows real aerial photos", async ({ page }) => {
   expect(errors).toEqual([]);
 });
 
+test("in Portland the Satellite view shows the city's own, sharper photos", async ({ page }) => {
+  // 2124 NE 36th Ave: inside the City of Portland's summer flight, which is
+  // drawn over the national photos there (and instead of the slow national
+  // detail, which must not even be asked for).
+  const errors = collectPageErrors(page);
+  let detailAsked = 0;
+  page.on("request", (request) => {
+    if (request.url().startsWith("https://imagery.nationalmap.gov/")) detailAsked++;
+  });
+  await page.goto("/?lat=45.5385&lng=-122.6265");
+  await expect(page.getByText(/of direct sun/).first()).toBeVisible();
+  const satellite = page.getByRole("button", { name: "Map. Switch to satellite photo" });
+  await expect(satellite).toBeEnabled({ timeout: 30_000 });
+
+  // (A tile can be refused on the way; the app asks again. Any one good picture will do.)
+  const cityPicture = page.waitForResponse(
+    (response) =>
+      response.url().startsWith("https://www.portlandmaps.com/") && response.status() === 200,
+    { timeout: 45_000 },
+  );
+  await satellite.click();
+  const picture = await cityPicture;
+  expect(picture.url()).toContain("/Aerial_Photos_Summer_2025/MapServer/tile/");
+  expect(picture.headers()["content-type"]).toMatch(/^image\//);
+
+  await expect(page.locator(".maplibregl-ctrl-attrib")).toContainText(
+    "Aerial photos: City of Portland, summer 2025",
+  );
+  await page.waitForTimeout(1500);
+  expect(detailAsked).toBe(0);
+  await expect(page.getByText("The map can’t be shown")).toHaveCount(0);
+  expect(errors).toEqual([]);
+});
+
 test("a shared link shows the answer in its preview", async ({ request }) => {
   const summary = "1.1t1i401u9.00011p3a3j3h3i3f2e0d0000.2p2z3a3n3x423z3q3f322s2m";
   const page = await request.get(`${PLACE}&n=Pacific+Ave+backyard&s=${summary}`, {

@@ -6,11 +6,22 @@ import {
   IMAGERY_DETAIL,
   IMAGERY_DETAIL_PROTOCOL,
   IMAGERY_DETAIL_SOURCE_ID,
+  IMAGERY_REGIONAL_PROTOCOL,
   IMAGERY_RETRY_WAITS_MS,
+  NoSuchPictureError,
+  REGIONAL_IMAGERY,
+  REGIONAL_PARALLEL_REQUESTS,
+  REGIONAL_RETRY_WAITS_MS,
+  createLimiter,
+  isFullyCoveredTile,
+  loadRegionalImagery,
+  needsImageryDetail,
+  regionCoversAround,
+  regionalImageryAt,
   NO_AERIAL_PHOTOS_MESSAGE,
   cameraPitch,
   hasAerialPhotos,
-  imageryDetailUrl,
+  imageryRequestUrl,
   imageryRetryWaitMs,
   loadImageryDetail,
   showsImagery,
@@ -130,7 +141,7 @@ describe("cameraPitch", () => {
 
 describe("the imagery sources", () => {
   /** Where the detail is really fetched from (MapLibre asks under our own scheme). */
-  const detailTemplate = imageryDetailUrl(IMAGERY_DETAIL.tiles[0]);
+  const detailTemplate = imageryRequestUrl(IMAGERY_DETAIL.tiles[0]);
   const templates = [...IMAGERY_BASE.tiles, detailTemplate];
 
   it("are the two public USGS services and nothing else", () => {
@@ -219,8 +230,8 @@ describe("loading a detail picture", () => {
   }
 
   it("is fetched from the real address, over https", async () => {
-    expect(imageryDetailUrl(ASKED)).toBe(FETCHED);
-    expect(imageryDetailUrl(FETCHED)).toBe(FETCHED);
+    expect(imageryRequestUrl(ASKED)).toBe(FETCHED);
+    expect(imageryRequestUrl(FETCHED)).toBe(FETCHED);
     const fetchImpl = vi.fn<typeof fetch>(async () => picture());
     const { pause } = instantPauses();
     const { data } = await loadImageryDetail(ASKED, { fetchImpl, pause });
@@ -287,5 +298,309 @@ describe("loading a detail picture", () => {
     expect(imageryRetryWaitMs(2)).toBe(IMAGERY_RETRY_WAITS_MS[1]);
     expect(imageryRetryWaitMs(3)).toBeNull();
     expect(IMAGERY_RETRY_WAITS_MS).toHaveLength(2);
+  });
+});
+
+// ─── Regional photos ───────────────────────────────────────────────────────
+
+const PORTLAND = REGIONAL_IMAGERY.find((region) => region.id === "portland")!;
+/** 2124 NE 36th Ave, Portland: the house this was built for. */
+const NE_36TH_AVE = { lat: 45.5385, lng: -122.6265 };
+const BEAVERTON = { lat: 45.4871, lng: -122.8037 };
+/** Across the Columbia: inside the service's box, outside its photos. */
+const VANCOUVER_WA = { lat: 45.6387, lng: -122.6615 };
+const SALEM = { lat: 44.9429, lng: -123.0351 };
+
+describe("the regional photo sources", () => {
+  it("each is a keyless tile service on the host it is meant to be, asked for through our loader", () => {
+    const hosts: Record<string, string> = { portland: "www.portlandmaps.com" };
+    expect(REGIONAL_IMAGERY.map((region) => region.id).sort()).toEqual(Object.keys(hosts).sort());
+    for (const region of REGIONAL_IMAGERY) {
+      expect(region.tiles).toHaveLength(1);
+      const [template] = region.tiles;
+      expect(template.startsWith(`${IMAGERY_REGIONAL_PROTOCOL}://`), region.id).toBe(true);
+      const url = new URL(imageryRequestUrl(template));
+      expect(url.protocol).toBe("https:");
+      expect(url.host).toBe(hosts[region.id]);
+      expect(template).not.toMatch(/key|token|secret|signature|auth|apikey|access/i);
+      expect([...url.searchParams.keys()]).toEqual([]);
+      expect(url.username + url.password).toBe("");
+      // Ordinary map tiles; this kind of server wants the row before the column.
+      expect(template).toMatch(/\/MapServer\/tile\/\{z\}\/\{y\}\/\{x\}$/);
+    }
+  });
+
+  it("each has an id, a map source of ours, sane zooms and bounds, and a credit with a link", () => {
+    expect(new Set(REGIONAL_IMAGERY.map((region) => region.id)).size).toBe(REGIONAL_IMAGERY.length);
+    expect(new Set(REGIONAL_IMAGERY.map((region) => region.sourceId)).size).toBe(
+      REGIONAL_IMAGERY.length,
+    );
+    for (const region of REGIONAL_IMAGERY) {
+      expect(
+        labelAnchorId([
+          { id: "places", type: "symbol" },
+          { id: region.sourceId, type: "raster" },
+        ]),
+      ).toBe("places");
+      expect([IMAGERY_BASE_SOURCE_ID, IMAGERY_DETAIL_SOURCE_ID]).not.toContain(region.sourceId);
+      expect(region.tileSize).toBe(256);
+      expect(region.minzoom).toBeLessThan(region.maxzoom);
+      // Sharper than the national detail, or there would be no point.
+      expect(region.maxzoom).toBeGreaterThan(IMAGERY_DETAIL.maxzoom);
+      const [west, south, east, north] = region.bounds;
+      expect(west).toBeLessThan(east);
+      expect(south).toBeLessThan(north);
+      expect(hasAerialPhotos({ lat: (south + north) / 2, lng: (west + east) / 2 })).toBe(true);
+      expect(region.attribution).toMatch(
+        /^Aerial photos: <a href="https:\/\/[^"]+" target="_blank" rel="noopener">[^<]+<\/a>$/,
+      );
+    }
+  });
+
+  it("Portland: the city's summer 2025 flight, down to zoom 21", () => {
+    expect(imageryRequestUrl(PORTLAND.tiles[0])).toBe(
+      "https://www.portlandmaps.com/arcgis/rest/services/Public/Aerial_Photos_Summer_2025/MapServer/tile/{z}/{y}/{x}",
+    );
+    expect(PORTLAND.maxzoom).toBe(21);
+    expect(PORTLAND.attribution.replace(/<[^>]+>/g, "")).toBe(
+      "Aerial photos: City of Portland, summer 2025",
+    );
+    expect(PORTLAND.attribution).toContain('href="https://www.portlandmaps.com"');
+  });
+});
+
+describe("where a region's photos cover everything", () => {
+  const { coverage } = PORTLAND;
+
+  it("the table lists fully covered coarse tiles as runs of columns per row", () => {
+    expect(isFullyCoveredTile(coverage, 2611, 5858)).toBe(true);
+    expect(isFullyCoveredTile(coverage, 2587, 5858)).toBe(true);
+    expect(isFullyCoveredTile(coverage, 2586, 5858)).toBe(false);
+    expect(isFullyCoveredTile(coverage, 2623, 5858)).toBe(false);
+    // A row with gaps.
+    expect(isFullyCoveredTile(coverage, 2600, 5872)).toBe(true);
+    expect(isFullyCoveredTile(coverage, 2601, 5872)).toBe(false);
+    expect(isFullyCoveredTile(coverage, 2603, 5872)).toBe(true);
+    // No such row.
+    expect(isFullyCoveredTile(coverage, 2611, 5840)).toBe(false);
+    for (const runs of Object.values(coverage.rows)) {
+      let last = -Infinity;
+      for (const [from, to] of runs) {
+        expect(from).toBeLessThanOrEqual(to);
+        expect(from).toBeGreaterThan(last + 1);
+        last = to;
+      }
+    }
+  });
+
+  it("covers the house on NE 36th Avenue, and the suburbs", () => {
+    expect(regionCoversAround(PORTLAND, NE_36TH_AVE)).toBe(true);
+    expect(regionCoversAround(PORTLAND, BEAVERTON)).toBe(true);
+    expect(regionCoversAround(PORTLAND, { lat: 45.5229, lng: -122.9898 })).toBe(true); // Hillsboro
+    expect(regionCoversAround(PORTLAND, { lat: 45.5001, lng: -122.4302 })).toBe(true); // Gresham
+    expect(regionCoversAround(PORTLAND, { lat: 45.4207, lng: -122.6706 })).toBe(true); // Lake Oswego
+  });
+
+  it("does not cover Vancouver, Washington, nor anywhere further off", () => {
+    expect(regionCoversAround(PORTLAND, VANCOUVER_WA)).toBe(false);
+    expect(regionCoversAround(PORTLAND, SALEM)).toBe(false);
+    expect(regionCoversAround(PORTLAND, SAN_FRANCISCO)).toBe(false);
+    expect(regionCoversAround(PORTLAND, ISTANBUL)).toBe(false);
+    expect(regionCoversAround(PORTLAND, { lat: Number.NaN, lng: -122.6 })).toBe(false);
+  });
+
+  it("wants the eight tiles around as well: a covered tile on the rim is not enough", () => {
+    // 14/2604/5851 is all photo, but north of it there is nothing.
+    expect(isFullyCoveredTile(coverage, 2604, 5851)).toBe(true);
+    const n = 2 ** coverage.zoom;
+    const onTheRim = {
+      lng: ((2604 + 0.5) / n) * 360 - 180,
+      lat: (Math.atan(Math.sinh(Math.PI * (1 - (2 * (5851 + 0.5)) / n))) * 180) / Math.PI,
+    };
+    expect(regionCoversAround(PORTLAND, onTheRim)).toBe(false);
+  });
+
+  it("that ring is wider than any map at the zooms the national detail is drawn at", () => {
+    // A coarse tile is 512 px wide at its own zoom and doubles with each zoom
+    // step: with the map's middle anywhere in the centre tile, one more tile
+    // each way is covered — more than half of any screen.
+    const widthAtDetailZoomPx = 512 * 2 ** (IMAGERY_DETAIL.minzoom - coverage.zoom);
+    expect(widthAtDetailZoomPx).toBeGreaterThanOrEqual(2048);
+  });
+
+  it("every spot it covers all around is inside the region's bounds (where its photos are drawn)", () => {
+    const n = 2 ** coverage.zoom;
+    let spots = 0;
+    for (const [row, runs] of Object.entries(coverage.rows)) {
+      for (const [from, to] of runs) {
+        for (let x = from; x <= to; x++) {
+          const y = Number(row);
+          const spot = {
+            lng: ((x + 0.5) / n) * 360 - 180,
+            lat: (Math.atan(Math.sinh(Math.PI * (1 - (2 * (y + 0.5)) / n))) * 180) / Math.PI,
+          };
+          if (!regionCoversAround(PORTLAND, spot)) continue;
+          spots++;
+          expect(regionalImageryAt(spot)).toBe(PORTLAND);
+          const [west, south, east, north] = PORTLAND.bounds;
+          expect(spot.lng > west && spot.lng < east && spot.lat > south && spot.lat < north).toBe(
+            true,
+          );
+        }
+      }
+    }
+    expect(spots).toBeGreaterThan(300);
+  });
+});
+
+describe("regionalImageryAt", () => {
+  it("is the region the map is at, or right next to", () => {
+    expect(regionalImageryAt(NE_36TH_AVE)).toBe(PORTLAND);
+    expect(regionalImageryAt(BEAVERTON)).toBe(PORTLAND);
+    // No photos of Vancouver itself, but the city's reach the river: drawn where they are.
+    expect(regionalImageryAt(VANCOUVER_WA)).toBe(PORTLAND);
+    expect(regionalImageryAt({ lat: NE_36TH_AVE.lat, lng: NE_36TH_AVE.lng - 360 })).toBe(PORTLAND);
+  });
+
+  it("is nothing anywhere else: no credit for Portland on a map of another city", () => {
+    expect(regionalImageryAt(SAN_FRANCISCO)).toBeNull();
+    expect(regionalImageryAt(SALEM)).toBeNull();
+    expect(regionalImageryAt({ lat: 47.6062, lng: -122.3321 })).toBeNull(); // Seattle
+    expect(regionalImageryAt(ISTANBUL)).toBeNull();
+    expect(regionalImageryAt({ lat: Number.NaN, lng: 0 })).toBeNull();
+  });
+});
+
+describe("needsImageryDetail", () => {
+  it("is off where a region's photos cover everything in view", () => {
+    expect(needsImageryDetail(NE_36TH_AVE)).toBe(false);
+    expect(needsImageryDetail(BEAVERTON)).toBe(false);
+  });
+
+  it("is on everywhere else, as before: at the edge of a region and far from any", () => {
+    expect(needsImageryDetail(VANCOUVER_WA)).toBe(true);
+    expect(needsImageryDetail(SALEM)).toBe(true);
+    expect(needsImageryDetail(SAN_FRANCISCO)).toBe(true);
+    expect(needsImageryDetail({ lat: 40.758, lng: -73.9855 })).toBe(true);
+    expect(needsImageryDetail({ lat: Number.NaN, lng: Number.NaN })).toBe(true);
+  });
+});
+
+describe("loading a region's photo", () => {
+  const ASKED = `${IMAGERY_REGIONAL_PROTOCOL}://www.portlandmaps.com/arcgis/rest/services/Public/Aerial_Photos_Summer_2025/MapServer/tile/19/187485/83556`;
+  const FETCHED = ASKED.replace(`${IMAGERY_REGIONAL_PROTOCOL}://`, "https://");
+  const picture = () => new Response(new Uint8Array([9, 8, 7]));
+  const noWaiting = () => {
+    const waits: number[] = [];
+    return { waits, pause: vi.fn(async (ms: number) => void waits.push(ms)) };
+  };
+  /** Each test its own queue: nothing waits behind another test's pictures. */
+  const turn = () => createLimiter(REGIONAL_PARALLEL_REQUESTS);
+
+  it("is fetched from the real address, over https", async () => {
+    const fetchImpl = vi.fn<typeof fetch>(async () => picture());
+    const { data } = await loadRegionalImagery(ASKED, { fetchImpl, turn: turn(), ...noWaiting() });
+    expect([...new Uint8Array(data)]).toEqual([9, 8, 7]);
+    expect(fetchImpl.mock.calls[0][0]).toBe(FETCHED);
+  });
+
+  it("where the region has no photo, that is the answer: no second try, and MapLibre is told '404'", async () => {
+    const fetchImpl = vi.fn<typeof fetch>(async () => new Response("Not Found", { status: 404 }));
+    const { pause } = noWaiting();
+    const loading = loadRegionalImagery(ASKED, { fetchImpl, pause, turn: turn() });
+    await expect(loading).rejects.toBeInstanceOf(NoSuchPictureError);
+    await expect(loading).rejects.toMatchObject({ status: 404 });
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    expect(pause).not.toHaveBeenCalled();
+  });
+
+  it("turned away ('503') or cut off, it is asked for again, a little later each time", async () => {
+    const fetchImpl = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(new Response("busy", { status: 503 }))
+      .mockRejectedValueOnce(new TypeError("Load failed"))
+      .mockResolvedValueOnce(picture());
+    const { waits, pause } = noWaiting();
+    const { data } = await loadRegionalImagery(ASKED, { fetchImpl, pause, turn: turn() });
+    expect(data.byteLength).toBe(3);
+    expect(waits).toEqual(REGIONAL_RETRY_WAITS_MS.slice(0, 2));
+  });
+
+  it("is given up when every try failed", async () => {
+    const fetchImpl = vi.fn<typeof fetch>(async () => new Response("busy", { status: 503 }));
+    const { waits, pause } = noWaiting();
+    await expect(loadRegionalImagery(ASKED, { fetchImpl, pause, turn: turn() })).rejects.toThrow(
+      /HTTP 503/,
+    );
+    expect(fetchImpl).toHaveBeenCalledTimes(REGIONAL_RETRY_WAITS_MS.length + 1);
+    expect(waits).toEqual([...REGIONAL_RETRY_WAITS_MS]);
+  });
+
+  it("a few at a time: the rest wait their turn, first come first served", async () => {
+    const limit = 2;
+    const queue = createLimiter(limit);
+    const started: number[] = [];
+    const finish: (() => void)[] = [];
+    let running = 0;
+    let most = 0;
+    const fetchImpl = vi.fn<typeof fetch>(
+      () =>
+        new Promise<Response>((resolve) => {
+          running++;
+          most = Math.max(most, running);
+          finish.push(() => {
+            running--;
+            resolve(picture());
+          });
+        }),
+    );
+    const all = [0, 1, 2, 3, 4].map((i) =>
+      loadRegionalImagery(`${ASKED}${i}`, { fetchImpl, turn: queue }).then(() => started.push(i)),
+    );
+    await vi.waitFor(() => expect(fetchImpl).toHaveBeenCalledTimes(limit));
+    while (finish.length > 0) {
+      finish.shift()!();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    }
+    await Promise.all(all);
+    expect(most).toBe(limit);
+    expect(fetchImpl.mock.calls.map(([url]) => String(url).slice(-1))).toEqual([
+      "0",
+      "1",
+      "2",
+      "3",
+      "4",
+    ]);
+    expect(started.sort()).toEqual([0, 1, 2, 3, 4]);
+  });
+
+  it("a tile no longer wanted leaves the queue without ever being asked for", async () => {
+    const queue = createLimiter(1);
+    let release = () => {};
+    const fetchImpl = vi.fn<typeof fetch>(
+      () => new Promise<Response>((resolve) => (release = () => resolve(picture()))),
+    );
+    const first = loadRegionalImagery(`${ASKED}0`, { fetchImpl, turn: queue });
+    const controller = new AbortController();
+    const second = loadRegionalImagery(`${ASKED}1`, {
+      fetchImpl,
+      turn: queue,
+      signal: controller.signal,
+    });
+    const third = loadRegionalImagery(`${ASKED}2`, { fetchImpl, turn: queue });
+    const dropped = expect(second).rejects.toMatchObject({ name: "AbortError" });
+    controller.abort();
+    await dropped;
+    release();
+    await first;
+    await vi.waitFor(() => expect(fetchImpl).toHaveBeenCalledTimes(2));
+    release();
+    await third;
+    expect(fetchImpl.mock.calls.map(([url]) => String(url).slice(-1))).toEqual(["0", "2"]);
+    // Already aborted on arrival: not even queued.
+    await expect(
+      loadRegionalImagery(ASKED, { fetchImpl, turn: queue, signal: controller.signal }),
+    ).rejects.toMatchObject({ name: "AbortError" });
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
   });
 });

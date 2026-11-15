@@ -9,24 +9,34 @@
  */
 import type { Page } from "@playwright/test";
 import { expect, test } from "./fixtures";
-import { BUILDING_TILE_URL, IMAGERY_BASE_URL, IMAGERY_DETAIL_URL } from "./helpers/mockMapData";
+import {
+  BUILDING_TILE_URL,
+  IMAGERY_BASE_URL,
+  IMAGERY_DETAIL_URL,
+  IMAGERY_REGIONAL_URL,
+} from "./helpers/mockMapData";
 
 /**
  * In the middle of building tile 14/2620/6331 (San Francisco): the next tile
  * east, which only the map itself would ever ask for, is 900 m away.
  */
 const PLACE = "lat=37.7968&lng=-122.4199&d=2026-06-21&t=1500";
+/** NE 36th Avenue, Portland, Oregon: well inside the city's own, sharper photos. */
+const PORTLAND = "lat=45.5385&lng=-122.6265&d=2026-06-21&t=1500";
+/** Vancouver, Washington: across the river, where those photos end. */
+const BY_PORTLAND = "lat=45.6387&lng=-122.6615&d=2026-06-21&t=1500";
 /** Sultanahmet, Istanbul: no aerial photos. */
 const ABROAD = "lat=41.0082&lng=28.9784&d=2026-06-21&t=1500";
 const STORAGE_KEY = "sun-home:map-satellite:v1";
 
 /** Counts what the page asks the picture services and the building tiles for, from now on. */
 function watchRequests(page: Page) {
-  const seen = { base: 0, detail: 0, buildings: 0 };
+  const seen = { base: 0, detail: 0, regional: 0, buildings: 0 };
   page.on("request", (request) => {
     const url = request.url();
     if (IMAGERY_BASE_URL.test(url)) seen.base++;
     else if (IMAGERY_DETAIL_URL.test(url)) seen.detail++;
+    else if (IMAGERY_REGIONAL_URL.test(url)) seen.regional++;
     else if (BUILDING_TILE_URL.test(url)) seen.buildings++;
   });
   return seen;
@@ -66,6 +76,9 @@ test.describe("Satellite view", () => {
       "href",
       "https://www.usgs.gov/programs/national-geospatial-program/national-map",
     );
+    // San Francisco has no regional photos: none are asked for or credited.
+    expect(seen.regional).toBe(0);
+    await expect(credit(page)).not.toContainText("Portland");
     // The photos are taken from straight above: the camera lies flat.
     await expect(tiltButton(page)).toHaveAttribute("aria-pressed", "false");
 
@@ -108,6 +121,57 @@ test.describe("Satellite view", () => {
     await app.press(satellite);
     await expect(satellite).toHaveAttribute("aria-pressed", "false");
     await expect.poll(() => seen.buildings).toBeGreaterThan(1);
+  });
+
+  test("in Portland the city's own photos are drawn, and the slow national detail is not asked for", async ({
+    app,
+    page,
+  }) => {
+    const seen = watchRequests(page);
+    await app.openPlace(PORTLAND);
+    const satellite = satelliteButton(page);
+    await expect(satellite).toBeEnabled({ timeout: 15_000 });
+    expect([seen.base, seen.detail, seen.regional]).toEqual([0, 0, 0]);
+
+    await app.press(satellite);
+    await expect(satellite).toHaveAttribute("aria-pressed", "true");
+    // The quick national base is still the first picture; the city's photos come over it.
+    await expect.poll(() => seen.base).toBeGreaterThan(0);
+    await expect.poll(() => seen.regional).toBeGreaterThan(0);
+    await expect(credit(page)).toContainText("Aerial photos: City of Portland, summer 2025");
+    await expect(
+      credit(page).getByRole("link", { name: "City of Portland, summer 2025" }),
+    ).toHaveAttribute("href", "https://www.portlandmaps.com");
+    await expect(credit(page)).toContainText("Imagery: USGS The National Map");
+    await page.waitForTimeout(1000);
+    expect(seen.detail, "the national detail is not needed under the city's photos").toBe(0);
+
+    // Off again: neither is asked for any more, and the city's credit goes.
+    await app.press(satellite);
+    await expect(satellite).toHaveAttribute("aria-pressed", "false");
+    await expect(credit(page)).not.toContainText("Portland");
+    await page.waitForTimeout(400);
+    const pictures = seen.base + seen.regional;
+    await page.waitForTimeout(800);
+    expect(seen.base + seen.regional).toBe(pictures);
+    expect(seen.detail).toBe(0);
+  });
+
+  test("where a region's photos end, the national detail still sharpens the picture", async ({
+    app,
+    page,
+  }) => {
+    const seen = watchRequests(page);
+    await app.openPlace(BY_PORTLAND);
+    const satellite = satelliteButton(page);
+    await expect(satellite).toBeEnabled({ timeout: 15_000 });
+    await app.press(satellite);
+    await expect(satellite).toHaveAttribute("aria-pressed", "true");
+    await expect.poll(() => seen.base).toBeGreaterThan(0);
+    await expect.poll(() => seen.detail).toBeGreaterThan(0);
+    // The city's tiles are asked for here as well (the mock has a picture for
+    // every one; the real service answers "no such tile" beyond its photos).
+    await expect.poll(() => seen.regional).toBeGreaterThan(0);
   });
 
   test("the 3D button leaves the photos for the tilted map", async ({ app, page }) => {
