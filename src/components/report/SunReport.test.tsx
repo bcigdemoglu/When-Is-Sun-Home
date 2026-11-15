@@ -132,9 +132,9 @@ describe("while the analysis is loading", () => {
 describe("section anchors", () => {
   it("exports the jump targets in reading order", () => {
     expect(REPORT_SECTIONS.map((section) => section.label)).toEqual([
+      "Sun hours",
       "Today",
       "Year",
-      "Sun hours",
       "Skyline",
       "About",
     ]);

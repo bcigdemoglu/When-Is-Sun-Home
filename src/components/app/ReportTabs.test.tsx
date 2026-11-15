@@ -76,13 +76,13 @@ describe("ReportTabs", () => {
     expect(screen.queryByRole("button", { current: "location" })).not.toBeInTheDocument();
 
     vi.useFakeTimers();
-    for (let i = 0; i < tops.length; i++) tops[i] -= 900; // scrolled: "Year" sits at 0
+    for (let i = 0; i < tops.length; i++) tops[i] -= 900; // scrolled: the second section sits at 0
     act(() => {
       scroller.dispatchEvent(new Event("scroll"));
       vi.advanceTimersByTime(50); // the next animation frame
     });
     vi.useRealTimers();
-    expect(screen.getByRole("button", { current: "location" })).toHaveTextContent("Year");
+    expect(screen.getByRole("button", { current: "location" })).toHaveTextContent("Today");
   });
 
   it("does nothing when the report is not on the page", async () => {
