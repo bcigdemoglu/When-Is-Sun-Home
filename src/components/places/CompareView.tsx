@@ -56,7 +56,7 @@ const COLUMN_WIDTH: Record<number, string> = {
 
 /** Narrow: one column per place. Wide: a first column of row labels, too. */
 const GRID =
-  "grid w-max min-w-full grid-cols-[repeat(var(--n),var(--col))] @2xl:w-full @2xl:grid-cols-[10rem_repeat(var(--n),minmax(0,1fr))]";
+  "grid w-max min-w-full grid-cols-[repeat(var(--n),var(--col))] @2xl:w-full @2xl:grid-cols-[13rem_repeat(var(--n),minmax(0,1fr))]";
 
 interface NumericRow {
   kind: "number";
@@ -242,7 +242,7 @@ export function CompareView({ entries, currentMonth, onBack, onOpen }: CompareVi
                 <div key={row.label} role="row" className="contents">
                   <div
                     role="rowheader"
-                    className={`col-span-full px-3 pt-3 text-[12px] leading-[16px] font-medium text-ink-2 @2xl:sticky @2xl:left-0 @2xl:z-[1] @2xl:col-span-1 @2xl:bg-surface @2xl:py-3 ${divider}`}
+                    className={`col-span-full px-3 pt-3 text-[12px] leading-[16px] font-medium text-ink-2 @2xl:sticky @2xl:left-0 @2xl:z-[1] @2xl:col-span-1 @2xl:bg-surface @2xl:pt-[15px] @2xl:pb-3 @2xl:pl-4 ${divider}`}
                   >
                     <span className="sticky left-3 inline-block">{row.label}</span>
                   </div>

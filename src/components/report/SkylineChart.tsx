@@ -39,6 +39,7 @@ import {
   hourMarks,
   maxSunAltitude,
   obstructionKind,
+  obstructionPhrase,
   outsideViewSpans,
   panoramaCenter,
   referenceDays,
@@ -94,16 +95,6 @@ interface Probe {
   /** Pixels from the left edge of the visible frame, for the floating tooltip. */
   frameX: number;
   floating: boolean;
-}
-
-/** "a building to the SSW reaching 31° up, 15 m away" */
-export function obstructionPhrase(obstruction: Obstruction): string {
-  const what = obstruction.kind === "terrain" ? "a hill" : "a building";
-  const distance =
-    obstruction.distanceM > 0 ? `, ${formatDistance(obstruction.distanceM)} away` : "";
-  return `${what} to the ${compassPoint(obstruction.azimuthDeg, 16)} reaching ${formatAngle(
-    obstruction.elevationDeg,
-  )} up${distance}`;
 }
 
 /**

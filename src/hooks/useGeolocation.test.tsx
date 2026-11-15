@@ -8,7 +8,9 @@ import {
   useGeolocation,
 } from "./useGeolocation";
 
-type Success = (position: { coords: { latitude: number; longitude: number; accuracy: number } }) => void;
+type Success = (position: {
+  coords: { latitude: number; longitude: number; accuracy: number };
+}) => void;
 type Failure = (error: { code: number }) => void;
 
 function stubGeolocation(run: (success: Success, failure: Failure) => void) {
@@ -69,9 +71,7 @@ describe("useGeolocation", () => {
   });
 
   it("still drops the pin for a rough fix, with a warning that says how rough", () => {
-    stubGeolocation((success) =>
-      success({ coords: { latitude: 1, longitude: 2, accuracy: 347 } }),
-    );
+    stubGeolocation((success) => success({ coords: { latitude: 1, longitude: 2, accuracy: 347 } }));
     const onLocated = vi.fn();
     const { result } = renderHook(() => useGeolocation(onLocated));
     act(() => result.current.locate());

@@ -138,7 +138,10 @@ function Option({
         trailingSlot ? "pr-1" : "pr-4"
       } min-w-0 ${active ? "bg-surface-2" : ""}`}
       onMouseDown={keepFocus}
-      onMouseMove={onHover}
+      // A mouse highlights what it points at; a finger does not leave a highlight behind.
+      onPointerMove={(event) => {
+        if (event.pointerType === "mouse") onHover?.();
+      }}
       onClick={onActivate}
     >
       {icon}
@@ -258,7 +261,7 @@ export function SearchResults({
         const option = (
           <Option
             {...shared}
-            trailingSlot={row.kind === "recent"}
+            trailingSlot
             icon={
               <RowIcon>{row.kind === "saved" ? <HeartIcon /> : <ClockIcon />}</RowIcon>
             }
@@ -273,9 +276,15 @@ export function SearchResults({
           />
         );
         if (row.kind === "saved") {
+          // The empty slot keeps the hours in one column with the recents below.
           return (
-            <div key={row.key} role="presentation" className="flex">
+            <div
+              key={row.key}
+              role="presentation"
+              className={`flex items-stretch ${shared.active ? "bg-surface-2" : ""}`}
+            >
               {option}
+              <span aria-hidden="true" className="mr-1 w-11 shrink-0" onClick={shared.onActivate} />
             </div>
           );
         }
@@ -381,9 +390,8 @@ export function SearchResults({
         </p>
       )}
       {suggestions === "error" && (
-        <p className="flex flex-wrap items-center gap-x-1.5 px-4 py-1 text-[15px] leading-[22px] text-ink-2">
-          <span>Couldn’t search — check your connection</span>
-          <span aria-hidden="true">·</span>
+        <div className="px-4 pt-3 text-[15px] leading-[22px] text-ink-2">
+          <p>Couldn’t search — check your connection.</p>
           <button
             type="button"
             className="-mx-2 h-11 rounded-lg px-2 font-medium text-accent"
@@ -392,7 +400,7 @@ export function SearchResults({
           >
             Try again
           </button>
-        </p>
+        </div>
       )}
     </>
   );

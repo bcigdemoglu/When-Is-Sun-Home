@@ -202,17 +202,15 @@ export function BottomSheet({
         )}
         {/* A direct child of the sheet, so it can stay stuck while all the content scrolls. */}
         <div ref={handleRef} className="sheet-handle">
-            <button
-              type="button"
-              className="flex h-7 w-full items-center justify-center"
-              aria-label={
-                next === "peek" ? "Collapse the sheet to show the map" : "Expand the sheet"
-              }
-              aria-expanded={detent !== "peek"}
-              onClick={() => snapTo(next)}
-            >
-              <span aria-hidden="true" className="h-[5px] w-9 rounded-full bg-line" />
-            </button>
+          <button
+            type="button"
+            className="flex h-7 w-full items-center justify-center"
+            aria-label={next === "peek" ? "Collapse the sheet to show the map" : "Expand the sheet"}
+            aria-expanded={detent !== "peek"}
+            onClick={() => snapTo(next)}
+          >
+            <span aria-hidden="true" className="h-[5px] w-9 rounded-full bg-line" />
+          </button>
         </div>
         <div ref={headerRef}>{header}</div>
         {children}

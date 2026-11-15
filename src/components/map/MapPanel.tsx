@@ -67,8 +67,8 @@ function BuildingNotice({
           className="h-3 w-3 shrink-0 rounded-full border-2 border-line border-t-accent motion-safe:animate-spin"
         />
         <span>
-          <strong className="font-semibold">Checking nearby buildings…</strong> Sun hours are
-          before shading until then.
+          <strong className="font-semibold">Checking nearby buildings…</strong> Sun hours are before
+          shading until then.
         </span>
       </p>
     );

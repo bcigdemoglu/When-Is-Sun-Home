@@ -3,6 +3,7 @@
  * up, the building silhouette, and the sun's paths over it. Pure functions.
  */
 import { classifySun, dayIndexFromDate } from "@/lib/analysis";
+import { compassPoint, formatAngle, formatDistance } from "./format";
 import {
   SunState,
   type HorizonProfile,
@@ -463,4 +464,14 @@ export function tallestObstruction(
     distanceM: blockerDistanceM[best],
     kind: obstructionKind(blockerIndex[best]),
   };
+}
+
+/** "a building to the SSW reaching 31° up, 15 m away" */
+export function obstructionPhrase(obstruction: Obstruction): string {
+  const what = obstruction.kind === "terrain" ? "a hill" : "a building";
+  const distance =
+    obstruction.distanceM > 0 ? `, ${formatDistance(obstruction.distanceM)} away` : "";
+  return `${what} to the ${compassPoint(obstruction.azimuthDeg, 16)} reaching ${formatAngle(
+    obstruction.elevationDeg,
+  )} up${distance}`;
 }

@@ -109,7 +109,7 @@ describe("ViewpointControls", () => {
     await user.click(up);
     expect(observer().heightM).toBe(floorToHeightM(3));
     expect(screen.getByText("3rd floor")).toBeInTheDocument();
-    expect(screen.getByText(/Eye level 7.5 m above ground/)).toBeInTheDocument();
+    expect(screen.getByText(/Eye level 7.5 m up/)).toBeInTheDocument();
     expect(down).toBeEnabled();
     await user.click(down);
     expect(observer().heightM).toBe(floorToHeightM(2));

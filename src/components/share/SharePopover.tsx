@@ -26,6 +26,15 @@ interface SharePopoverProps {
   onClose(options: { restoreFocus: boolean }): void;
 }
 
+/**
+ * The Popover API (top layer). Checked before the attribute is used at all:
+ * an engine that knows the `[popover]` style rule but not `showPopover()`
+ * would leave the panel hidden for good. (This component only ever renders
+ * in the browser, after a click.)
+ */
+const SUPPORTS_POPOVER =
+  typeof HTMLElement !== "undefined" && typeof HTMLElement.prototype.showPopover === "function";
+
 const FOCUSABLE =
   'button:not([disabled]), input:not([disabled]), a[href], [tabindex]:not([tabindex="-1"])';
 
@@ -79,9 +88,7 @@ export function SharePopover({ getAnchor, place, label, summary, onClose }: Shar
     if (!panel) return;
     // Top layer where available; harmless to skip elsewhere.
     try {
-      if (typeof panel.showPopover === "function" && !panel.matches(":popover-open")) {
-        panel.showPopover();
-      }
+      if (SUPPORTS_POPOVER && !panel.matches(":popover-open")) panel.showPopover();
     } catch {
       // not connected / unsupported selector: the fixed box still works
     }
@@ -184,7 +191,7 @@ export function SharePopover({ getAnchor, place, label, summary, onClose }: Shar
     <div
       ref={panelRef}
       // "manual": we do the dismissing ourselves, the same way in every browser.
-      popover="manual"
+      popover={SUPPORTS_POPOVER ? "manual" : undefined}
       role="dialog"
       aria-modal="false"
       aria-labelledby={titleId}

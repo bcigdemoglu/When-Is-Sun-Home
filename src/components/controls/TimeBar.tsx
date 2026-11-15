@@ -50,7 +50,8 @@ export function sunStateLabel(state: SunStateCode | null): { text: string; tone:
 }
 
 function StateIcon({ state }: { state: SunStateCode | null }) {
-  if (state === SunState.Sun) return <SunIcon className="text-accent-fill" width={18} height={18} />;
+  if (state === SunState.Sun)
+    return <SunIcon className="text-accent-fill" width={18} height={18} />;
   if (state === SunState.Night) return <MoonIcon width={18} height={18} />;
   if (state === null) return null;
   return <ShadeIcon width={18} height={18} />;
@@ -351,7 +352,9 @@ export function TimeBar({
                 className="flex min-h-12 w-full items-center justify-between gap-3 rounded-xl px-3 text-left hover:bg-surface-2"
                 onClick={() => choose(row.date)}
               >
-                <span className={`type-body ${row.current ? "font-semibold text-ink" : "text-ink"}`}>
+                <span
+                  className={`type-body ${row.current ? "font-semibold text-ink" : "text-ink"}`}
+                >
                   {row.label}
                 </span>
                 <span className="type-label text-ink-2 tabular-nums">{row.detail}</span>

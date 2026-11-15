@@ -14,7 +14,10 @@ const FAB =
 interface MapControlsProps {
   /** "fabs": locate + 2D/3D (+ north when rotated), for phones. "full": also zoom, for desktop. */
   variant: "fabs" | "full";
-  /** Whether a place is pinned (shows "centre on the pin"). */
+  /**
+   * Whether a place is pinned. Without one only zooming makes sense here: the
+   * start screen has its own, bigger "Use my location".
+   */
   hasPlace: boolean;
   className?: string;
 }
@@ -98,37 +101,41 @@ export function MapControls({ variant, hasPlace, className = "" }: MapControlsPr
           <CrosshairIcon />
         </button>
       )}
-      <button
-        type="button"
-        aria-label={locating ? "Finding your location" : "Use my location"}
-        aria-busy={locating}
-        disabled={locating}
-        className={FAB}
-        onClick={() => {
-          locate();
-        }}
-      >
-        {locating ? (
-          <span
-            aria-hidden="true"
-            className="h-5 w-5 rounded-full border-2 border-line border-t-ink motion-safe:animate-spin"
-          />
-        ) : (
-          <LocateIcon />
-        )}
-      </button>
-      <button
-        type="button"
-        aria-pressed={tilted}
-        aria-label={
-          tilted ? "Tilted 3D view. Switch to flat 2D" : "Flat 2D view. Switch to tilted 3D"
-        }
-        disabled={!ready}
-        className={`${FAB} text-[13px] font-semibold ${tilted ? "border-ink! bg-ink! text-surface!" : ""}`}
-        onClick={() => send({ type: "tilt", tilted: !tilted })}
-      >
-        3D
-      </button>
+      {hasPlace && (
+        <button
+          type="button"
+          aria-label={locating ? "Finding your location" : "Use my location"}
+          aria-busy={locating}
+          disabled={locating}
+          className={FAB}
+          onClick={() => {
+            locate();
+          }}
+        >
+          {locating ? (
+            <span
+              aria-hidden="true"
+              className="h-5 w-5 rounded-full border-2 border-line border-t-ink motion-safe:animate-spin"
+            />
+          ) : (
+            <LocateIcon />
+          )}
+        </button>
+      )}
+      {hasPlace && (
+        <button
+          type="button"
+          aria-pressed={tilted}
+          aria-label={
+            tilted ? "Tilted 3D view. Switch to flat 2D" : "Flat 2D view. Switch to tilted 3D"
+          }
+          disabled={!ready}
+          className={`${FAB} text-[13px] font-semibold ${tilted ? "border-ink! bg-ink! text-surface!" : ""}`}
+          onClick={() => send({ type: "tilt", tilted: !tilted })}
+        >
+          3D
+        </button>
+      )}
     </div>
   );
 }

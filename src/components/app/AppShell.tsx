@@ -30,12 +30,7 @@ import { formatCoordinates, zoneAbbreviation, zoneLabel } from "@/components/sha
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Dialog } from "@/components/ui/Dialog";
-import {
-  ArrowLeftIcon,
-  ChevronDownIcon,
-  PlacesIcon,
-  ViewpointIcon,
-} from "@/components/ui/icons";
+import { ArrowLeftIcon, ChevronDownIcon, PlacesIcon, ViewpointIcon } from "@/components/ui/icons";
 import { showToast } from "@/components/ui/toast";
 import { Toaster } from "@/components/ui/Toaster";
 import { readLegacyPlace } from "@/hooks/legacyPlace";
@@ -46,13 +41,7 @@ import { useNow } from "@/hooks/useNow";
 import { usePacedValue } from "@/hooks/usePacedValue";
 import { useSunAnalysis } from "@/hooks/useSunAnalysis";
 import { summarizeYear } from "@/lib/analysis";
-import {
-  selectObserver,
-  selectPlace,
-  useHydrateSettings,
-  useSettings,
-  useUrlSync,
-} from "@/state";
+import { selectObserver, selectPlace, useHydrateSettings, useSettings, useUrlSync } from "@/state";
 import {
   hydratePlaces,
   placeEntryId,
@@ -84,6 +73,18 @@ const ROOT = "relative h-dvh overflow-hidden lg:grid lg:grid-cols-[440px_minmax(
 const MAP_AREA = "fixed inset-0 lg:relative lg:inset-auto lg:col-start-2 lg:row-start-1 lg:h-dvh";
 const PANEL =
   "relative z-10 col-start-1 row-start-1 flex h-dvh min-w-0 flex-col border-r border-line bg-page";
+
+/**
+ * Hand over to the search experience, whichever form it has right now: a text
+ * field to focus (desktop), or a pill to press that opens the full-screen
+ * search (phones).
+ */
+function openSearch(container: HTMLElement | null): void {
+  if (!container) return;
+  const field = container.querySelector<HTMLInputElement>("input");
+  if (field) field.focus();
+  else container.querySelector<HTMLButtonElement>("button")?.click();
+}
 
 function selectDateTime(date: string, minuteOfDay?: number): void {
   const settings = useSettings.getState();
@@ -229,9 +230,7 @@ function Workspace() {
     sheetRef.current?.snapTo("peek");
   }, [lat, lng]);
 
-  const focusSearch = () => {
-    searchRef.current?.querySelector<HTMLInputElement>("input")?.focus();
-  };
+  const focusSearch = () => openSearch(searchRef.current);
   const onSelect = (selection: PlaceSelection) => {
     openSelection(selection);
     setPlacesOpen(false);
@@ -265,7 +264,7 @@ function Workspace() {
       if (!action) return;
       if (action.type === "focus-search") {
         event.preventDefault();
-        searchRef.current?.querySelector<HTMLInputElement>("input")?.focus();
+        openSearch(searchRef.current);
       } else if (minuteRef.current !== null) {
         event.preventDefault();
         useSettings.getState().setMinuteOfDay(shiftMinute(minuteRef.current, action.deltaMinutes));
@@ -518,9 +517,8 @@ function Workspace() {
               halfRatio={null}
               onSettle={onSheetSettle}
               onPeekChange={setPeek}
-              fabs={<MapControls variant="fabs" hasPlace={false} />}
               header={
-                <main className="px-5 pt-1 pb-5">
+                <main className="px-5 pt-1 pb-[calc(1.25rem+var(--safe-bottom))]">
                   <StartIntro onEnterAddress={focusSearch} />
                 </main>
               }
@@ -541,7 +539,7 @@ function Workspace() {
           <Dialog open={viewpointOpen} onClose={() => setViewpointOpen(false)} title="Viewpoint">
             {viewpoint}
           </Dialog>
-          <Dialog open={placesOpen} onClose={() => setPlacesOpen(false)} title="Saved places">
+          <Dialog open={placesOpen} onClose={() => setPlacesOpen(false)} title="Places" hideTitle>
             <SavedPlaces activeId={activeId} onOpen={onOpenEntry} />
           </Dialog>
         </>
@@ -553,13 +551,11 @@ function Workspace() {
 /** Desktop: the saved places take over the panel, with a way back. */
 function PlacesView({ onBack, children }: { onBack(): void; children: ReactNode }) {
   return (
-    <section aria-label="Saved places">
-      <div className="mb-3 flex items-center gap-1">
-        <Button variant="ghost" iconOnly aria-label="Back to the report" onClick={onBack}>
-          <ArrowLeftIcon />
-        </Button>
-        <h1 className="type-title text-ink">Saved places</h1>
-      </div>
+    <section aria-label="Places">
+      <Button variant="ghost" className="-ml-3 mb-2" onClick={onBack}>
+        <ArrowLeftIcon />
+        Back
+      </Button>
       {children}
     </section>
   );

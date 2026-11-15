@@ -99,12 +99,7 @@ export function usePlayback(input: PlaybackInput): Playback {
         const minute = Math.floor(minutePosition);
         if (minute !== written.minute) write(start.date, minute);
       } else {
-        dayPosition = advanceDayIndex(
-          dayPosition,
-          elapsed,
-          yearLoopSpeed(dayCount),
-          dayCount,
-        );
+        dayPosition = advanceDayIndex(dayPosition, elapsed, yearLoopSpeed(dayCount), dayCount);
         const day = Math.min(dayCount - 1, Math.floor(dayPosition));
         if (day !== writtenDay) {
           writtenDay = day;

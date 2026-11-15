@@ -103,7 +103,7 @@ function RenameDialog({ entryId, onClose }: RenameDialogProps) {
           autoComplete="off"
           autoCapitalize="sentences"
           placeholder="Elm St backyard"
-          className="mt-3 h-12 w-full rounded-xl border border-line bg-page px-3.5 text-[16px] leading-[22px] text-ink outline-none placeholder:text-ink-3 focus:border-ink-3"
+          className="mt-3 h-12 w-full rounded-xl border border-line bg-page px-3.5 text-[16px] leading-[22px] text-ink placeholder:text-ink-3 focus:border-ink-2"
           value={text}
           onChange={(event) => setText(event.currentTarget.value)}
         />

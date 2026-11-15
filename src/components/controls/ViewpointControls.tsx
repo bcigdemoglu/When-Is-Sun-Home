@@ -140,7 +140,7 @@ export function ViewpointControls({ pinOnBuilding, pinBuildingHeightM }: Viewpoi
               <div className="min-w-0">
                 <h3 className="text-[15px] leading-[22px] font-medium text-ink">Floor</h3>
                 <p className="type-footnote text-ink-2 tabular-nums">
-                  Eye level {formatMeters(heightM)} above ground
+                  Eye level {formatMeters(heightM)} up
                 </p>
               </div>
               <div className="flex items-center gap-1" role="group" aria-label="Floor">

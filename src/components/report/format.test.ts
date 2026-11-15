@@ -8,6 +8,7 @@ import {
   formatAngle,
   formatBearing,
   formatClock,
+  formatClockApprox,
   formatClockRange,
   formatCount,
   formatDate,
@@ -16,6 +17,8 @@ import {
   formatHours,
   formatHourTick,
   formatPercent,
+  formatRangeList,
+  joinList,
   parseIsoDate,
   toIsoDate,
   weekdayOf,
@@ -157,5 +160,56 @@ describe("directions, angles and distances", () => {
     expect(formatDistance(41.6)).toBe("42 m");
     expect(formatDistance(1234)).toBe("1.2 km");
     expect(formatDistance(-1)).toBe("");
+  });
+});
+
+describe("approximate clock times", () => {
+  it("rounds to the half hour and drops :00", () => {
+    expect(formatClockApprox(9 * 60 + 11, true)).toBe("9 AM");
+    expect(formatClockApprox(17 * 60 + 25, true)).toBe("5:30 PM");
+    expect(formatClockApprox(13 * 60 + 43, true)).toBe("1:30 PM");
+    expect(formatClockApprox(12 * 60 + 10, true)).toBe("noon");
+    expect(formatClockApprox(1430, true)).toBe("midnight");
+  });
+
+  it("keeps the 24-hour form whole", () => {
+    expect(formatClockApprox(9 * 60 + 11, false)).toBe("09:00");
+    expect(formatClockApprox(12 * 60 + 10, false)).toBe("12:00");
+    expect(formatClockApprox(17 * 60 + 25, false)).toBe("17:30");
+  });
+
+  it("takes another step", () => {
+    expect(formatClockApprox(9 * 60 + 11, true, 15)).toBe("9:15 AM");
+  });
+});
+
+describe("lists", () => {
+  it("joins words", () => {
+    expect(joinList([])).toBe("");
+    expect(joinList(["June"])).toBe("June");
+    expect(joinList(["June", "July"])).toBe("June and July");
+    expect(joinList(["May", "June", "July"])).toBe("May, June and July");
+  });
+
+  it("writes clock ranges on one line", () => {
+    const ranges = [
+      { startMinute: 550, endMinute: 760 },
+      { startMinute: 900, endMinute: 1000 },
+    ];
+    expect(formatRangeList([], true)).toBe("");
+    expect(formatRangeList(ranges, true)).toBe("9:10 AM \u2013 12:40 PM, 3:00 PM \u2013 4:40 PM");
+    expect(formatRangeList(ranges, false)).toBe("09:10 \u2013 12:40, 15:00 \u2013 16:40");
+    expect(formatRangeList(ranges, true, { max: 1 })).toBe("9:10 AM \u2013 12:40 PM, +1 more");
+  });
+
+  it("writes the night as until / from", () => {
+    const night = [
+      { startMinute: 0, endMinute: 414 },
+      { startMinute: 1014, endMinute: 1440 },
+    ];
+    expect(formatRangeList(night, true, { openEnded: true })).toBe("until 6:54 AM, from 4:54 PM");
+    // Without the flag the edges of the day are ordinary clock times.
+    expect(formatRangeList(night, true)).toBe("12:00 AM \u2013 6:54 AM, 4:54 PM \u2013 midnight");
+    expect(formatRangeList([{ startMinute: 0, endMinute: 1440 }], true)).toBe("all day");
   });
 });

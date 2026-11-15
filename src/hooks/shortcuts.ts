@@ -10,9 +10,7 @@
  * text field, a slider, a radio group, the map, an open dialog.
  */
 
-export type ShortcutAction =
-  | { type: "time"; deltaMinutes: number }
-  | { type: "focus-search" };
+export type ShortcutAction = { type: "time"; deltaMinutes: number } | { type: "focus-search" };
 
 export interface KeyPress {
   key: string;

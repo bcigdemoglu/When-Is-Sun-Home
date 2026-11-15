@@ -212,9 +212,9 @@ export default function ShareHarnessPage() {
             </span>
           </p>
           {decoded && (
-            <pre className="mt-2 overflow-x-auto rounded-xl bg-surface-2 p-3 font-mono text-[11px] leading-4 text-ink-2">
-              {JSON.stringify(decoded, null, 1)}
-            </pre>
+            <p className="mt-2 rounded-xl bg-surface-2 p-3 font-mono text-[11px] leading-4 break-all text-ink-2">
+              {JSON.stringify(decoded)}
+            </p>
           )}
         </Field>
 

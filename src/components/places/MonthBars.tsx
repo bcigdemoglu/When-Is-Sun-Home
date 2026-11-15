@@ -64,7 +64,7 @@ export function MonthBars({
                   ? "fill-state-sun-line"
                   : "fill-state-sun"
             }
-            opacity={hours <= 0 ? 0.45 : emphasised ? 1 : 0.6}
+            opacity={hours <= 0 ? 0.45 : emphasised ? 1 : 0.7}
           />
         );
       })}

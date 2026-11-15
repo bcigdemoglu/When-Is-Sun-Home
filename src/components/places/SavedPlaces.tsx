@@ -103,7 +103,7 @@ function NoteEditor({ label, initial, onSave, onCancel }: NoteEditorProps) {
         rows={2}
         maxLength={PLACES_LIMITS.noteMaxLength}
         placeholder="Lovely garden, noisy road…"
-        className="block w-full resize-none rounded-xl border border-line bg-page px-3 py-2.5 text-[16px] leading-[22px] text-ink outline-none placeholder:text-ink-3 focus:border-ink-3"
+        className="block w-full resize-none rounded-xl border border-line bg-page px-3 py-2.5 text-[16px] leading-[22px] text-ink placeholder:text-ink-3 focus:border-ink-2"
         value={text}
         onChange={(event) => setText(event.currentTarget.value)}
         onKeyDown={(event) => {
@@ -389,6 +389,10 @@ export function SavedPlaces({ activeId, onOpen, className = "" }: SavedPlacesPro
   const [noteFor, setNoteFor] = useState<string | null>(null);
   const [announcement, setAnnouncement] = useState("");
 
+  const baseId = useId();
+  const savedTitleId = `${baseId}-saved`;
+  const recentTitleId = `${baseId}-recent`;
+
   const minuteClock = useMinuteClock();
   const currentMonth = minuteClock === null ? null : new Date(minuteClock * 60_000).getMonth();
 
@@ -438,10 +442,10 @@ export function SavedPlaces({ activeId, onOpen, className = "" }: SavedPlacesPro
   };
 
   return (
-    <div className={className}>
-      <section aria-labelledby="saved-places-title">
+    <div className={`@container ${className}`}>
+      <section aria-labelledby={savedTitleId}>
         <div className="flex min-h-11 items-center gap-2">
-          <h2 id="saved-places-title" className="text-[17px] leading-[22px] font-semibold text-ink">
+          <h2 id={savedTitleId} className="text-[17px] leading-[22px] font-semibold text-ink">
             Saved places
           </h2>
           {saved.length > 0 && (
@@ -484,7 +488,7 @@ export function SavedPlaces({ activeId, onOpen, className = "" }: SavedPlacesPro
             </p>
           </div>
         ) : isEditing ? (
-          <ul className="flex flex-col gap-2">
+          <ul className="grid grid-cols-1 gap-2 @3xl:grid-cols-2">
             {saved.map((entry, index) => (
               <EditRow
                 key={entry.id}
@@ -502,7 +506,7 @@ export function SavedPlaces({ activeId, onOpen, className = "" }: SavedPlacesPro
                 Tick two or more to compare them side by side.
               </p>
             )}
-            <ul className="flex flex-col gap-2">
+            <ul className="grid grid-cols-1 gap-2 @3xl:grid-cols-2">
               {saved.map((entry) => (
                 <SavedRow
                   key={entry.id}
@@ -523,10 +527,10 @@ export function SavedPlaces({ activeId, onOpen, className = "" }: SavedPlacesPro
       </section>
 
       {recent.length > 0 && (
-        <section aria-labelledby="recent-places-title" className="mt-5">
+        <section aria-labelledby={recentTitleId} className="mt-5">
           <div className="flex min-h-11 items-center gap-2">
             <h2
-              id="recent-places-title"
+              id={recentTitleId}
               className="flex-1 text-[17px] leading-[22px] font-semibold text-ink"
             >
               Recent
@@ -540,7 +544,7 @@ export function SavedPlaces({ activeId, onOpen, className = "" }: SavedPlacesPro
               Clear
             </button>
           </div>
-          <ul className="divide-y divide-line rounded-card border border-line bg-surface">
+          <ul className="divide-y divide-line rounded-card border border-line bg-surface @3xl:max-w-[calc(50%-4px)]">
             {recent.map((entry) => (
               <RecentRow
                 key={entry.id}

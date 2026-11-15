@@ -39,22 +39,27 @@ export function ShareButton({ place, label, summary, variant, className = "" }: 
     [getButton],
   );
 
-  const shareNatively = async () => {
+  /** What the system share sheet gets: words about the place, and the link. */
+  const nativeShareData = (): ShareData & { url: string } => {
     const settings = pickSettings(useSettings.getState());
     const url = shareLink({
       settings,
       place,
       label,
       summary,
-      // No sheet to ask in: pin the day and time exactly when the user has.
+      // No sheet of ours to ask in: pin the day and time exactly when the user has.
       includeDateTime: !isLiveView(settings),
       base: window.location.href,
     });
+    return { ...shareText(label, summary), url };
+  };
+
+  const shareNatively = async (data: ShareData & { url: string }) => {
     try {
-      await navigator.share({ ...shareText(label, summary), url });
+      await navigator.share(data);
     } catch (error) {
       if (isAbortError(error)) return; // the user changed their mind
-      if (await copyText(url)) showToast("Link copied");
+      if (await copyText(data.url)) showToast("Link copied");
       else setOpen(true); // last resort: show the link to copy by hand
     }
   };
@@ -66,7 +71,8 @@ export function ShareButton({ place, label, summary, variant, className = "" }: 
     }
     // Decided at click time, not on render: it cannot differ between server
     // and client, and it follows a tablet that gains or loses a mouse.
-    if (canShareNatively()) void shareNatively();
+    const data = nativeShareData();
+    if (canShareNatively(data)) void shareNatively(data);
     else setOpen(true);
   };
 

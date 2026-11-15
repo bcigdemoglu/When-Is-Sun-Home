@@ -15,16 +15,18 @@ export interface KeyDates {
  * usual calendar dates, which is as exact as "equal day and night" gets.
  */
 export function keyDates(year: Pick<YearAnalysis, "year" | "days">): KeyDates {
-  let longest = year.days[0];
-  let shortest = year.days[0];
-  for (const day of year.days) {
-    if (day.daylightMinutes > longest.daylightMinutes) longest = day;
-    if (day.daylightMinutes < shortest.daylightMinutes) shortest = day;
-  }
   const y = String(year.year).padStart(4, "0");
+  // Day lengths come from a coarse grid, so around a solstice many days tie:
+  // the middle of the run of extreme days is the solstice itself.
+  const middleOfExtreme = (sign: 1 | -1): string | null => {
+    let extreme = -Infinity;
+    for (const day of year.days) extreme = Math.max(extreme, sign * day.daylightMinutes);
+    const tied = year.days.filter((day) => sign * day.daylightMinutes === extreme);
+    return tied.length > 0 ? tied[Math.floor((tied.length - 1) / 2)].date : null;
+  };
   return {
-    longest: longest ? longest.date : `${y}-06-21`,
-    shortest: shortest ? shortest.date : `${y}-12-21`,
+    longest: middleOfExtreme(1) ?? `${y}-06-21`,
+    shortest: middleOfExtreme(-1) ?? `${y}-12-21`,
     marchEquinox: `${y}-03-20`,
     septemberEquinox: `${y}-09-22`,
   };

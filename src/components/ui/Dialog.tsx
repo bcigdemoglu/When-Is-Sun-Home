@@ -78,15 +78,22 @@ export function Dialog({
     >
       {open && (
         <div className="px-4 pt-2 pb-4 lg:px-5 lg:pt-4 lg:pb-5">
-          <div aria-hidden="true" className="mx-auto mb-2 h-[5px] w-9 rounded-full bg-line lg:hidden" />
-          <div className={`flex items-center justify-between gap-3 ${hideTitle ? "sr-only" : "mb-2"}`}>
-            <h2 id={titleId} className="type-title text-ink">
+          <div
+            aria-hidden="true"
+            className="mx-auto mb-2 h-[5px] w-9 rounded-full bg-line lg:hidden"
+          />
+          <div
+            className={`flex items-center gap-3 ${hideTitle ? "justify-end" : "mb-2 justify-between"}`}
+          >
+            <h2 id={titleId} className={hideTitle ? "sr-only" : "type-title text-ink"}>
               {title}
             </h2>
             <button
               type="button"
               aria-label="Close"
-              className="-mr-2 flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-ink-2 hover:bg-surface-2 hover:text-ink"
+              className={`-mr-2 flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-ink-2 hover:bg-surface-2 hover:text-ink ${
+                hideTitle ? "-mb-9 relative z-10" : ""
+              }`}
               onClick={onClose}
             >
               <CloseIcon />

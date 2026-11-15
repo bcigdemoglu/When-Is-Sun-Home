@@ -44,6 +44,7 @@ function copyWithSelection(text: string): boolean {
   area.style.cssText = "position:fixed;top:0;left:-9999px;opacity:0;font-size:16px;";
   document.body.appendChild(area);
   try {
+    area.focus({ preventScroll: true });
     area.select();
     area.setSelectionRange(0, text.length);
     return document.execCommand("copy");

@@ -36,6 +36,12 @@ describe("keyDates", () => {
     expect(dates.shortest).toBe("2026-06-21");
   });
 
+  it("takes the middle of a run of equally long days (the grid is coarse)", () => {
+    const days = [];
+    for (let d = 10; d <= 30; d++) days.push(day(`2026-06-${d}`, d >= 14 && d <= 28 ? 885 : 880));
+    expect(keyDates({ year: 2026, days }).longest).toBe("2026-06-21");
+  });
+
   it("falls back to calendar dates without data", () => {
     expect(keyDates({ year: 2027, days: [] })).toMatchObject({
       longest: "2027-06-21",

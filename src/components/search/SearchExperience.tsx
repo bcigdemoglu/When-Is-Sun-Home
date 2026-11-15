@@ -285,7 +285,7 @@ function SearchOverlay({
         >
           <ArrowLeftIcon width={24} height={24} />
         </button>
-        <div className="flex h-13 min-w-0 flex-1 items-center rounded-full border border-line bg-surface focus-within:border-ink-3">
+        <div className="flex h-13 min-w-0 flex-1 items-center rounded-full border border-line bg-surface has-[input:focus]:border-ink-2">
           <input
             ref={inputRef}
             type="text"
@@ -302,7 +302,7 @@ function SearchOverlay({
             autoCapitalize="words"
             spellCheck={false}
             placeholder={PLACEHOLDER}
-            className="h-full min-w-0 flex-1 rounded-full bg-transparent pr-2 pl-5 text-[16px] leading-[22px] text-ink outline-none placeholder:text-ink-3"
+            className="h-full min-w-0 flex-1 rounded-full bg-transparent pr-2 pl-5 text-[16px] leading-[22px] text-ink outline-none! placeholder:text-ink-3"
             value={value}
             onChange={(event) => setDraft(event.currentTarget.value)}
             onKeyDown={(event) => {
@@ -443,7 +443,7 @@ function PanelSearch({
         if (!event.currentTarget.contains(event.relatedTarget)) close(false);
       }}
     >
-      <div className="flex h-12 items-center rounded-xl border border-line bg-surface focus-within:border-ink-3">
+      <div className="flex h-12 items-center rounded-xl border border-line bg-surface has-[input:focus-visible]:outline-2 has-[input:focus-visible]:outline-offset-1 has-[input:focus-visible]:outline-accent">
         <SearchIcon className="pointer-events-none ml-3.5 shrink-0 text-ink-2" />
         <input
           ref={inputRef}
@@ -462,7 +462,7 @@ function PanelSearch({
           autoCapitalize="words"
           spellCheck={false}
           placeholder={PLACEHOLDER}
-          className={`h-full min-w-0 flex-1 truncate bg-transparent pr-2 pl-3 text-[15px] leading-[22px] text-ink outline-none placeholder:text-ink-3 ${
+          className={`h-full min-w-0 flex-1 truncate bg-transparent pr-2 pl-3 text-[15px] leading-[22px] text-ink outline-none! placeholder:text-ink-3 ${
             showingPlace ? "font-medium" : ""
           }`}
           value={value}

@@ -65,7 +65,9 @@ export function Slider({
         </label>
         {labelExtra}
         {readout !== undefined && (
-          <span className="ml-auto text-[15px] leading-[22px] text-ink-2 tabular-nums">{readout}</span>
+          <span className="ml-auto text-[15px] leading-[22px] text-ink-2 tabular-nums">
+            {readout}
+          </span>
         )}
       </div>
       <input

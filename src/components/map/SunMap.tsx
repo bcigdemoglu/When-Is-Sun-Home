@@ -385,9 +385,7 @@ export default function SunMap({
         maxPitch={70}
         onClick={onClick}
         onDblClick={clickGate.cancel}
-        onPitchEnd={(event) =>
-          useMapUi.getState().report({ tilted: event.viewState.pitch > 5 })
-        }
+        onPitchEnd={(event) => useMapUi.getState().report({ tilted: event.viewState.pitch > 5 })}
         onRotateEnd={(event) =>
           useMapUi.getState().report({ bearing: Math.round(event.viewState.bearing) })
         }
@@ -541,7 +539,6 @@ export default function SunMap({
           </Marker>
         )}
       </MapGL>
-
     </div>
   );
 }
