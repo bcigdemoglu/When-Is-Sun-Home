@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { parseListingLink, type ListingLink } from "@/lib/geocode/listingLink";
 import type { PlaceSuggestion } from "@/lib/geocode/photon";
 import type { PlaceEntry } from "@/state/places";
 import {
@@ -9,6 +10,8 @@ import {
   firstMatch,
   flattenRows,
   highlightParts,
+  listingNotFoundNote,
+  noAddressMessage,
   resultCountLabel,
 } from "./rows";
 
@@ -192,5 +195,114 @@ describe("submit mode", () => {
     expect(firstMatch(sections, "zzz street")).toBeNull();
     expect(resultCountLabel(sections)).toBe("0 results");
     expect(firstMatch(build("oak ave"), "oak ave")).toMatchObject({ kind: "saved" });
+  });
+});
+
+describe("a listing link in the field", () => {
+  const ZILLOW =
+    "https://www.zillow.com/homedetails/2220-Clay-St-San-Francisco-CA-94115/15075413_zpid/";
+  const ADDRESS = "2220 Clay St San Francisco, CA 94115";
+  const listing = parseListingLink(ZILLOW) as ListingLink;
+  const HOUSE: PlaceSuggestion = {
+    id: "W9",
+    lat: 37.79143,
+    lng: -122.43044,
+    name: "2220 Clay Street, San Francisco",
+    label: "2220 Clay Street",
+    detail: "San Francisco",
+  };
+  const sectionsFor = (input: Partial<Parameters<typeof buildSections>[0]>) =>
+    buildSections({
+      query: ZILLOW,
+      saved: SAVED,
+      recent: RECENT,
+      suggestions: [],
+      listing,
+      ...input,
+    });
+
+  it("shows nothing of its own while the address is being looked up", () => {
+    expect(sectionsFor({}).map((section) => section.id)).toEqual(["actions"]);
+  });
+
+  it("puts the results under a heading that says where they are from, with the address", () => {
+    const sections = sectionsFor({ suggestions: [HOUSE], listingSettled: true });
+    expect(sections.map((section) => section.id)).toEqual(["actions", "suggestions"]);
+    expect(sections[1]).toMatchObject({ title: "From this Zillow link", note: ADDRESS });
+    // The results, then the way to change the address as text.
+    expect(sections[1].rows).toEqual([
+      { kind: "suggestion", key: "suggestion:W9", suggestion: HOUSE, coordinates: false },
+      { kind: "edit", key: "edit", address: ADDRESS },
+    ]);
+  });
+
+  it("lists every result once, including a place that is already saved", () => {
+    // Saved places are matched against the field's text — a link matches none,
+    // so a result at a saved spot must not be dropped as “already listed”.
+    const atSavedSpot: PlaceSuggestion = { ...HOUSE, id: "W10", lat: 10, lng: 1 };
+    const rows = sectionsFor({
+      suggestions: [atSavedSpot, HOUSE, HOUSE],
+      listingSettled: true,
+    })[1].rows;
+    expect(rows.map((row) => row.key)).toEqual(["suggestion:W10", "suggestion:W9", "edit"]);
+  });
+
+  it("says so when nothing was found, with the address shown and one row to edit it", () => {
+    const sections = sectionsFor({ listingSettled: true });
+    expect(sections[1]).toMatchObject({
+      id: "suggestions",
+      title: "From this Zillow link",
+      note: listingNotFoundNote(ADDRESS),
+    });
+    expect(sections[1].note).toContain(`“${ADDRESS}”`);
+    expect(sections[1].rows).toEqual([{ kind: "edit", key: "edit", address: ADDRESS }]);
+    // Not a place: Enter and the result count skip it.
+    expect(firstMatch(sections, ZILLOW)).toBeNull();
+    expect(resultCountLabel(sections)).toBe("0 results");
+  });
+
+  it("has no rows of its own for a link without an address (the list says why instead)", () => {
+    const zpidOnly = parseListingLink("https://www.zillow.com/homedetails/15075413_zpid/");
+    expect(
+      sectionsFor({ listing: zpidOnly, listingSettled: true }).map((section) => section.id),
+    ).toEqual(["actions"]);
+  });
+
+  it("offers to search for the address — not for the link — while suggestions cannot arrive live", () => {
+    const sections = sectionsFor({ awaitingSubmit: true });
+    expect(sections[1]).toMatchObject({
+      id: "submit",
+      title: "From this Zillow link",
+      note: SUBMIT_MODE_NOTE,
+      rows: [{ kind: "submit", key: "submit", query: ADDRESS }],
+    });
+  });
+
+  it("words each kind of link without an address its own way, always with the way out", () => {
+    const message = (text: string) => {
+      const link = parseListingLink(text);
+      if (link?.kind !== "no-address") throw new Error(`has an address: ${text}`);
+      return noAddressMessage(link);
+    };
+    expect(message("https://www.zillow.com/homedetails/15075413_zpid/")).toBe(
+      "This Zillow link doesn’t include the address. Copy the link from the listing’s Share button, or type the address.",
+    );
+    expect(message("https://redf.in/WW4UwK")).toMatch(
+      /^This Redfin short link doesn’t show the address\. .* or type the address\.$/,
+    );
+    expect(message("https://www.zillow.com/b/-Ck8zhs")).toMatch(
+      /^This Zillow link is for a whole building .* Type the building’s street address instead\.$/,
+    );
+  });
+});
+
+describe("the clipboard row", () => {
+  it("comes third, after “Choose on the map”, and only where the clipboard can be read", () => {
+    const rows = (canPaste: boolean) =>
+      flattenRows(
+        buildSections({ query: "", saved: [], recent: [], suggestions: [], canPaste }),
+      ).map((row) => row.kind);
+    expect(rows(true)).toEqual(["location", "map", "paste"]);
+    expect(rows(false)).toEqual(["location", "map"]);
   });
 });

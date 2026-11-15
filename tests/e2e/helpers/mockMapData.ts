@@ -122,3 +122,32 @@ export async function mockImagery(page: Page): Promise<void> {
   await page.route(IMAGERY_BASE_URL, picture);
   await page.route(IMAGERY_DETAIL_URL, picture);
 }
+
+/**
+ * The listing sites whose links the search reads for an address. The app
+ * must never REQUEST anything from them (they forbid automated access, and
+ * the address is in the link's text): a request to any of these hosts is a
+ * bug.
+ */
+export const LISTING_SITE_HOST =
+  /(^|\.)(zillow\.com|redfin\.com|redf\.in|realtor\.com|trulia\.com)$/i;
+
+/**
+ * Record every request the page sends to a listing site, whatever its type
+ * (navigation, fetch, image, prefetch). Returns the list, to be checked when
+ * the test ends: it must be empty. Nothing is answered here — such a request
+ * is also aborted, and fails the test, as any unmocked one (see `fixtures.ts`).
+ */
+export function watchListingSites(page: Page): string[] {
+  const requests: string[] = [];
+  page.on("request", (request) => {
+    let host = "";
+    try {
+      host = new URL(request.url()).hostname;
+    } catch {
+      return;
+    }
+    if (LISTING_SITE_HOST.test(host)) requests.push(request.url());
+  });
+  return requests;
+}

@@ -53,6 +53,33 @@ export const FIXTURE_ESTIMATE_NOTE = `Estimate: includes shade from ${FIXTURE_BU
 /** The same footnote where the tiles hold no buildings (every place but the fixture area). */
 export const NO_BUILDINGS_NOTE =
   "Estimate: no buildings nearby; includes shade from the hills around, but not trees, fences or clouds.";
+/**
+ * Listing links for the mocked geocoders (see `PhotonMock`, `NominatimMock`).
+ * Real shapes, and never requested: only the address inside them is used.
+ */
+export const LISTING = {
+  /** Photon knows this house: pasting the link opens it. */
+  zillow: "https://www.zillow.com/homedetails/2220-Clay-St-San-Francisco-CA-94115/15075413_zpid/",
+  zillowAddress: "2220 Clay St San Francisco, CA 94115",
+  zillowPlace: "2220 Clay Street, San Francisco, California, United States",
+  /** The same listing as a sentence from a share sheet. */
+  zillowShared:
+    "Check out this home I found on Zillow!\nhttps://www.zillow.com/homedetails/2220-Clay-St-San-Francisco-CA-94115/15075413_zpid/?utm_source=txtshare",
+  /** A listing by its number alone: no address in the link. */
+  zpidOnly: "https://www.zillow.com/homedetails/15075413_zpid/",
+  /** The geocoders know "2140 Pacific Avenue" in three towns, not number 2141: not clear. */
+  unclear:
+    "https://www.zillow.com/homedetails/2141-Pacific-Ave-San-Francisco-CA-94115/15070000_zpid/",
+  unclearAddress: "2141 Pacific Ave San Francisco, CA 94115",
+  /** Only Nominatim knows this one, and only by working the number out along the street. */
+  approximate: "https://www.redfin.com/TX/Richardson/212-Murray-Ln-75080/home/31234567",
+  approximatePlace: "212 Murray Lane, Richardson, Texas, United States",
+  /** Nobody knows this one. */
+  unknown:
+    "https://www.realtor.com/realestateandhomes-detail/15903-Smithland-Dr_Houston_TX_77084_M80001-12345",
+  unknownAddress: "15903 Smithland Dr, Houston, TX 77084",
+} as const;
+
 /** The summer solstice at 3 pm: the pinned date and time most tests use. */
 export const FIXTURE_QUERY = `lat=${FIXTURE_PIN.lat}&lng=${FIXTURE_PIN.lng}&d=2026-06-21&t=1500`;
 /** 21 June 2026, 12:00 in San Francisco (PDT, UTC−7): "now" for live-mode tests. */
@@ -121,8 +148,10 @@ function serverError(route: Route): Promise<void> {
 /**
  * Photon, the search-as-you-type geocoder, mocked. By default a search whose
  * text contains "pacific" answers three addresses (the first is the fixture
- * pin, "2140 Pacific Avenue"), anything else answers nothing, and a reverse
- * lookup names every spot `MOCK_ADDRESS`.
+ * pin, "2140 Pacific Avenue"), one that contains "clay" answers Clay Street
+ * and then the house "2220 Clay Street" (at the fixture pin; see
+ * `LISTING`), anything else answers nothing, and a reverse lookup names every
+ * spot `MOCK_ADDRESS`.
  */
 export class PhotonMock {
   /** The `q` of every search request the page sent, in order. */
@@ -167,6 +196,7 @@ export class PhotonMock {
     const query = url.searchParams.get("q") ?? "";
     this.searches.push(query);
     if (this.isDown) return serverError(route);
+    if (/clay/i.test(query)) return json("search-clay.json");
     return json(/pacific/i.test(query) ? "search-pacific.json" : "empty.json");
   }
 }
@@ -176,10 +206,13 @@ export const NOMINATIM_MOCK_ADDRESS = "2698 Pacific Avenue, San Francisco";
 
 /**
  * Nominatim, the geocoder the app falls back to when Photon is down — only
- * for a search the person submitted, and for naming a dropped pin. Mocked: a
- * search whose text contains "pacific" answers two addresses (the first is
- * the fixture pin, "2550 Pacific Avenue"), anything else answers nothing, and
- * a reverse lookup names every spot `NOMINATIM_MOCK_ADDRESS`.
+ * for a search the person submitted (a pasted listing link counts), and for
+ * naming a dropped pin. Mocked: a search whose text contains "pacific"
+ * answers two addresses (the first is the fixture pin, "2550 Pacific
+ * Avenue"), one that contains "murray" answers "212 Murray Lane" as a house
+ * number worked out along the street (which Photon does not know), anything
+ * else answers nothing, and a reverse lookup names every spot
+ * `NOMINATIM_MOCK_ADDRESS`.
  */
 export class NominatimMock {
   /** The `q` of every search request the page sent, in order. */
@@ -228,7 +261,9 @@ export class NominatimMock {
     const query = url.searchParams.get("q") ?? "";
     this.searches.push(query);
     if (this.isDown) return serverError(route);
-    return !this.findsNothing && /pacific/i.test(query) ? file("search.json") : body([]);
+    if (this.findsNothing) return body([]);
+    if (/murray/i.test(query)) return file("search-murray.json");
+    return /pacific/i.test(query) ? file("search.json") : body([]);
   }
 }
 

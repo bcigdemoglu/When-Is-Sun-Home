@@ -9,19 +9,34 @@ import {
   HeartIcon,
   LocationArrowIcon,
   MapPinPlusIcon,
+  PencilIcon,
   PinIcon,
   SearchIcon,
   SpinnerIcon,
 } from "@/components/places/icons";
+import { LinkIcon } from "@/components/ui/icons";
 import type { GeolocationState } from "@/hooks/useGeolocation";
+import type { ListingLink } from "@/lib/geocode/listingLink";
 import { entryAddress, entryLabel, type PlaceEntry } from "@/state/places";
-import { highlightParts, type SearchRow, type SearchSection, type SuggestionsState } from "./rows";
+import {
+  highlightParts,
+  listingTitle,
+  noAddressMessage,
+  type SearchRow,
+  type SearchSection,
+  type SuggestionsState,
+} from "./rows";
 
 export interface SearchResultsProps {
   listId: string;
   sections: readonly SearchSection[];
-  /** What was typed (trimmed); marks the matching parts of each row in bold. */
+  /**
+   * What was typed (trimmed) — or, for a listing link, the address inside
+   * it; marks the matching parts of each row in bold.
+   */
   query: string;
+  /** The field holds a listing link: the results are for its address. */
+  listing?: ListingLink | null;
   activeKey: string | null;
   /** DOM id of the option for a row key (for `aria-activedescendant`). */
   optionId: (key: string) => string;
@@ -211,6 +226,7 @@ export function SearchResults({
   listId,
   sections,
   query,
+  listing = null,
   activeKey,
   optionId,
   geo,
@@ -270,6 +286,36 @@ export function SearchResults({
             }
             primary={<span className="font-medium">Choose on the map</span>}
             secondary="Tap the exact spot — a yard, a balcony, a window"
+          />
+        );
+      case "paste":
+        return (
+          <Option
+            key={row.key}
+            {...shared}
+            name="Paste a listing link. Zillow, Redfin, Realtor.com or Trulia"
+            icon={
+              <RowIcon>
+                <LinkIcon />
+              </RowIcon>
+            }
+            primary={<span className="font-medium">Paste a listing link</span>}
+            secondary="Zillow, Redfin, Realtor.com or Trulia"
+          />
+        );
+      case "edit":
+        return (
+          <Option
+            key={row.key}
+            {...shared}
+            name="Edit this address. Change it in the search field"
+            icon={
+              <RowIcon>
+                <PencilIcon />
+              </RowIcon>
+            }
+            primary={<span className="font-medium">Edit this address</span>}
+            secondary="Change it in the search field"
           />
         );
       case "saved":
@@ -418,9 +464,24 @@ export function SearchResults({
       {suggestions === "loading" && !hasSuggestionSection && (
         <div>
           <div className="flex h-11 items-end pb-1.5 pl-4">
-            <span className="type-eyebrow text-ink-3">Addresses</span>
+            <span className="type-eyebrow text-ink-3">
+              {listing ? listingTitle(listing) : "Addresses"}
+            </span>
           </div>
+          {listing?.kind === "address" && (
+            <p className="px-4 pb-1 text-[13px] leading-[18px] text-ink-2">{listing.address}</p>
+          )}
           <SkeletonRows />
+        </div>
+      )}
+      {suggestions === "no-address" && listing?.kind === "no-address" && (
+        <div data-testid="listing-no-address">
+          <div className="flex h-11 items-end pb-1.5 pl-4">
+            <span className="type-eyebrow text-ink-3">{listingTitle(listing)}</span>
+          </div>
+          <p className="px-4 pb-3 text-[15px] leading-[22px] text-ink-2">
+            {noAddressMessage(listing)}
+          </p>
         </div>
       )}
       {suggestions === "short" && (
@@ -428,7 +489,7 @@ export function SearchResults({
           Keep typing to search addresses.
         </p>
       )}
-      {suggestions === "empty" && (
+      {suggestions === "empty" && !listing && (
         <p className="px-4 py-3 text-[15px] leading-[22px] text-ink-2">
           No address matches “<span className="font-medium text-ink">{query}</span>”. Check the
           spelling, or choose the spot on the map.

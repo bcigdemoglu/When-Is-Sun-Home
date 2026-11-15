@@ -1,7 +1,9 @@
 /**
  * Nominatim (https://nominatim.openstreetmap.org), the OpenStreetMap
- * Foundation's public geocoder — the app's SECOND path, used only when
- * Photon cannot be reached.
+ * Foundation's public geocoder — the app's SECOND path, used when Photon
+ * cannot be reached, and for a pasted listing link whose house Photon does
+ * not know (see `./listingLookup`: Nominatim can work a US house number out
+ * from the census bureau's street ranges).
  *
  * It is a donated service with a usage policy that this module and its
  * callers exist to respect:
@@ -9,7 +11,8 @@
  *   https://operations.osmfoundation.org/policies/nominatim/
  *
  *  - NO autocomplete. Never call `searchPlacesNominatim` per keystroke: only
- *    for a search the user explicitly submitted (Enter / the Search row).
+ *    for a search the user explicitly submitted (Enter / the Search row, or a
+ *    listing link pasted whole — at most two requests for one link).
  *  - At most 1 request per second — for the whole application. Every request
  *    from this module passes one limiter that keeps ≥ 1.1 s between them
  *    (per browser tab; with a handful of users that is far inside the limit).
@@ -30,7 +33,7 @@
  */
 import { z } from "zod";
 import type { LatLng } from "@/lib/types";
-import { describeAddress, shortAddressLabel, type AddressParts } from "./labels";
+import { describeAddress, shortAddressLabel, suggestionAddress, type AddressParts } from "./labels";
 import { getJson } from "./net";
 import {
   DEFAULT_SEARCH_LIMIT,
@@ -150,6 +153,9 @@ const resultSchema = z.object({
   lat: coordinate,
   lon: coordinate,
   name: text,
+  /** What kind of thing was found: "building" / "yes", "place" / "house", "highway" / "residential". */
+  category: text,
+  type: text,
   address: addressSchema,
 });
 
@@ -184,7 +190,8 @@ function parseResult(value: unknown): NominatimResult | null {
 function toSuggestion(value: unknown): PlaceSuggestion | null {
   const result = parseResult(value);
   if (!result) return null;
-  const description = describeAddress(addressParts(result));
+  const parts = addressParts(result);
+  const description = describeAddress(parts);
   if (!description) return null;
   const { label, detail } = description;
   const { lat, lon: lng } = result;
@@ -195,14 +202,33 @@ function toSuggestion(value: unknown): PlaceSuggestion | null {
       : result.place_id !== undefined
         ? `P${result.place_id}`
         : `${lat},${lng}`;
-  return {
+  const suggestion: PlaceSuggestion = {
     id: `nominatim:${osm}`,
     lat,
     lng,
     name: detail ? `${label}, ${detail}` : label,
     label,
     detail,
+    address: suggestionAddress(parts),
   };
+  if (isInterpolated(result)) suggestion.approximate = true;
+  return suggestion;
+}
+
+/**
+ * A house number that is on no map: Nominatim knows the range of numbers
+ * along the street (in the United States from the census bureau's TIGER
+ * data) and places this one between the ends. Such a result is a "house"
+ * whose object is the line it was worked out from — a way, where a mapped
+ * address is a point or a building.
+ */
+function isInterpolated(result: NominatimResult): boolean {
+  return (
+    result.category === "place" &&
+    result.type === "house" &&
+    (result.osm_type ?? "").toLowerCase() === "way" &&
+    Boolean(result.address?.house_number)
+  );
 }
 
 // ─── Requests ──────────────────────────────────────────────────────────────

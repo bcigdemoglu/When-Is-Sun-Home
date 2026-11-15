@@ -9,7 +9,7 @@
  */
 import { z } from "zod";
 import type { LatLng } from "@/lib/types";
-import { describeAddress, shortAddressLabel, type AddressParts } from "./labels";
+import { describeAddress, shortAddressLabel, suggestionAddress, type AddressParts } from "./labels";
 import { getJson, isAbortError } from "./net";
 import { NOMINATIM_ENABLED, reverseGeocodeNominatim } from "./nominatim";
 import { isPhotonResting, reportPhotonFailure, reportPhotonSuccess } from "./photonHealth";
@@ -107,7 +107,16 @@ function toSuggestion(feature: unknown): PlaceSuggestion | null {
   const { label, detail } = description;
   const id =
     osm?.osm_type && osm.osm_id !== undefined ? `${osm.osm_type}${osm.osm_id}` : `${lat},${lng}`;
-  return { id, lat, lng, name: detail ? `${label}, ${detail}` : label, label, detail };
+  return {
+    id,
+    lat,
+    lng,
+    name: detail ? `${label}, ${detail}` : label,
+    label,
+    detail,
+    // A street's own name is its `name`; only addresses have a `street`.
+    address: suggestionAddress(properties),
+  };
 }
 
 async function photonFeatures(

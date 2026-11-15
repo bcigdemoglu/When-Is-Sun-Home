@@ -26,10 +26,17 @@ import {
   usePlaces,
 } from "@/state/places";
 import { SearchResults } from "./SearchResults";
+import { disarmListingLink, takeHandoff, useListingPaste } from "./listingPaste";
 import type { PlaceSelection, SearchExperienceProps } from "./types";
 import { useSearchController } from "./useSearchController";
 
-const PLACEHOLDER = "Search an address";
+/** What the search field is called (its accessible name). */
+const FIELD_NAME = "Search an address or Zillow link";
+/**
+ * What it says while empty. Short enough for the pill of a 360 px phone, and
+ * part of `FIELD_NAME`, so the name a person reads is in the name that is spoken.
+ */
+const PLACEHOLDER = "Address or Zillow link";
 
 /** What the idle field calls the current place: its saved name, its address, or its coordinates. */
 function usePlaceLabel(place: Place | null): string | null {
@@ -90,13 +97,29 @@ function OverlaySearch({
   className = "",
 }: SearchExperienceProps) {
   const [open, setOpen] = useState(false);
+  /** A link handed over from the start screen: what the search opens on. */
+  const [handed, setHanded] = useState<string | null>(null);
   const pillRef = useRef<HTMLButtonElement>(null);
   /** True between tapping "use my location" and the answer, unless search was closed meanwhile. */
   const awaitingLocation = useRef(false);
   const label = usePlaceLabel(place);
 
+  // "Paste a listing link" on the start screen: open on that link.
+  useEffect(
+    () =>
+      useListingPaste.subscribe((state) => {
+        if (!state.handoff) return;
+        setHanded(state.handoff.text);
+        setOpen(true);
+        takeHandoff();
+      }),
+    [],
+  );
+
   const close = () => {
     awaitingLocation.current = false;
+    disarmListingLink();
+    setHanded(null);
     setOpen(false);
     // Back to where the user came from; a button does not raise the keyboard.
     pillRef.current?.focus({ preventScroll: true });
@@ -117,7 +140,7 @@ function OverlaySearch({
           ref={pillRef}
           type="button"
           aria-haspopup="dialog"
-          aria-label={label ? `${PLACEHOLDER}. Showing ${label}` : PLACEHOLDER}
+          aria-label={label ? `${FIELD_NAME}. Showing ${label}` : FIELD_NAME}
           className={`flex h-full min-w-0 flex-1 items-center gap-3 rounded-full pl-4 text-left ${
             place ? "pr-1" : "pr-5"
           }`}
@@ -146,8 +169,11 @@ function OverlaySearch({
       {open &&
         createPortal(
           <SearchOverlay
+            // A link handed over while search is open starts it afresh on that link.
+            key={handed ?? ""}
             place={place}
             initialText={label ?? ""}
+            initialDraft={handed}
             geo={geo.state}
             onLocate={() => {
               awaitingLocation.current = true;
@@ -218,6 +244,8 @@ interface SearchOverlayProps {
   place: Place | null;
   /** Shown selected in the field, so typing replaces it. */
   initialText: string;
+  /** Text the field starts with as if it had been entered (a link handed over); null for none. */
+  initialDraft: string | null;
   geo: GeolocationState;
   onLocate: () => void;
   onPick: (selection: PlaceSelection) => void;
@@ -228,6 +256,7 @@ interface SearchOverlayProps {
 function SearchOverlay({
   place,
   initialText,
+  initialDraft,
   geo,
   onLocate,
   onPick,
@@ -238,7 +267,7 @@ function SearchOverlay({
   const inputRef = useRef<HTMLInputElement>(null);
   const titleId = useId();
   /** Null until the user edits: the field shows the current place, the list its start state. */
-  const [draft, setDraft] = useState<string | null>(null);
+  const [draft, setDraft] = useState<string | null>(initialDraft);
   const value = draft ?? initialText;
 
   const search = useSearchController({
@@ -248,6 +277,10 @@ function SearchOverlay({
     onLocate,
     onPick,
     onChooseOnMap,
+    onReplaceText: (text) => {
+      setDraft(text);
+      inputRef.current?.focus({ preventScroll: true });
+    },
   });
 
   useVisualViewportBox(rootRef);
@@ -313,7 +346,7 @@ function SearchOverlay({
             ref={inputRef}
             type="text"
             role="combobox"
-            aria-label={PLACEHOLDER}
+            aria-label={FIELD_NAME}
             aria-autocomplete="list"
             aria-expanded="true"
             aria-controls={search.listId}
@@ -327,7 +360,10 @@ function SearchOverlay({
             placeholder={PLACEHOLDER}
             className="h-full min-w-0 flex-1 rounded-full bg-transparent pr-2 pl-5 text-[16px] leading-[22px] text-ink outline-none! placeholder:text-ink-3"
             value={value}
-            onChange={(event) => setDraft(event.currentTarget.value)}
+            onChange={(event) => {
+              search.noteInput(value, event.currentTarget.value);
+              setDraft(event.currentTarget.value);
+            }}
             // The keyboard is on its way out (results scrolled, or search closed).
             onBlur={restoreDocumentScroll}
             onKeyDown={(event) => {
@@ -385,10 +421,26 @@ function PanelSearch({
 
   const close = (blur: boolean) => {
     awaitingLocation.current = false;
+    disarmListingLink();
     setOpen(false);
     setDraft(null);
     if (blur) inputRef.current?.blur();
   };
+
+  // "Paste a listing link" on the start screen: open on that link.
+  useEffect(
+    () =>
+      useListingPaste.subscribe((state) => {
+        if (!state.handoff) return;
+        const { text } = state.handoff;
+        takeHandoff();
+        // Focus first (it selects what the field showed), then the link goes in.
+        inputRef.current?.focus();
+        setDraft(text);
+        setOpen(true);
+      }),
+    [],
+  );
 
   const geo = useGeolocation((spot: LatLng, accuracyM: number | null) => {
     if (!awaitingLocation.current) return;
@@ -412,6 +464,11 @@ function PanelSearch({
     onChooseOnMap: () => {
       onChooseOnMap();
       close(true);
+    },
+    onReplaceText: (text) => {
+      setDraft(text);
+      setOpen(true);
+      inputRef.current?.focus();
     },
   });
 
@@ -475,7 +532,7 @@ function PanelSearch({
           ref={inputRef}
           type="text"
           role="combobox"
-          aria-label={PLACEHOLDER}
+          aria-label={FIELD_NAME}
           aria-autocomplete="list"
           aria-expanded={open}
           aria-controls={open ? search.listId : undefined}
@@ -495,6 +552,7 @@ function PanelSearch({
           }`}
           value={value}
           onChange={(event) => {
+            search.noteInput(value, event.currentTarget.value);
             setDraft(event.currentTarget.value);
             setOpen(true);
           }}

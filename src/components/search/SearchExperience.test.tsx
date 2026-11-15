@@ -5,11 +5,19 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useToasts } from "@/components/ui/toast";
 import { useGeolocation } from "@/hooks/useGeolocation";
+import type { ListingAddress } from "@/lib/geocode/listingLink";
 import type { PlaceSuggestion } from "@/lib/geocode/photon";
+import type { UseListingLookupResult } from "@/lib/geocode/useListingLookup";
 import type { UsePlaceSearchResult } from "@/lib/geocode/usePlaceSearch";
 import type { Observer, Place, PlaceSummary } from "@/lib/types";
 import { usePlaces } from "@/state/places";
 import { SearchExperience } from "./SearchExperience";
+import {
+  CLIPBOARD_REFUSED_MESSAGE,
+  NO_LINK_COPIED_MESSAGE,
+  handOffToSearch,
+  useListingPaste,
+} from "./listingPaste";
 import type { SearchExperienceProps } from "./types";
 
 const YARD: Observer = { mode: "yard", heightM: 1, facingDeg: 180, fovDeg: 180 };
@@ -60,6 +68,33 @@ vi.mock("@/lib/geocode/usePlaceSearch", () => ({
     searchedFor.push(query);
     return searchResult(query);
   },
+}));
+
+/** The thorough lookup of a pasted listing link, stubbed like the search above. */
+let lookupResult: (link: ListingAddress | null) => UseListingLookupResult;
+const lookupRetry = vi.fn();
+/** The address of every link the lookup was asked about (null: not asked). */
+const lookedUp: (string | null)[] = [];
+
+vi.mock("@/lib/geocode/useListingLookup", () => ({
+  useListingLookup: (link: ListingAddress | null) => {
+    lookedUp.push(link ? link.address : null);
+    return lookupResult(link);
+  },
+}));
+
+function lookup(partial: Partial<UseListingLookupResult>): UseListingLookupResult {
+  return { status: "idle", suggestions: [], match: null, retry: lookupRetry, ...partial };
+}
+
+/**
+ * Whether the clipboard can be read. Off unless a test is about "Paste a
+ * listing link": without it the list is exactly what it was before that row.
+ */
+const clipboard = vi.hoisted(() => ({ readable: false }));
+vi.mock("./listingPaste", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./listingPaste")>()),
+  canReadClipboard: () => clipboard.readable,
 }));
 
 function result(partial: Partial<UsePlaceSearchResult>): UsePlaceSearchResult {
@@ -159,7 +194,9 @@ function setup(props: Partial<SearchExperienceProps> = {}) {
 }
 
 const pill = () => screen.getByRole("button", { name: /^search an address/i });
-const field = () => screen.getByRole<HTMLInputElement>("combobox", { name: "Search an address" });
+const field = () =>
+  screen.getByRole<HTMLInputElement>("combobox", { name: "Search an address or Zillow link" });
+const waitForValue = (value: string) => vi.waitFor(() => expect(field()).toHaveValue(value));
 const optionNames = () =>
   screen.getAllByRole("option").map((option) => option.textContent?.replace(/\s+/g, " ").trim());
 
@@ -170,6 +207,11 @@ beforeEach(() => {
   searchedFor.length = 0;
   searchSubmit.mockReset();
   searchRetry.mockReset();
+  lookedUp.length = 0;
+  lookupRetry.mockReset();
+  lookupResult = (link) => lookup({ status: link ? "loading" : "idle" });
+  clipboard.readable = false;
+  useListingPaste.setState({ armed: null, handoff: null });
   searchResult = (query) =>
     query.trim().length < 3 ? result({}) : result({ status: "ready", suggestions: SUGGESTIONS });
   mockGeolocation();
@@ -183,7 +225,9 @@ afterEach(() => {
 describe("SearchExperience — overlay (phones)", () => {
   it("is an idle pill with the placeholder until tapped", () => {
     setup();
-    expect(pill()).toHaveTextContent("Search an address");
+    // Short enough for the pill of a small phone, and it says a link will do.
+    expect(pill()).toHaveTextContent("Address or Zillow link");
+    expect(pill()).toHaveAccessibleName("Search an address or Zillow link");
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Clear this place" })).not.toBeInTheDocument();
     // Nothing is searched (or even subscribed to) while idle.
@@ -1161,5 +1205,448 @@ describe("SearchExperience — panel (desktop)", () => {
     await user.click(field());
     await user.keyboard("pac");
     expect(status).toHaveTextContent("3 results");
+  });
+});
+
+describe("SearchExperience — listing links", () => {
+  const ZILLOW =
+    "https://www.zillow.com/homedetails/2220-Clay-St-San-Francisco-CA-94115/15075413_zpid/";
+  const ADDRESS = "2220 Clay St San Francisco, CA 94115";
+  const ZPID_ONLY = "https://www.zillow.com/homedetails/15075413_zpid/";
+  const HOUSE: PlaceSuggestion = {
+    id: "W259",
+    lat: 37.79143,
+    lng: -122.43044,
+    name: "2220 Clay Street, San Francisco, California, United States",
+    label: "2220 Clay Street",
+    detail: "San Francisco, California, United States",
+  };
+  const STREET: PlaceSuggestion = {
+    id: "W260",
+    lat: 37.7915,
+    lng: -122.431,
+    name: "Clay Street, San Francisco, California, United States",
+    label: "Clay Street",
+    detail: "San Francisco, California, United States",
+  };
+  const HOUSE_SELECTION = {
+    place: { lat: HOUSE.lat, lng: HOUSE.lng, name: HOUSE.name },
+    source: "search",
+  };
+
+  /** Make the search draw again, as it does when a lookup answers. */
+  const redraw = () => act(() => usePlaces.setState({ recent: [...usePlaces.getState().recent] }));
+  const toasts = () => useToasts.getState().toasts.map((toast) => toast.message);
+  const fromLink = () => screen.getByRole("group", { name: "From this Zillow link" });
+
+  function stubClipboard(readText: () => Promise<string>) {
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { readText },
+    });
+  }
+
+  it("says in the placeholder that a link will do", async () => {
+    const { user } = setup();
+    await user.click(pill());
+    expect(field()).toHaveAttribute("placeholder", "Address or Zillow link");
+  });
+
+  it("looks a pasted link's ADDRESS up — never the link's text — and shows where it is from meanwhile", async () => {
+    const { user, onSelect } = setup();
+    await user.click(pill());
+    await user.paste(ZILLOW);
+
+    expect(field()).toHaveValue(ZILLOW);
+    // The thorough lookup got the address; the as-you-type search got nothing at all.
+    expect(lookedUp.at(-1)).toBe(ADDRESS);
+    expect(searchedFor.filter((query) => query !== "")).toEqual([]);
+    // Under the two fixed rows: a heading that names the source, the address, and rows on their way.
+    expect(screen.getByText("From this Zillow link")).toBeInTheDocument();
+    expect(screen.getByText(ADDRESS)).toBeInTheDocument();
+    expect(screen.getByTestId("search-skeleton")).toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent(`Looking up ${ADDRESS}…`);
+    expect(screen.queryByText(/No address matches/)).toBeNull();
+    expect(onSelect).not.toHaveBeenCalled();
+  });
+
+  it("opens the house without a second tap when the lookup is sure of it", async () => {
+    const { user, onSelect } = setup();
+    await user.click(pill());
+    await user.paste(ZILLOW);
+    expect(onSelect).not.toHaveBeenCalled();
+
+    lookupResult = () => lookup({ status: "ready", suggestions: [HOUSE, STREET], match: HOUSE });
+    redraw();
+
+    // Named by the geocoder's label, like any search result — not by the link.
+    expect(onSelect).toHaveBeenCalledTimes(1);
+    expect(onSelect).toHaveBeenCalledWith(HOUSE_SELECTION);
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(toasts()).toEqual([]);
+  });
+
+  it("goes straight there when the answer is already known", async () => {
+    lookupResult = (link) =>
+      link ? lookup({ status: "ready", suggestions: [HOUSE], match: HOUSE }) : lookup({});
+    const { user, onSelect } = setup();
+    await user.click(pill());
+    await user.paste(`Check out this home!\n${ZILLOW}?utm_source=txtshare`);
+    expect(onSelect).toHaveBeenCalledTimes(1);
+    expect(onSelect).toHaveBeenCalledWith(HOUSE_SELECTION);
+  });
+
+  it("says so when the place it opened is only near the house", async () => {
+    const near = { ...HOUSE, approximate: true };
+    lookupResult = (link) =>
+      link ? lookup({ status: "ready", suggestions: [near], match: near }) : lookup({});
+    const { user, onSelect } = setup();
+    await user.click(pill());
+    await user.paste(ZILLOW);
+    expect(onSelect).toHaveBeenCalledTimes(1);
+    expect(toasts()).toEqual([
+      "Near 2220 Clay Street: this house isn’t on the map yet. Drag the pin onto it.",
+    ]);
+  });
+
+  it("shows the list to choose from when the lookup is not sure — and never opens one by itself later", async () => {
+    lookupResult = (link) =>
+      link ? lookup({ status: "ready", suggestions: [STREET, HOUSE], match: null }) : lookup({});
+    const { user, onSelect } = setup();
+    await user.click(pill());
+    await user.paste(ZILLOW);
+
+    expect(onSelect).not.toHaveBeenCalled();
+    const group = fromLink();
+    expect(within(group).getByText(ADDRESS)).toBeInTheDocument();
+    expect(
+      within(group)
+        .getAllByRole("option")
+        .map((option) => option.getAttribute("aria-label")),
+    ).toEqual([
+      "Clay Street, San Francisco, California, United States",
+      "2220 Clay Street, San Francisco, California, United States",
+      "Edit this address. Change it in the search field",
+    ]);
+    // The words of the address are marked in the rows, not the link's text.
+    expect(within(group).getAllByText("Clay")[0]).toHaveClass("font-semibold");
+    expect(screen.getByRole("status")).toHaveTextContent("2 results");
+    expect(screen.getByTestId("search-attribution")).toBeInTheDocument();
+
+    // A later, surer answer for the same link does not move the person: once per paste.
+    lookupResult = () => lookup({ status: "ready", suggestions: [HOUSE], match: HOUSE });
+    redraw();
+    expect(onSelect).not.toHaveBeenCalled();
+
+    // The person chooses.
+    await user.click(screen.getByRole("option", { name: /^2220 Clay Street/ }));
+    expect(onSelect).toHaveBeenCalledTimes(1);
+    expect(onSelect).toHaveBeenCalledWith(HOUSE_SELECTION);
+  });
+
+  it("Enter picks the first result of a list that is showing", async () => {
+    lookupResult = (link) =>
+      link ? lookup({ status: "ready", suggestions: [STREET, HOUSE], match: null }) : lookup({});
+    const { user, onSelect } = setup();
+    await user.click(pill());
+    await user.paste(ZILLOW);
+    await user.keyboard("{Enter}");
+    expect(onSelect).toHaveBeenCalledWith({
+      place: { lat: STREET.lat, lng: STREET.lng, name: STREET.name },
+      source: "search",
+    });
+  });
+
+  it("when nothing is found: says so with the address, and one tap puts it in the field to edit", async () => {
+    lookupResult = (link) => (link ? lookup({ status: "ready" }) : lookup({}));
+    const { user, onSelect } = setup();
+    await user.click(pill());
+    await user.paste(ZILLOW);
+
+    expect(within(fromLink()).getByText(new RegExp(`^No match for “${ADDRESS}”\\.`))).toBeVisible();
+    expect(screen.queryByText(/No address matches/)).toBeNull();
+    expect(screen.getByRole("status")).toHaveTextContent(`Nothing found for ${ADDRESS}`);
+    // Never a dead end.
+    expect(screen.getByRole("option", { name: /^Choose on the map/ })).toBeInTheDocument();
+
+    await user.click(screen.getByRole("option", { name: /^Edit this address/ }));
+    expect(field()).toHaveValue(ADDRESS);
+    expect(field()).toHaveFocus();
+    // From here it is an ordinary search for that text.
+    expect(searchedFor.at(-1)).toBe(ADDRESS);
+    expect(lookedUp.at(-1)).toBeNull();
+    expect(screen.queryByText("From this Zillow link")).toBeNull();
+    expect(onSelect).not.toHaveBeenCalled();
+  });
+
+  it("offers “Try again” when the lookup could not be made", async () => {
+    lookupResult = (link) => (link ? lookup({ status: "error" }) : lookup({}));
+    const { user } = setup();
+    await user.click(pill());
+    await user.paste(ZILLOW);
+    expect(screen.getByText("Couldn’t search — check your connection.")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Try again" }));
+    expect(lookupRetry).toHaveBeenCalledTimes(1);
+    expect(searchRetry).not.toHaveBeenCalled();
+  });
+
+  it("a link without an address gets a plain message and asks nobody anything", async () => {
+    const { user, onSelect } = setup();
+    await user.click(pill());
+    await user.paste(ZPID_ONLY);
+
+    const message =
+      "This Zillow link doesn’t include the address. Copy the link from the listing’s Share button, or type the address.";
+    expect(within(screen.getByTestId("listing-no-address")).getByText(message)).toBeVisible();
+    expect(screen.getByText("From this Zillow link")).toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent(`No address in this link. ${message}`);
+    // Not searched for as if it were an address — by either path.
+    expect(searchedFor.filter((query) => query !== "")).toEqual([]);
+    expect(lookedUp.filter((address) => address !== null)).toEqual([]);
+    expect(screen.queryByText(/No address matches/)).toBeNull();
+    expect(screen.queryByTestId("search-skeleton")).toBeNull();
+    await user.keyboard("{Enter}");
+    expect(onSelect).not.toHaveBeenCalled();
+    // The ways out are still there.
+    expect(screen.getByRole("option", { name: /^Use my current location/ })).toBeInTheDocument();
+  });
+
+  it("explains a short link and a building's link in their own words", async () => {
+    const { user } = setup();
+    await user.click(pill());
+    await user.paste("https://redf.in/WW4UwK");
+    expect(screen.getByText("From this Redfin link")).toBeInTheDocument();
+    expect(screen.getByText(/^This Redfin short link doesn’t show the address\./)).toBeVisible();
+    await user.clear(field());
+    await user.paste("https://www.zillow.com/apartments/madison-tn/hickory-lofts/ChcYNq/");
+    expect(screen.getByText(/^This Zillow link is for a whole building/)).toBeVisible();
+  });
+
+  it("a link that is TYPED gets suggestions for its address as it grows, and opens nothing by itself", async () => {
+    searchResult = (query) =>
+      query === ADDRESS ? result({ status: "ready", suggestions: [HOUSE] }) : result({});
+    const { user, onSelect } = setup();
+    await user.click(pill());
+    await user.type(field(), ZILLOW);
+
+    expect(searchedFor.at(-1)).toBe(ADDRESS);
+    expect(lookedUp.filter((address) => address !== null)).toEqual([]);
+    expect(within(fromLink()).getByRole("option", { name: /^2220 Clay Street/ })).toBeVisible();
+    expect(onSelect).not.toHaveBeenCalled();
+
+    // Enter on it is the same as pasting it: the thorough lookup, and straight there if sure.
+    lookupResult = (link) =>
+      link ? lookup({ status: "ready", suggestions: [HOUSE], match: HOUSE }) : lookup({});
+    await user.keyboard("{Enter}");
+    expect(lookedUp.at(-1)).toBe(ADDRESS);
+    expect(onSelect).toHaveBeenCalledTimes(1);
+    expect(onSelect).toHaveBeenCalledWith(HOUSE_SELECTION);
+  });
+
+  it("while suggestions cannot arrive live, offers to search for the address and then looks it up thoroughly", async () => {
+    searchResult = (query) =>
+      query.trim().length < 3
+        ? result({ mode: "submit" })
+        : result({ mode: "submit", awaitingSubmit: true });
+    const { user } = setup();
+    await user.click(pill());
+    await user.type(field(), ZILLOW);
+
+    const row = screen.getByRole("option", { name: `Search for ${ADDRESS}` });
+    expect(within(fromLink()).getByText(/Live suggestions are unavailable/)).toBeVisible();
+    await user.click(row);
+    // Not the ordinary submit (that would search for the text in the field).
+    expect(searchSubmit).not.toHaveBeenCalled();
+    expect(lookedUp.at(-1)).toBe(ADDRESS);
+    expect(screen.getByTestId("search-skeleton")).toBeInTheDocument();
+  });
+
+  it("closing search forgets the pasted link: nothing opens afterwards", async () => {
+    const { user, onSelect } = setup();
+    await user.click(pill());
+    await user.paste(ZILLOW);
+    expect(useListingPaste.getState().armed).toMatchObject({ go: true });
+    await user.keyboard("{Escape}");
+    expect(useListingPaste.getState().armed).toBeNull();
+    expect(onSelect).not.toHaveBeenCalled();
+  });
+
+  it("never treats what was pasted as markup", async () => {
+    const { user } = setup();
+    await user.click(pill());
+    await user.paste(`<img src=x onerror="window.pwned=1"> ${ZILLOW}`);
+    expect(document.querySelector("img")).toBeNull();
+    expect(screen.getByText(ADDRESS)).toBeInTheDocument();
+    expect((window as unknown as { pwned?: number }).pwned).toBeUndefined();
+  });
+
+  describe("the “Paste a listing link” row", () => {
+    it("is not there where the clipboard cannot be read", async () => {
+      const { user } = setup();
+      await user.click(pill());
+      expect(screen.queryByRole("option", { name: /^Paste a listing link/ })).toBeNull();
+    });
+
+    it("comes after “Choose on the map” and names the sites", async () => {
+      clipboard.readable = true;
+      const { user } = setup();
+      await user.click(pill());
+      expect(optionNames()).toEqual([
+        "Use my current locationFind the spot you’re standing on",
+        "Choose on the mapTap the exact spot — a yard, a balcony, a window",
+        "Paste a listing linkZillow, Redfin, Realtor.com or Trulia",
+      ]);
+    });
+
+    it("steps aside once something is typed, and is back when the field is cleared", async () => {
+      clipboard.readable = true;
+      const { user } = setup();
+      await user.click(pill());
+      await user.type(field(), "pac");
+      expect(screen.queryByRole("option", { name: /^Paste a listing link/ })).toBeNull();
+      expect(screen.getByRole("option", { name: /^Choose on the map/ })).toBeInTheDocument();
+      await user.click(screen.getByRole("button", { name: "Clear search text" }));
+      expect(screen.getByRole("option", { name: /^Paste a listing link/ })).toBeInTheDocument();
+    });
+
+    it("reads the clipboard only when chosen, puts the link in the field and opens the house", async () => {
+      clipboard.readable = true;
+      const { user, onSelect } = setup();
+      const readText = vi.fn(async () => ZILLOW);
+      await user.click(pill());
+      stubClipboard(readText);
+      expect(readText).not.toHaveBeenCalled();
+
+      await user.click(screen.getByRole("option", { name: /^Paste a listing link/ }));
+      expect(readText).toHaveBeenCalledTimes(1);
+      await waitForValue(ZILLOW);
+      expect(lookedUp.at(-1)).toBe(ADDRESS);
+      expect(screen.getByText("From this Zillow link")).toBeInTheDocument();
+
+      lookupResult = () => lookup({ status: "ready", suggestions: [HOUSE], match: HOUSE });
+      redraw();
+      expect(onSelect).toHaveBeenCalledTimes(1);
+      expect(onSelect).toHaveBeenCalledWith(HOUSE_SELECTION);
+    });
+
+    it("works from the keyboard", async () => {
+      clipboard.readable = true;
+      const { user } = setup();
+      await user.click(pill());
+      stubClipboard(async () => ZILLOW);
+      await user.keyboard("{ArrowDown}{ArrowDown}{ArrowDown}");
+      expect(screen.getByRole("option", { name: /^Paste a listing link/ })).toHaveAttribute(
+        "aria-selected",
+        "true",
+      );
+      await user.keyboard("{Enter}");
+      await waitForValue(ZILLOW);
+    });
+
+    it("says so in a toast when no listing link was copied, and search stays as it was", async () => {
+      clipboard.readable = true;
+      const { user, onSelect } = setup();
+      await user.click(pill());
+      stubClipboard(async () => "2220 Clay St, San Francisco");
+      await user.click(screen.getByRole("option", { name: /^Paste a listing link/ }));
+      await vi.waitFor(() => expect(toasts()).toEqual([NO_LINK_COPIED_MESSAGE]));
+      expect(field()).toHaveValue("");
+      expect(screen.getByRole("dialog")).toBeInTheDocument();
+      expect(screen.getByRole("option", { name: /^Choose on the map/ })).toBeInTheDocument();
+      expect(onSelect).not.toHaveBeenCalled();
+    });
+
+    it("says how to go on when the browser will not hand the clipboard over", async () => {
+      clipboard.readable = true;
+      const { user } = setup();
+      await user.click(pill());
+      stubClipboard(async () => {
+        throw new DOMException("Read permission denied.", "NotAllowedError");
+      });
+      await user.click(screen.getByRole("option", { name: /^Paste a listing link/ }));
+      await vi.waitFor(() => expect(toasts()).toEqual([CLIPBOARD_REFUSED_MESSAGE]));
+      expect(screen.getByRole("dialog")).toBeInTheDocument();
+    });
+
+    it("shows the message for a copied link that has no address", async () => {
+      clipboard.readable = true;
+      const { user } = setup();
+      await user.click(pill());
+      stubClipboard(async () => ZPID_ONLY);
+      await user.click(screen.getByRole("option", { name: /^Paste a listing link/ }));
+      await waitForValue(ZPID_ONLY);
+      expect(screen.getByTestId("listing-no-address")).toBeInTheDocument();
+      expect(toasts()).toEqual([]);
+    });
+  });
+
+  describe("a link handed over from the start screen", () => {
+    it("opens the phone's search on that link and goes to the house", async () => {
+      lookupResult = (link) =>
+        link ? lookup({ status: "ready", suggestions: [HOUSE], match: HOUSE }) : lookup({});
+      const { onSelect } = setup();
+      expect(screen.queryByRole("dialog")).toBeNull();
+      act(() => handOffToSearch(ZILLOW));
+      expect(onSelect).toHaveBeenCalledTimes(1);
+      expect(onSelect).toHaveBeenCalledWith(HOUSE_SELECTION);
+      // Taken: it does not open search again by itself.
+      expect(useListingPaste.getState().handoff).toBeNull();
+      expect(screen.queryByRole("dialog")).toBeNull();
+    });
+
+    it("stays open on the link when the person has to choose", async () => {
+      lookupResult = (link) =>
+        link ? lookup({ status: "ready", suggestions: [STREET], match: null }) : lookup({});
+      const { onSelect } = setup();
+      act(() => handOffToSearch(ZILLOW));
+      expect(screen.getByRole("dialog", { name: "Find a place" })).toBeInTheDocument();
+      expect(field()).toHaveValue(ZILLOW);
+      expect(within(fromLink()).getByRole("option", { name: /^Clay Street/ })).toBeVisible();
+      expect(onSelect).not.toHaveBeenCalled();
+    });
+
+    it("does the same in the desktop panel", async () => {
+      lookupResult = (link) =>
+        link ? lookup({ status: "ready", suggestions: [STREET], match: null }) : lookup({});
+      const { onSelect } = setup({ variant: "panel" });
+      act(() => handOffToSearch(ZILLOW));
+      expect(field()).toHaveValue(ZILLOW);
+      expect(field()).toHaveFocus();
+      expect(field()).toHaveAttribute("aria-expanded", "true");
+      expect(within(fromLink()).getByRole("option", { name: /^Clay Street/ })).toBeVisible();
+      expect(onSelect).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("in the desktop panel", () => {
+    it("a pasted link opens the house and gives the field up", async () => {
+      const { user, onSelect } = setup({ variant: "panel" });
+      await user.click(field());
+      await user.paste(ZILLOW);
+      expect(field()).toHaveValue(ZILLOW);
+      expect(screen.getByText("From this Zillow link")).toBeInTheDocument();
+      expect(lookedUp.at(-1)).toBe(ADDRESS);
+
+      lookupResult = () => lookup({ status: "ready", suggestions: [HOUSE], match: HOUSE });
+      redraw();
+      expect(onSelect).toHaveBeenCalledTimes(1);
+      expect(onSelect).toHaveBeenCalledWith(HOUSE_SELECTION);
+      expect(field()).not.toHaveFocus();
+      expect(screen.queryByRole("listbox")).toBeNull();
+    });
+
+    it("the clipboard row and the edit row put their text in the field and keep the list open", async () => {
+      clipboard.readable = true;
+      lookupResult = (link) => (link ? lookup({ status: "ready" }) : lookup({}));
+      const { user } = setup({ variant: "panel" });
+      await user.click(field());
+      stubClipboard(async () => ZILLOW);
+      await user.click(screen.getByRole("option", { name: /^Paste a listing link/ }));
+      await waitForValue(ZILLOW);
+      await user.click(screen.getByRole("option", { name: /^Edit this address/ }));
+      expect(field()).toHaveValue(ADDRESS);
+      expect(field()).toHaveFocus();
+      expect(screen.getByRole("listbox")).toBeInTheDocument();
+    });
   });
 });

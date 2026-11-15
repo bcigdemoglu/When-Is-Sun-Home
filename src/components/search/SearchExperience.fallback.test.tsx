@@ -28,6 +28,12 @@ const NOMINATIM_SEARCH = readFileSync(
   "utf8",
 );
 
+// The clipboard row is another test's subject: here the list is as it is without it.
+vi.mock("./listingPaste", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./listingPaste")>()),
+  canReadClipboard: () => false,
+}));
+
 function photonBody(name: string): string {
   return JSON.stringify({
     type: "FeatureCollection",

@@ -4,6 +4,8 @@
  * whichever service found it. Pure.
  */
 
+import type { SuggestionAddress } from "./types";
+
 /** The parts of an address the labels are built from (Photon's vocabulary). */
 export interface AddressParts {
   name?: string;
@@ -71,4 +73,23 @@ export function describeAddress(p: AddressParts): { label: string; detail: strin
 export function shortAddressLabel(p: AddressParts): string | null {
   const label = joinDistinct([streetAddress(p) ?? p.name, townOf(p)]);
   return label || joinDistinct([p.state, p.country]) || null;
+}
+
+/** The parts a listing link's address is compared with (see `./listingMatch`). */
+export function suggestionAddress(p: AddressParts): SuggestionAddress {
+  // Not the county: "Orange" is a city, and Orange County has thirty more —
+  // a house in another of them must not pass for one in Orange.
+  const places: string[] = [];
+  for (const place of [p.city, p.locality, p.district]) {
+    const value = clean(place);
+    if (value && !places.includes(value)) places.push(value);
+  }
+  return {
+    houseNumber: clean(p.housenumber),
+    street: clean(p.street),
+    places,
+    state: clean(p.state),
+    postcode: clean(p.postcode),
+    countryCode: clean(p.countrycode)?.toLowerCase(),
+  };
 }

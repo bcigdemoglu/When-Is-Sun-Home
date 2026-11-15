@@ -247,3 +247,69 @@ test.describe("going to a place from the start screen", () => {
     expect(Math.abs(previous.dy), "pin is too high or low").toBeLessThan(0.34);
   });
 });
+
+test.describe("going to a place from a listing link", () => {
+  /** A real-shaped Zillow link. It is never requested: only the address in it is read. */
+  const ZILLOW =
+    "https://www.zillow.com/homedetails/2220-Clay-St-San-Francisco-CA-94115/15075413_zpid/";
+  /** 2220 Clay Street, San Francisco (the block between Buchanan and Webster). */
+  const CLAY_STREET = { lat: 37.7914, lng: -122.4304 };
+  const GEOCODER = /^https:\/\/(photon\.komoot\.io|nominatim\.openstreetmap\.org)\//;
+  const LISTING_SITE = /(^|\.)(zillow\.com|redfin\.com|redf\.in|realtor\.com|trulia\.com)$/i;
+
+  test("pasting a Zillow link lands on the listing's street", async ({ page, isMobile }) => {
+    const errors = collectPageErrors(page);
+    let geocoderAnswers = 0;
+    const listingRequests: string[] = [];
+    page.on("response", (response) => {
+      if (GEOCODER.test(response.url()) && response.ok()) geocoderAnswers += 1;
+    });
+    page.on("request", (request) => {
+      if (LISTING_SITE.test(new URL(request.url()).hostname)) listingRequests.push(request.url());
+    });
+
+    await page.goto("/");
+    await expect(page.getByText("Where do you want sun?").first()).toBeVisible();
+    if (isMobile) await page.getByRole("button", { name: "Enter an address" }).first().click();
+    const field = page.getByRole("combobox").first();
+    await field.click();
+    // The whole link at once, as a paste puts it there.
+    await field.fill(ZILLOW);
+
+    // The place opens by itself — no row is tapped. Both geocoders are public
+    // services that may be throttled or down: if neither answered at all,
+    // there is nothing to judge, and that is not this app's failure.
+    const settled = page
+      .getByText("Couldn’t search — check your connection.")
+      .or(page.getByRole("option", { name: /^Edit this address/ }));
+    const opened = await expect
+      .poll(
+        async () =>
+          new URL(page.url()).searchParams.has("lat") ? "opened" : (await settled.count()) > 0,
+        { timeout: 45_000 },
+      )
+      .not.toBe(false)
+      .then(
+        () => new URL(page.url()).searchParams.has("lat"),
+        () => false,
+      );
+    test.skip(!opened && geocoderAnswers === 0, "the public geocoders could not be reached");
+    expect(opened, "the link's house was not opened, although a geocoder answered").toBe(true);
+
+    const url = new URL(page.url());
+    const lat = Number(url.searchParams.get("lat"));
+    const lng = Number(url.searchParams.get("lng"));
+    const metresOff = Math.hypot(
+      (lat - CLAY_STREET.lat) * 111_320,
+      (lng - CLAY_STREET.lng) * 111_320 * Math.cos((CLAY_STREET.lat * Math.PI) / 180),
+    );
+    expect(metresOff, "the pin is not on the listing's block").toBeLessThan(150);
+    // Named by the geocoder; nothing of the link is in the page's address.
+    expect(url.searchParams.get("n")).toMatch(/Clay Street/);
+    expect(url.search).not.toMatch(/zillow|zpid/i);
+    await expect(page.getByText(/of direct sun/).first()).toBeVisible();
+    // The listing site was never asked for anything.
+    expect(listingRequests).toEqual([]);
+    expect(errors).toEqual([]);
+  });
+});
