@@ -24,9 +24,10 @@ export interface ReportSection {
 }
 
 export const REPORT_SECTIONS: readonly ReportSection[] = [
+  // Sun hours first: how much sun, month by month, is what people come for.
+  { id: REPORT_SECTION_IDS.sunHours, label: "Sun hours" },
   { id: REPORT_SECTION_IDS.today, label: "Today" },
   { id: REPORT_SECTION_IDS.year, label: "Year" },
-  { id: REPORT_SECTION_IDS.sunHours, label: "Sun hours" },
   { id: REPORT_SECTION_IDS.skyline, label: "Skyline" },
   { id: REPORT_SECTION_IDS.about, label: "About" },
 ];

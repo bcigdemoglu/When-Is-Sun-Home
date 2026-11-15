@@ -78,6 +78,13 @@ export function SunReport({
           terrain={terrain}
           pinOnBuilding={pinOnBuilding}
         />
+        <SunHoursCard
+          year={year}
+          model={model}
+          day={day}
+          date={date}
+          onSelectDateTime={onSelectDateTime}
+        />
         <TodayCard
           date={date}
           minuteOfDay={minuteOfDay}
@@ -98,13 +105,6 @@ export function SunReport({
           date={date}
           minuteOfDay={minuteOfDay}
           observer={observer}
-          onSelectDateTime={onSelectDateTime}
-        />
-        <SunHoursCard
-          year={year}
-          model={model}
-          day={day}
-          date={date}
           onSelectDateTime={onSelectDateTime}
         />
         <SkylineChart

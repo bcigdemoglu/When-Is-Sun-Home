@@ -21,18 +21,19 @@ test.describe("Sun report", () => {
     const headings = page.locator(".sun-report").last().getByRole("heading", { level: 2 });
     await expect(headings).toHaveText([
       "Direct sun · average day",
+      // Sun hours comes first: it is what people come for.
+      "Sun hours",
       "Sun, Jun 21",
       "Seasons",
       "Through the year",
-      "Sun hours",
       "What blocks the sun",
       "About these numbers",
     ]);
 
     await expect(report.tabs.getByRole("button")).toHaveText([
+      "Sun hours",
       "Today",
       "Year",
-      "Sun hours",
       "Skyline",
       "About",
     ]);
