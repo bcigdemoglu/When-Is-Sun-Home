@@ -18,10 +18,13 @@ function scrollParent(element: HTMLElement): HTMLElement | null {
 
 /**
  * Which section is "the one being read": the last one whose top has passed
- * the reading line. `tops` are the sections' tops relative to that line, in
- * reading order; null means none has reached it yet.
+ * the reading line — or simply the last one once the container is scrolled to
+ * its end (a short final section can never reach the line). `tops` are the
+ * sections' tops relative to the line, in reading order; null means none has
+ * reached it yet.
  */
-export function activeSectionIndex(tops: readonly number[]): number | null {
+export function activeSectionIndex(tops: readonly number[], atEnd = false): number | null {
+  if (atEnd && tops.length > 0) return tops.length - 1;
   let active: number | null = null;
   for (let i = 0; i < tops.length; i++) {
     if (tops[i] <= 1) active = i;
@@ -55,35 +58,42 @@ export function ReportTabs({ stickyTop, anchorOffset, resetKey, className = "" }
 
   useEffect(() => {
     const nav = navRef.current;
-    if (!nav || typeof IntersectionObserver !== "function") return;
+    if (!nav) return;
     const root = scrollParent(nav);
     const sections = REPORT_SECTIONS.map((section) => document.getElementById(section.id));
     if (!root || sections.some((section) => section === null)) return;
 
-    // Sections crossing the reading line (or the gaps between them) change the
-    // answer; the observer says WHEN to look, the positions say what is true.
+    // Read the positions once per frame while the container scrolls (five
+    // rectangles: nothing next to the scrolling itself), and once more when a
+    // jump comes to rest exactly on the line.
+    let frame = 0;
     const update = () => {
+      frame = 0;
       const line = root.getBoundingClientRect().top + anchorOffset;
+      const atEnd = root.scrollTop + root.clientHeight >= root.scrollHeight - 2;
+      // Before the first section is in reach "the end" means nothing (a sheet at peek).
+      const firstTop = sections[0]!.getBoundingClientRect().top - line;
       setActive(
-        activeSectionIndex(sections.map((section) => section!.getBoundingClientRect().top - line)),
+        activeSectionIndex(
+          sections.map((section) => section!.getBoundingClientRect().top - line),
+          atEnd && firstTop <= 1,
+        ),
       );
     };
-    const observer = new IntersectionObserver(update, {
-      root,
-      // A band from the reading line down to a third of the way: sections
-      // entering or leaving it are the moments the active one can change.
-      rootMargin: `-${Math.round(anchorOffset)}px 0px -66% 0px`,
-      threshold: [0, 1],
-    });
-    for (const section of sections) observer.observe(section!);
+    const onScroll = () => {
+      if (frame === 0) frame = requestAnimationFrame(update);
+    };
+    root.addEventListener("scroll", onScroll, { passive: true });
     update();
-    return () => observer.disconnect();
+    return () => {
+      root.removeEventListener("scroll", onScroll);
+      cancelAnimationFrame(frame);
+    };
   }, [anchorOffset, resetKey]);
 
   const jump = (index: number) => {
     const section = document.getElementById(REPORT_SECTIONS[index].id);
     if (!section) return;
-    setActive(index);
     // The sections carry `scroll-margin-top`, so they stop below the sticky rows.
     section.scrollIntoView({ behavior: reducedMotion ? "auto" : "smooth", block: "start" });
   };

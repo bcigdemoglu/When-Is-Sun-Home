@@ -74,7 +74,9 @@ const SHEET_HANDLE_HEIGHT = 28;
 /** Phone: where the sheet stops at "full" until the search pill has been measured, px. */
 const DEFAULT_TOP_INSET = 76;
 
-const ROOT = "relative h-dvh overflow-hidden lg:grid lg:grid-cols-[440px_minmax(0,1fr)]";
+// `overflow: clip`, not `hidden`: a hidden box can still be scrolled by script
+// (`scrollIntoView` on something inside it), which would shove the whole app up.
+const ROOT = "relative h-dvh overflow-clip lg:grid lg:grid-cols-[440px_minmax(0,1fr)]";
 const MAP_AREA = "fixed inset-0 lg:relative lg:inset-auto lg:col-start-2 lg:row-start-1 lg:h-dvh";
 const PANEL =
   "relative z-10 col-start-1 row-start-1 flex h-dvh min-w-0 flex-col border-r border-line bg-page";
@@ -477,44 +479,47 @@ function Workspace() {
             </div>
             <PlacesButton expanded={placesOpen} onClick={() => setPlacesOpen((open) => !open)} />
           </div>
-          <main className="min-h-0 flex-1 space-y-3 overflow-y-auto px-6 py-5">
-            {placesOpen ? (
-              <PlacesView onBack={() => setPlacesOpen(false)}>
-                <SavedPlaces activeId={activeId} onOpen={onOpenEntry} />
-              </PlacesView>
-            ) : analysis ? (
-              <>
-                <header>
-                  <h1 className="type-title line-clamp-2 text-ink">{placeLabel}</h1>
-                  <p className="type-label mt-1 text-ink-2">
-                    <span className="tabular-nums">
-                      {formatCoordinates(analysis.place.lat, analysis.place.lng)}
-                    </span>
-                    <span aria-hidden="true"> · </span>
-                    <span title={analysis.timeZone}>{zoneText}</span>
-                  </p>
-                  <div className="mt-3 flex flex-wrap gap-2">{actions("pill")}</div>
-                </header>
-                {summaryHeader}
-                <ViewpointSection summary={viewpointLabel(liveObserver)}>
-                  {viewpoint}
-                </ViewpointSection>
-                <ReportTabs
-                  stickyTop={tabsTop}
-                  anchorOffset={anchorOffset}
-                  resetKey={activeId ?? ""}
-                  className="-mx-6 bg-page px-3"
-                />
-                {sunReport}
-              </>
-            ) : (
-              <Card>
-                <StartIntro onEnterAddress={focusSearch} />
-                <div className="mt-5 border-t border-line pt-4">
-                  <StartExtras onOpen={onOpenEntry} />
-                </div>
-              </Card>
-            )}
+          {/* No padding on the scroller itself: sticky rows stick to its very top. */}
+          <main className="min-h-0 flex-1 overflow-y-auto px-6">
+            <div className="space-y-3 py-5">
+              {placesOpen ? (
+                <PlacesView onBack={() => setPlacesOpen(false)}>
+                  <SavedPlaces activeId={activeId} onOpen={onOpenEntry} />
+                </PlacesView>
+              ) : analysis ? (
+                <>
+                  <header>
+                    <h1 className="type-title line-clamp-2 text-ink">{placeLabel}</h1>
+                    <p className="type-label mt-1 text-ink-2">
+                      <span className="tabular-nums">
+                        {formatCoordinates(analysis.place.lat, analysis.place.lng)}
+                      </span>
+                      <span aria-hidden="true"> · </span>
+                      <span title={analysis.timeZone}>{zoneText}</span>
+                    </p>
+                    <div className="mt-3 flex flex-wrap gap-2">{actions("pill")}</div>
+                  </header>
+                  {summaryHeader}
+                  <ViewpointSection summary={viewpointLabel(liveObserver)}>
+                    {viewpoint}
+                  </ViewpointSection>
+                  <ReportTabs
+                    stickyTop={tabsTop}
+                    anchorOffset={anchorOffset}
+                    resetKey={activeId ?? ""}
+                    className="-mx-6 bg-page px-3"
+                  />
+                  {sunReport}
+                </>
+              ) : (
+                <Card>
+                  <StartIntro onEnterAddress={focusSearch} />
+                  <div className="mt-5 border-t border-line pt-4">
+                    <StartExtras onOpen={onOpenEntry} />
+                  </div>
+                </Card>
+              )}
+            </div>
           </main>
         </aside>
       ) : (
@@ -598,7 +603,7 @@ function Workspace() {
           <Dialog open={viewpointOpen} onClose={() => setViewpointOpen(false)} title="Viewpoint">
             {viewpoint}
           </Dialog>
-          <Dialog open={placesOpen} onClose={() => setPlacesOpen(false)} title="Places" hideTitle>
+          <Dialog open={placesOpen} onClose={() => setPlacesOpen(false)} title="Places">
             <SavedPlaces activeId={activeId} onOpen={onOpenEntry} />
           </Dialog>
         </>

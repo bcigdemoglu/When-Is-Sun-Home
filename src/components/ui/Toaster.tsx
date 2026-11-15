@@ -68,7 +68,7 @@ export function Toaster({ className = "" }: { className?: string }) {
       {toasts.map((toast) => (
         <div
           key={toast.id}
-          className="pointer-events-auto flex min-h-12 max-w-[min(26rem,calc(100vw-2rem))] items-center gap-2 rounded-full bg-ink py-0.5 pr-1 pl-4 text-sm text-surface shadow-float motion-safe:animate-[toast-in_0.2s_ease-out]"
+          className="pointer-events-auto flex min-h-12 max-w-[min(26rem,calc(100vw-2rem))] items-center gap-2 rounded-[26px] bg-ink py-0.5 pr-1 pl-4 text-sm text-surface shadow-float motion-safe:animate-[toast-in_0.2s_ease-out]"
         >
           <span className="min-w-0 py-2">{toast.message}</span>
           {toast.action ? (
