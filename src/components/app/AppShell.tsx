@@ -35,7 +35,7 @@ import { ArrowLeftIcon, ChevronDownIcon, PlacesIcon, ViewpointIcon } from "@/com
 import { showToast } from "@/components/ui/toast";
 import { Toaster } from "@/components/ui/Toaster";
 import { readLegacyPlace } from "@/hooks/legacyPlace";
-import { clearPlace, openSelection, pinNamedPlace } from "@/hooks/placeActions";
+import { clearPlace, nameCurrentPlace, openSelection, pinNamedPlace } from "@/hooks/placeActions";
 import { overlayIsOpen, shiftMinute, shortcutFor, usesKeysItself } from "@/hooks/shortcuts";
 import { useIsDesktop } from "@/hooks/useMediaQuery";
 import { useNow } from "@/hooks/useNow";
@@ -669,6 +669,12 @@ export function AppShell() {
     const settings = useSettings.getState();
     if (settings.place === null) settings.setPlace(legacyPlace);
   }, [hydrated, legacyPlace]);
+
+  // A pin that arrived by link (or from storage) with bare coordinates gets
+  // an address label in the background, like any freshly dropped pin.
+  useEffect(() => {
+    if (hydrated) nameCurrentPlace();
+  }, [hydrated]);
 
   if (!hydrated) return <ShellSkeleton />;
   return <Workspace />;

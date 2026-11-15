@@ -383,10 +383,14 @@ function revisit(
       ? { lat: place.lat, lng: place.lng }
       : { lat: place.lat, lng: place.lng, name };
   const automatic = prev.label === defaultPlaceLabel(prev.place);
+  // A stored summary and its viewpoint travel together: while the numbers
+  // for a new viewpoint are not known yet (or never arrive), keep the old
+  // pair rather than showing old numbers under a new viewpoint.
+  const keepPair = summary === null && prev.summary !== null;
   const next: PlaceEntry = {
     ...prev,
     place: samePlace(prev.place, nextPlace) ? prev.place : nextPlace,
-    observer: sameObserver(prev.observer, observer) ? prev.observer : observer,
+    observer: keepPair || sameObserver(prev.observer, observer) ? prev.observer : observer,
     label: automatic ? defaultPlaceLabel(nextPlace) : prev.label,
     summary: summary === null || sameSummary(prev.summary, summary) ? prev.summary : summary,
   };

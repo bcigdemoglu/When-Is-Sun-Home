@@ -98,6 +98,27 @@ describe("ids and labels", () => {
   });
 });
 
+describe("a stored summary stays paired with its viewpoint", () => {
+  test("a new viewpoint without numbers yet keeps the old pair", () => {
+    const first = recordVisit(empty(), ELM, YARD, summary(6.4), 1);
+    const waiting = recordVisit(first, ELM, WINDOW, null, 2).recent[0];
+    expect(waiting.observer).toEqual(YARD);
+    expect(waiting.summary?.avgSunHoursPerDay).toBe(6.4);
+  });
+
+  test("numbers for the new viewpoint replace both together", () => {
+    const first = recordVisit(empty(), ELM, YARD, summary(6.4), 1);
+    const done = recordVisit(first, ELM, WINDOW, summary(2.1), 2).recent[0];
+    expect(done.observer).toEqual(WINDOW);
+    expect(done.summary?.avgSunHoursPerDay).toBe(2.1);
+  });
+
+  test("an entry with no numbers yet follows the viewpoint at once", () => {
+    const first = recordVisit(empty(), ELM, YARD, null, 1);
+    expect(recordVisit(first, ELM, WINDOW, null, 2).recent[0].observer).toEqual(WINDOW);
+  });
+});
+
 describe("recordVisit", () => {
   test("adds a recent at the front, newest first, capped", () => {
     let data = empty();

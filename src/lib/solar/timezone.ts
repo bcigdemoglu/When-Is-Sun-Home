@@ -12,7 +12,7 @@
  * applies — see {@link zoneOffsetTable}.
  */
 import { tzOffset } from "@date-fns/tz";
-import tzlookup from "tz-lookup";
+import tzlookup from "@photostructure/tz-lookup";
 
 const MS_PER_SECOND = 1000;
 const MS_PER_MINUTE = 60_000;

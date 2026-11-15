@@ -33,8 +33,21 @@ export function pinSpot(spot: LatLng): void {
   const { setPlace } = useSettings.getState();
   setPlace({ lat: spot.lat, lng: spot.lng });
   const pinned = useSettings.getState().place;
-  if (!pinned) return;
+  if (pinned) lookUpName(pinned);
+}
 
+/**
+ * Give the current place a name if it has none — a pin that arrived by link
+ * or was restored from storage with bare coordinates. Same rules as a fresh
+ * pin: in the background, and only if the pin has not moved meanwhile.
+ */
+export function nameCurrentPlace(): void {
+  const place = useSettings.getState().place;
+  if (!place || place.name !== undefined || pendingLookup) return;
+  lookUpName(place);
+}
+
+function lookUpName(pinned: Place): void {
   const controller = new AbortController();
   const timer = setTimeout(() => {
     reverseGeocode(pinned, { signal: controller.signal })
@@ -52,6 +65,9 @@ export function pinSpot(spot: LatLng): void {
       })
       .catch(() => {
         // The label is a nicety; the coordinates are shown instead.
+      })
+      .finally(() => {
+        if (pendingLookup?.controller === controller) pendingLookup = null;
       });
   }, REVERSE_GEOCODE_DELAY_MS);
   pendingLookup = { controller, timer };

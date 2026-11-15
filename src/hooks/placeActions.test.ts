@@ -4,6 +4,7 @@ import {
   REVERSE_GEOCODE_DELAY_MS,
   cancelPendingPlaceLookup,
   clearPlace,
+  nameCurrentPlace,
   openSelection,
   pinNamedPlace,
   pinSpot,
@@ -160,5 +161,34 @@ describe("clearPlace", () => {
     clearPlace();
     await settle();
     expect(place()).toBeNull();
+  });
+});
+
+describe("nameCurrentPlace", () => {
+  it("looks up a label for a pin that arrived without one", async () => {
+    useSettings.getState().setPlace(A);
+    reverseGeocode.mockResolvedValue("2550 Pacific Avenue");
+    nameCurrentPlace();
+    await settle();
+    expect(reverseGeocode).toHaveBeenCalledTimes(1);
+    expect(place()).toEqual({ ...A, name: "2550 Pacific Avenue" });
+  });
+
+  it("leaves a named place and an empty app alone", async () => {
+    nameCurrentPlace();
+    useSettings.getState().setPlace({ ...A, name: "Home" });
+    nameCurrentPlace();
+    await settle();
+    expect(reverseGeocode).not.toHaveBeenCalled();
+    expect(place()).toEqual({ ...A, name: "Home" });
+  });
+
+  it("does not apply the label if the pin moved meanwhile", async () => {
+    useSettings.getState().setPlace(A);
+    reverseGeocode.mockResolvedValue("Old spot");
+    nameCurrentPlace();
+    useSettings.getState().setPlace(B);
+    await settle();
+    expect(place()).toEqual(B);
   });
 });
