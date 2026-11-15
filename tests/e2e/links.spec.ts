@@ -182,7 +182,8 @@ test.describe("Links", () => {
     await expect(page).toHaveURL(/\?lat=90\.00000&lng=-179\.00000/);
     await expect(app.summaryFigure).toHaveText("24 h");
     await expect(app.summaryStatus).toContainText("in sun");
-    await expect(app.includedNote).toContainText("no buildings were found nearby");
+    // (No terrain tiles exist that far north, so the footnote is the bare one.)
+    await expect(app.includedNote).toContainText(/no buildings (were found )?nearby/);
   });
 
   test("development harnesses are reachable in development", async ({ page, request }) => {

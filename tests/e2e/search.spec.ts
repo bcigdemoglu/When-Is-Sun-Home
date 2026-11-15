@@ -9,9 +9,13 @@ import {
   FIXTURE_QUERY,
   MOCK_ADDRESS,
   NOMINATIM_MOCK_ADDRESS,
+  NO_BUILDINGS_NOTE,
   expect,
   test,
 } from "./fixtures";
+// The wording of location problems lives in one place in the app (and differs
+// by platform): the tests check that the RIGHT message shows, not its words.
+import { geolocationMessage } from "../../src/hooks/useGeolocation";
 
 const SF = "2140 Pacific Avenue, San Francisco, California, United States";
 
@@ -139,9 +143,7 @@ test.describe("Search", () => {
     await search.expectClosed();
     await app.waitForAnswer();
     await expect(app.placeTitle).toContainText("2140 Pacific Avenue, Alameda");
-    await expect(app.includedNote).toHaveText(
-      "Estimate: no buildings were found nearby, so nothing blocks the sun here.",
-    );
+    await expect(app.includedNote).toHaveText(NO_BUILDINGS_NOTE);
   });
 
   test("one letter is not searched; nothing found says so and keeps the ways out", async ({
@@ -321,13 +323,15 @@ test.describe("Search", () => {
     search,
     context,
     page,
+    isPhone,
   }) => {
     // Not allowed (the default in these tests): the row itself explains, and search stays open.
     await app.open();
     await search.open();
     await app.press(search.useCurrentLocation);
-    await expect(search.useCurrentLocation).toContainText("Location is off for this site");
-    await expect(search.useCurrentLocation).toContainText("site settings");
+    await expect(search.useCurrentLocation).toContainText(
+      geolocationMessage("denied", isPhone ? "android" : "desktop"),
+    );
     await expect(search.list).toBeVisible();
     await expect(search.chooseOnMap).toBeVisible();
     await app.expectStartScreen();
@@ -439,6 +443,6 @@ test.describe("Search", () => {
     await search.expectClosed();
     await expect(app.placeTitle).toContainText("2140 Pacific Avenue, Tacoma");
     await app.waitForAnswer();
-    await expect(app.includedNote).toContainText("no buildings were found nearby");
+    await expect(app.includedNote).toHaveText(NO_BUILDINGS_NOTE);
   });
 });

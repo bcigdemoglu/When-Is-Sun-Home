@@ -1,13 +1,15 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ErrorBoundary } from "@/components/app/ErrorBoundary";
 import { Button } from "@/components/ui/Button";
 import { pinSpot } from "@/hooks/placeActions";
 import type { BuildingsStatus } from "@/lib/buildings/useBuildings";
 import type { BuildingCollection, Place, SunInstant } from "@/lib/types";
 import type { SunPathModel } from "./compassGeometry";
+import { shouldAutoRetry } from "./contextLoss";
+import { useMapUi } from "./mapUi";
 
 function MapLoading() {
   return (
@@ -138,6 +140,27 @@ export function MapPanel({
     setFailed(false);
     setAttempt((value) => value + 1);
   };
+
+  // A map lost in the background (phones drop WebGL contexts there) usually
+  // works again when the page is next looked at: try once by ourselves. The
+  // allowance is renewed every time a map has loaded properly.
+  const mapReady = useMapUi((state) => state.ready);
+  const autoRetried = useRef(false);
+  useEffect(() => {
+    if (mapReady) autoRetried.current = false;
+  }, [mapReady]);
+  useEffect(() => {
+    if (!failed) return;
+    const onVisibility = () => {
+      const visible = document.visibilityState === "visible";
+      if (!shouldAutoRetry({ failed: true, visible, alreadyRetried: autoRetried.current })) return;
+      autoRetried.current = true;
+      setFailed(false);
+      setAttempt((value) => value + 1);
+    };
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => document.removeEventListener("visibilitychange", onVisibility);
+  }, [failed]);
 
   return (
     <div className="relative h-full w-full overflow-hidden bg-surface-2">

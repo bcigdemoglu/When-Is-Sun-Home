@@ -25,6 +25,31 @@ test.describe("Bottom sheet (phone)", () => {
   test("the handle steps peek → half → full → peek", async ({ app, report }) => {
     await app.openPlace(FIXTURE_QUERY);
     await app.expectSheetAt("peek");
+
+    // The sheet is really laid out as a sheet. (A build that ships without its
+    // stylesheet still passes every text assertion: this one it fails.)
+    const layout = await app.sheetScroller.evaluate((scroller) => {
+      const style = getComputedStyle(scroller);
+      const sheet = getComputedStyle(scroller.querySelector(".sheet") as HTMLElement);
+      return {
+        position: style.position,
+        overflowY: style.overflowY,
+        snap: style.scrollSnapType,
+        scrollable: scroller.scrollHeight > scroller.clientHeight,
+        coversTheWidth: scroller.clientWidth === window.innerWidth,
+        sheetBackground: sheet.backgroundColor,
+        sheetRadius: sheet.borderTopLeftRadius,
+      };
+    });
+    expect(layout).toEqual({
+      position: "fixed",
+      overflowY: "auto",
+      snap: "y mandatory",
+      scrollable: true,
+      coversTheWidth: true,
+      sheetBackground: "rgb(255, 253, 248)",
+      sheetRadius: "28px",
+    });
     await expect(app.sheetHandle).toHaveAccessibleName("Expand the sheet");
     await expect(app.sheetHandle).toHaveAttribute("aria-expanded", "false");
     // At peek: the answer and its actions, with the map (and its buttons) above.

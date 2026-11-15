@@ -17,8 +17,10 @@ import { useTopModal } from "./topLayer";
  *    sheet), so nothing can cover it. Where the Popover API is missing it is
  *    an ordinary fixed element with a high z-index.
  *
- * The parent only says where it sits (a `fixed` position); announcements are
- * polite so they never interrupt.
+ * The parent only says where it sits (a `fixed` position, which may differ
+ * inside a modal: `data-in-modal`); announcements are polite so they never
+ * interrupt. A toast is a solid surface from its first frame: it slides in,
+ * it never fades.
  */
 export function Toaster({ className = "" }: { className?: string }) {
   const toasts = useToasts((state) => state.toasts);
@@ -63,18 +65,19 @@ export function Toaster({ className = "" }: { className?: string }) {
       role="status"
       aria-live="polite"
       data-toaster=""
+      data-in-modal={host ? "" : undefined}
       className={`toaster pointer-events-none z-[2000] flex flex-col items-center gap-2 lg:items-start ${className}`}
     >
       {toasts.map((toast) => (
         <div
           key={toast.id}
-          className="pointer-events-auto flex min-h-12 max-w-[min(26rem,calc(100vw-2rem))] items-center gap-2 rounded-[26px] bg-ink py-0.5 pr-1 pl-4 text-sm text-surface shadow-float motion-safe:animate-[toast-in_0.2s_ease-out]"
+          className="pointer-events-auto flex min-h-12 max-w-[min(26rem,calc(100vw-2rem))] items-center gap-2 rounded-[26px] bg-ink py-0.5 pr-1 pl-4 text-sm text-surface opacity-100 shadow-float motion-safe:animate-[toast-in_0.2s_ease-out]"
         >
           <span className="min-w-0 py-2">{toast.message}</span>
           {toast.action ? (
             <button
               type="button"
-              className="h-11 min-w-11 shrink-0 rounded-full px-3 text-sm font-semibold text-accent-fill hover:bg-surface/10"
+              className="h-11 min-w-11 shrink-0 rounded-full px-3 text-sm font-semibold text-accent-on-ink hover:bg-surface/10"
               onClick={() => {
                 toast.action?.onAction();
                 dismiss(toast.id);

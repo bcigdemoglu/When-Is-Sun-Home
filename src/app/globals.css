@@ -25,6 +25,8 @@
   /* Text on `accent` used as a background, and on `accent-fill`. */
   --accent-ink: #fffdf8;
   --accent-fill-ink: #1e1a15;
+  /* Accent as text ON an `ink` surface: toast actions, the scrub bubble. */
+  --accent-on-ink: #f2a01b;
   --danger: #b3261e;
 
   /* Sun states — the four things the sun can be doing for the observer. */
@@ -70,6 +72,7 @@
     --accent-fill: #ffb938;
     --accent-ink: #1e1a15;
     --accent-fill-ink: #1e1a15;
+    --accent-on-ink: #9a5200;
     --danger: #f2877f;
 
     --state-sun: #c98500;
@@ -102,6 +105,7 @@
   --color-accent-fill: var(--accent-fill);
   --color-accent-ink: var(--accent-ink);
   --color-accent-fill-ink: var(--accent-fill-ink);
+  --color-accent-on-ink: var(--accent-on-ink);
   --color-danger: var(--danger);
   --color-state-sun: var(--state-sun);
   --color-state-sun-line: var(--state-sun-line);
@@ -205,6 +209,25 @@ body {
   input[type="date"],
   input[type="time"] {
     font-size: 16px;
+  }
+}
+
+/*
+ * Rapid taps on a control (next day, next day, next day…) must not be read as
+ * a double-tap zoom. In the base layer on purpose: anything more specific —
+ * the sliders' and charts' `pan-y`, the pin's `none`, any utility — still wins.
+ */
+@layer base {
+  button,
+  a,
+  label,
+  select,
+  summary,
+  input,
+  [role="button"],
+  [role="tab"],
+  [role="option"] {
+    touch-action: manipulation;
   }
 }
 
@@ -447,6 +470,17 @@ dialog.app-dialog[data-variant="prompt"] {
     background: transparent;
   }
 }
+/* They follow the sheet's resting edge (`--toast-bottom`) without jumping. */
+.toaster {
+  transition:
+    bottom 0.2s ease-out,
+    right 0.2s ease-out;
+}
+@media (prefers-reduced-motion: reduce) {
+  .toaster {
+    transition: none;
+  }
+}
 
 @media (prefers-reduced-motion: no-preference) {
   dialog.app-dialog[open] {
@@ -467,9 +501,9 @@ dialog.app-dialog[data-variant="prompt"] {
     opacity: 0;
   }
 }
+/* Toasts slide in: they are never see-through, not even for a frame. */
 @keyframes toast-in {
   from {
-    opacity: 0;
     transform: translateY(8px);
   }
 }

@@ -52,7 +52,7 @@ export function sunStateLabel(state: SunStateCode | null): { text: string; tone:
 
 function StateIcon({ state }: { state: SunStateCode | null }) {
   if (state === SunState.Sun)
-    return <SunIcon className="text-accent-fill" width={18} height={18} />;
+    return <SunIcon className="text-accent-on-ink" width={18} height={18} />;
   if (state === SunState.Night) return <MoonIcon width={18} height={18} />;
   if (state === null) return null;
   return <ShadeIcon width={18} height={18} />;

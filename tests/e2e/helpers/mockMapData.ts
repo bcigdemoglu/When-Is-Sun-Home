@@ -1,7 +1,8 @@
 /**
  * Network mocks for browser tests: building and terrain data come from
  * fixtures (or fail fast), so results are deterministic and no test depends
- * on a third-party server.
+ * on a third-party server. `tests/e2e/fixtures.ts` installs them for every
+ * test (flat terrain by default).
  *
  * The basemap (basemaps.cartocdn.com) is not touched: only
  * tiles.openfreemap.org, which the app uses for building data alone.
@@ -74,7 +75,22 @@ export async function mockBuildingData(page: Page): Promise<void> {
   await page.route(OVERPASS_URL, (route) => route.abort("failed"));
 }
 
-/** Keep the ground flat: every elevation tile request fails, and the app carries on without terrain. */
+/** One Terrarium tile that is 50 m above sea level at every pixel. */
+const FLAT_TERRAIN_TILE = path.join(__dirname, "..", "fixtures", "terrain", "flat-50m.png");
+
+/**
+ * Serve terrain that loads and is perfectly flat: every elevation tile is the
+ * same level tile, so the app has ground heights ("hills around" are part of
+ * the estimate) and no hill ever shades anything. The numbers are those of
+ * flat ground, without the wait and the wording of a failed terrain load.
+ */
+export async function mockFlatTerrain(page: Page): Promise<void> {
+  await page.route(TERRAIN_TILE_URL, (route) =>
+    route.fulfill({ path: FLAT_TERRAIN_TILE, contentType: "image/png", headers: CORS }),
+  );
+}
+
+/** Terrain that cannot be had: every elevation tile request fails, and the app carries on on flat ground. */
 export async function mockTerrain(page: Page): Promise<void> {
   await page.route(TERRAIN_TILE_URL, (route) => route.abort());
 }

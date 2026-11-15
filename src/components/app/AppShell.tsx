@@ -53,8 +53,11 @@ import {
 } from "@/state/places";
 import { BottomSheet, type BottomSheetHandle } from "./BottomSheet";
 import { ErrorBoundary } from "./ErrorBoundary";
+import { HomeScreenHint } from "./HomeScreenHint";
 import { REPORT_TABS_HEIGHT, ReportTabs } from "./ReportTabs";
+import type { Detent } from "./sheetGeometry";
 import { StartExtras, StartIntro } from "./StartPanel";
+import { toastPlacement, type SheetRest } from "./toastPlacement";
 
 /**
  * The report (a tall column of charts) is the most expensive thing to redraw.
@@ -221,8 +224,9 @@ function Workspace() {
   useEffect(() => {
     hydratePlaces();
   }, []);
-  // Headline numbers are only worth keeping once the buildings are in them.
-  const measuredYear = analysis && !analysis.isUnobstructed ? analysis.year : null;
+  // Headline numbers are only worth keeping once they are final: buildings
+  // in, and the ground elevations in (or known not to be coming).
+  const measuredYear = analysis && analysis.isSettled ? analysis.year : null;
   const summary = useMemo(
     () => (measuredYear ? summarizeYear(measuredYear) : null),
     [measuredYear],
@@ -323,12 +327,24 @@ function Workspace() {
     observer.observe(bar);
     return () => observer.disconnect();
   }, [isDesktop]);
+  const [sheetRest, setSheetRest] = useState<SheetRest | null>(null);
   const onSheetSettle = useCallback(
-    (visibleHeight: number) => {
+    (visibleHeight: number, detent: Detent) => {
       const timeBar = timeBarRef.current ? timeBarRef.current.offsetHeight : 0;
       // Beyond half the screen the map is mostly hidden: no point chasing the sheet further.
       const covered = Math.min(visibleHeight, Math.round(window.innerHeight * 0.55));
       useMapUi.getState().setInsets({ top: topInset, bottom: timeBar + covered });
+      // The toasts rest just above the sheet's edge (see `toastPlacement`).
+      const height = Math.round(visibleHeight);
+      const roomAbove = Math.round(window.innerHeight - topInset - timeBar - visibleHeight);
+      setSheetRest((previous) =>
+        previous &&
+        previous.height === height &&
+        previous.detent === detent &&
+        previous.roomAbove === roomAbove
+          ? previous
+          : { height, detent, roomAbove },
+      );
     },
     [topInset],
   );
@@ -352,13 +368,19 @@ function Workspace() {
   // The toasts can be rendered outside this tree (inside an open dialog), so
   // the one measurement they need lives on the document itself.
   useEffect(() => {
-    const bottom = isDesktop
-      ? `${(hasTimeBar ? DESKTOP_TIMEBAR_CLEARANCE : 0) + 16}px`
-      : hasTimeBar
-        ? "calc(64px + env(safe-area-inset-bottom, 0px) + 12px)"
-        : "calc(env(safe-area-inset-bottom, 0px) + 12px)";
-    document.documentElement.style.setProperty("--toast-bottom", bottom);
-  }, [isDesktop, hasTimeBar]);
+    const spot = toastPlacement({
+      isDesktop,
+      hasTimeBar,
+      desktopClearance: DESKTOP_TIMEBAR_CLEARANCE,
+      sheet: sheetRest,
+      // The map buttons ride on the report sheet only (the start sheet has none).
+      hasFabs: hasTimeBar,
+    });
+    const root = document.documentElement.style;
+    root.setProperty("--toast-bottom", spot.bottom);
+    root.setProperty("--toast-right", spot.right);
+    root.setProperty("--toast-bottom-modal", spot.modalBottom);
+  }, [isDesktop, hasTimeBar, sheetRest]);
 
   // ── Pieces shared by both layouts ───────────────────────────────────────
   const search = (
@@ -469,7 +491,7 @@ function Workspace() {
         top-most open dialog), so it is positioned against the viewport: bottom
         centre above the time bar on phones, bottom left of the map on desktop.
       */}
-      <Toaster className="fixed inset-x-4 bottom-[var(--toast-bottom,12px)] lg:right-auto lg:left-[456px]" />
+      <Toaster className="fixed right-[var(--toast-right,16px)] bottom-[var(--toast-bottom,12px)] left-4 data-[in-modal]:right-4 data-[in-modal]:bottom-[var(--toast-bottom-modal,12px)] lg:right-auto lg:left-[456px] lg:data-[in-modal]:right-auto" />
 
       {isDesktop ? (
         <aside className={PANEL}>
@@ -484,6 +506,7 @@ function Workspace() {
             <div className="space-y-3 py-5">
               {placesOpen ? (
                 <PlacesView onBack={() => setPlacesOpen(false)}>
+                  <HomeScreenHint className="mb-4" />
                   <SavedPlaces activeId={activeId} onOpen={onOpenEntry} />
                 </PlacesView>
               ) : analysis ? (
@@ -604,6 +627,7 @@ function Workspace() {
             {viewpoint}
           </Dialog>
           <Dialog open={placesOpen} onClose={() => setPlacesOpen(false)} title="Places">
+            <HomeScreenHint className="mb-4" />
             <SavedPlaces activeId={activeId} onOpen={onOpenEntry} />
           </Dialog>
         </>

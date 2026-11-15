@@ -3,7 +3,14 @@
  * provisional while buildings load, exact once they are in, and the same
  * headline number in the share link.
  */
-import { FIXTURE_BUILDING_COUNT, FIXTURE_PIN_LABEL, FIXTURE_QUERY, expect, test } from "./fixtures";
+import {
+  FIXTURE_BUILDING_COUNT,
+  FIXTURE_ESTIMATE_NOTE,
+  FIXTURE_PIN_LABEL,
+  FIXTURE_QUERY,
+  expect,
+  test,
+} from "./fixtures";
 import { localPath, stubNativeShare } from "./pages/share";
 
 /**
@@ -11,7 +18,7 @@ import { localPath, stubNativeShare } from "./pages/share";
  * heights, skyline, solar model, time zone, formatting).
  *
  * Setup: pin 37.7912, −122.4301 (a back yard in Pacific Heights), yard at
- * ground level (eye height 1 m), flat ground (terrain mocked away), the
+ * ground level (eye height 1 m), flat ground (every terrain tile is level), the
  * building fixture tiles in tests/fixtures/openfreemap (3,632 buildings),
  * 21 June 2026 at 3:00 PM Pacific time.
  *
@@ -105,9 +112,7 @@ test.describe("The answer", () => {
     await expect(app.heroFigure).toHaveText(PINNED.average);
     await expect(app.hero).not.toContainText("before shading");
     await expect(app.buildingNotice).toHaveCount(0);
-    await expect(app.includedNote).toHaveText(
-      `Estimate: includes shade from ${FIXTURE_BUILDING_COUNT} nearby buildings, but not trees, fences or clouds.`,
-    );
+    await expect(app.includedNote).toHaveText(FIXTURE_ESTIMATE_NOTE);
   });
 
   test("the fixture pin on 21 June at 3 PM gives exactly the pinned numbers", async ({

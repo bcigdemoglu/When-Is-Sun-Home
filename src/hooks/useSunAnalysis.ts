@@ -17,8 +17,14 @@
  * The observer is throttled before it reaches the engine: while a height or
  * direction slider is dragged the controls stay live and the analysis follows
  * at ~25 updates a second.
+ *
+ * The first answer for a place waits for the ground elevations too, but only
+ * briefly (`TERRAIN_HOLD_MS` after the buildings are in): hills usually
+ * arrive within that time, and one answer is better than a flat-ground one
+ * that changes a moment later. While it waits, consumers see the buildings
+ * as still "loading", exactly as they do before the buildings arrive.
  */
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   analyzeDay,
   analyzeYear,
@@ -29,7 +35,7 @@ import {
   yearOfDate,
 } from "@/lib/analysis";
 import { useBuildings, type UseBuildingsResult } from "@/lib/buildings/useBuildings";
-import { useTerrain } from "@/lib/terrain";
+import { terrainCoverageFor, useTerrain } from "@/lib/terrain";
 import type {
   DayAnalysis,
   HorizonProfile,
@@ -49,6 +55,11 @@ import { useThrottledValue } from "./useThrottledValue";
 export const YEAR_GRID_STEP_MINUTES = 5;
 /** How often a changing observer is handed to the engine, ms. */
 export const OBSERVER_THROTTLE_MS = 40;
+/**
+ * Longest the skyline waits for ground elevations once the buildings are in,
+ * ms. After that it is computed on flat ground and refined when they arrive.
+ */
+export const TERRAIN_HOLD_MS = 2500;
 
 export interface SunAnalysis {
   place: Place;
@@ -60,12 +71,24 @@ export interface SunAnalysis {
   isLive: boolean;
   /** The observer the results below were computed for (lags the store by ≤ 40 ms). */
   observer: Observer;
+  /**
+   * The building data. Its `status` stays "loading" during the short wait
+   * for ground elevations (see `TERRAIN_HOLD_MS`), so "ready" always means
+   * the numbers below include the buildings.
+   */
   buildings: UseBuildingsResult;
   /**
    * True while the numbers ignore buildings because their data is not (yet)
    * available: every result then describes an unobstructed sky.
    */
   isUnobstructed: boolean;
+  /**
+   * True once nothing more is going to arrive for this spot: the buildings
+   * are in, and the ground elevations are in, absent or failed. False while
+   * either is still loading — including the flat-ground answer shown when
+   * the elevations are slow. Only settled numbers are worth remembering.
+   */
+  isSettled: boolean;
   /** Ground-elevation (hill) data: "ready" means slopes and hills are included. */
   terrainStatus: "idle" | "loading" | "ready" | "error";
   grid: SunYearGrid | null;
@@ -78,6 +101,24 @@ export interface SunAnalysis {
   /** `properties.id` of the building the pin sits in / that hides the sun right now. */
   pinBuildingId: string | null;
   blockerBuildingId: string | null;
+}
+
+/**
+ * Should the skyline wait for ground elevations? `waiting` is "buildings are
+ * in, elevations still loading"; the wait ends by itself after
+ * `TERRAIN_HOLD_MS` and is not repeated for the same block of terrain tiles
+ * (`terrainKey`), so nudging the pin while slow elevations load does not
+ * bring the provisional state back.
+ */
+function useTerrainHold(terrainKey: string | null, waiting: boolean): boolean {
+  const [releasedKey, setReleasedKey] = useState<string | null>(null);
+  const holding = waiting && terrainKey !== null && releasedKey !== terrainKey;
+  useEffect(() => {
+    if (!holding) return;
+    const timer = setTimeout(() => setReleasedKey(terrainKey), TERRAIN_HOLD_MS);
+    return () => clearTimeout(timer);
+  }, [holding, terrainKey]);
+  return holding;
 }
 
 /** `null` until a place is pinned (and, in live mode, until the clock is known). */
@@ -104,7 +145,24 @@ export function useSunAnalysis(): SunAnalysis | null {
   // `useBuildings` hands out a fresh object per render; keep ours stable so
   // that consumers (and the throttles below them) only see real changes —
   // whatever fields the result carries (its data source and so on included).
-  const buildings = useShallowStable(useBuildings(place));
+  const loaded = useShallowStable(useBuildings(place));
+
+  // Ground elevations (hills). Optional: if they fail, or take longer than
+  // the hold below, the skyline is computed on flat ground and refined when
+  // they arrive.
+  const { terrain, status: terrainStatus } = useTerrain(place);
+  const terrainKey = useMemo(
+    () => (lat === null || lng === null ? null : (terrainCoverageFor({ lat, lng })?.key ?? null)),
+    [lat, lng],
+  );
+  const holding = useTerrainHold(
+    terrainKey,
+    loaded.status === "ready" && terrainStatus === "loading",
+  );
+  const buildings = useMemo<UseBuildingsResult>(
+    () => (holding ? { ...loaded, status: "loading" } : loaded),
+    [holding, loaded],
+  );
   const measured = usableBuildings(buildings);
 
   const grid = useMemo(() => {
@@ -114,10 +172,6 @@ export function useSunAnalysis(): SunAnalysis | null {
       { year, timeZone, stepMinutes: YEAR_GRID_STEP_MINUTES },
     );
   }, [lat, lng, year, timeZone]);
-
-  // Ground elevations (hills). Optional: while they load, or if they fail,
-  // the skyline is computed on flat ground and refined when they arrive.
-  const { terrain, status: terrainStatus } = useTerrain(place);
 
   const heightM = observer.heightM;
   const horizon = useMemo(() => {
@@ -162,6 +216,7 @@ export function useSunAnalysis(): SunAnalysis | null {
       observer,
       buildings,
       isUnobstructed: measured === null,
+      isSettled: measured !== null && terrainStatus !== "loading",
       terrainStatus,
       grid,
       horizon,
