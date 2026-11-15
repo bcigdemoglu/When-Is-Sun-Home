@@ -32,6 +32,34 @@ export class SearchPage extends PageObject {
   readonly searchFailed = this.page.getByText("Couldn’t search — check your connection.");
   readonly tryAgain = this.page.getByRole("button", { name: "Try again" });
 
+  // ── Listing links ────────────────────────────────────────────────────────
+  /** The third fixed row: reads a listing link from the clipboard. */
+  readonly pasteLink = this.list.getByRole("option", { name: /^Paste a listing link/ });
+  /** Puts the link's address into the field as text. */
+  readonly editAddress = this.list.getByRole("option", { name: /^Edit this address/ });
+  /** The message for a link that does not carry its address. */
+  readonly noAddress = this.page.getByTestId("listing-no-address");
+
+  /** What a listing link's address led to, under the heading that says where it is from. */
+  fromLink(site: string): Locator {
+    return this.list.getByRole("group", { name: `From this ${site} link` });
+  }
+
+  /**
+   * Paste into the (focused) field as a person does: the text goes onto the
+   * clipboard and Ctrl+V puts it in. Needs the clipboard permissions.
+   */
+  async paste(text: string): Promise<void> {
+    await this.copy(text);
+    await expect(this.field).toBeFocused();
+    await this.page.keyboard.press("ControlOrMeta+V");
+  }
+
+  /** Put text onto the clipboard, as "Copy link" in another app would. */
+  async copy(text: string): Promise<void> {
+    await this.page.evaluate((value) => navigator.clipboard.writeText(value), text);
+  }
+
   option(name: string | RegExp): Locator {
     return this.list.getByRole("option", { name });
   }

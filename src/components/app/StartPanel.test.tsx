@@ -1,7 +1,9 @@
 // @vitest-environment jsdom
-import { act, cleanup, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { NO_LINK_COPIED_MESSAGE, useListingPaste } from "@/components/search/listingPaste";
+import { useToasts } from "@/components/ui/toast";
 import { useSettings } from "@/state";
 import { StartExtras, StartIntro } from "./StartPanel";
 
@@ -24,13 +26,23 @@ function stubGeolocation(
   return getCurrentPosition;
 }
 
+function stubClipboard(readText: (() => Promise<string>) | undefined) {
+  Object.defineProperty(navigator, "clipboard", {
+    configurable: true,
+    value: readText ? { readText } : undefined,
+  });
+}
+
 beforeEach(() => {
   useSettings.getState().reset();
+  useListingPaste.setState({ armed: null, handoff: null });
+  useToasts.setState({ toasts: [] });
 });
 
 afterEach(() => {
   cleanup();
   Object.defineProperty(navigator, "geolocation", { configurable: true, value: undefined });
+  stubClipboard(undefined);
 });
 
 describe("StartIntro", () => {
@@ -87,6 +99,59 @@ describe("StartIntro", () => {
     await userEvent.click(screen.getByRole("button", { name: "Use my location" }));
     expect(screen.getByRole("alert")).toHaveTextContent(/site settings.*enter an address/i);
     expect(useSettings.getState().place).toBeNull();
+    expect(screen.getByRole("button", { name: "Enter an address" })).toBeEnabled();
+  });
+});
+
+describe("StartIntro — paste a listing link", () => {
+  const ZILLOW =
+    "https://www.zillow.com/homedetails/2220-Clay-St-San-Francisco-CA-94115/15075413_zpid/";
+
+  it("is not offered where the browser cannot read the clipboard", () => {
+    render(<StartIntro onEnterAddress={() => {}} />);
+    expect(screen.queryByRole("button", { name: "Paste a listing link" })).toBeNull();
+    expect(screen.getAllByRole("button")).toHaveLength(2);
+  });
+
+  it("is the third, quieter action; it never reads the clipboard until it is pressed", () => {
+    const readText = vi.fn(async () => ZILLOW);
+    stubClipboard(readText);
+    render(<StartIntro onEnterAddress={() => {}} />);
+    expect(screen.getAllByRole("button").map((button) => button.textContent)).toEqual([
+      "Use my location",
+      "Enter an address",
+      "Paste a listing link",
+    ]);
+    expect(readText).not.toHaveBeenCalled();
+  });
+
+  it("hands a copied listing link over to the search, armed to open the house", async () => {
+    stubClipboard(async () => `Check out this home! ${ZILLOW}`);
+    const onEnterAddress = vi.fn();
+    render(<StartIntro onEnterAddress={onEnterAddress} />);
+    fireEvent.click(screen.getByRole("button", { name: "Paste a listing link" }));
+    await waitFor(() =>
+      expect(useListingPaste.getState().handoff).toEqual({
+        text: `Check out this home! ${ZILLOW}`,
+      }),
+    );
+    expect(useListingPaste.getState().armed).toMatchObject({ go: true });
+    expect(useToasts.getState().toasts).toEqual([]);
+    // Nothing is pinned here: the search finds the address.
+    expect(useSettings.getState().place).toBeNull();
+  });
+
+  it("says so when no listing link was copied, and hands nothing over", async () => {
+    stubClipboard(async () => "milk, eggs");
+    render(<StartIntro onEnterAddress={() => {}} />);
+    fireEvent.click(screen.getByRole("button", { name: "Paste a listing link" }));
+    await waitFor(() =>
+      expect(useToasts.getState().toasts.map((toast) => toast.message)).toEqual([
+        NO_LINK_COPIED_MESSAGE,
+      ]),
+    );
+    expect(useListingPaste.getState().handoff).toBeNull();
+    // The two big buttons are still the way in.
     expect(screen.getByRole("button", { name: "Enter an address" })).toBeEnabled();
   });
 });

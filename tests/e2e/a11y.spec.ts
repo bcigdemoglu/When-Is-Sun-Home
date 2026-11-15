@@ -291,7 +291,7 @@ test.describe("Accessibility basics", () => {
     }
     expect(stops).toEqual([
       // The search strip is first in the document, as it is on the screen.
-      expect.stringMatching(/^Search an address\. Showing /),
+      expect.stringMatching(/^Search an address or Zillow link\. Showing /),
       "Clear this place",
       "Saved places",
       "Map",

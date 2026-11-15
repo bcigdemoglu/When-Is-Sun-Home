@@ -195,6 +195,15 @@ describe("searchPlaces", () => {
       label: "2140 Pacific Avenue",
       detail: "San Francisco, California, United States",
       name: "2140 Pacific Avenue, San Francisco, California, United States",
+      // The parts, for checking a listing link's address against.
+      address: {
+        houseNumber: "2140",
+        street: "Pacific Avenue",
+        places: ["San Francisco", "Cow Hollow"],
+        state: "California",
+        postcode: "94123",
+        countryCode: "us",
+      },
     });
     expect(suggestions.map((s) => [s.label, s.detail])).toEqual([
       ["2140 Pacific Avenue", "San Francisco, California, United States"],
@@ -330,8 +339,17 @@ describe("searchPlaces", () => {
         label: "Springfield",
         detail: "",
         name: "Springfield",
+        address: { places: ["Springfield"] },
       },
-      { id: "N9", lat: 2, lng: 1, label: "Good", detail: "", name: "Good" },
+      {
+        id: "N9",
+        lat: 2,
+        lng: 1,
+        label: "Good",
+        detail: "",
+        name: "Good",
+        address: { places: [] },
+      },
     ]);
   });
 

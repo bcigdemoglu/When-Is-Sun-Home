@@ -1,0 +1,36 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "osm_type": "W",
+        "osm_id": 25815170,
+        "name": "Clay Street",
+        "type": "street",
+        "city": "San Francisco",
+        "state": "California",
+        "country": "United States",
+        "postcode": "94115",
+        "countrycode": "US"
+      },
+      "geometry": { "type": "Point", "coordinates": [-122.4322, 37.7911] }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "osm_type": "W",
+        "osm_id": 259266481,
+        "type": "house",
+        "housenumber": "2220",
+        "street": "Clay Street",
+        "city": "San Francisco",
+        "state": "California",
+        "country": "United States",
+        "postcode": "94115",
+        "countrycode": "US"
+      },
+      "geometry": { "type": "Point", "coordinates": [-122.4301, 37.7912] }
+    }
+  ]
+}

@@ -205,3 +205,11 @@ export const SatelliteIcon = (props: IconProps) => (
     </g>
   </Icon>
 );
+
+/** Two chain links: "a link" (to a listing, pasted). */
+export const LinkIcon = (props: IconProps) => (
+  <Icon {...props}>
+    <path d="M10.5 13.5a4 4 0 0 0 5.66 0l3-3a4 4 0 0 0-5.66-5.66l-1.25 1.25" />
+    <path d="M13.5 10.5a4 4 0 0 0-5.66 0l-3 3a4 4 0 0 0 5.66 5.66l1.25-1.25" />
+  </Icon>
+);

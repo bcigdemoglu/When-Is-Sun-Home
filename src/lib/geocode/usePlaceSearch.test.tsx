@@ -364,6 +364,7 @@ describe("usePlaceSearch — Photon down", () => {
         name: "pacific heights found, Fallbackland",
         label: "pacific heights found",
         detail: "Fallbackland",
+        address: { places: [] },
       },
     ]);
     // Submitting the same text again asks nobody.

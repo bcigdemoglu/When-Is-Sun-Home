@@ -6,6 +6,7 @@
  * recent places, then addresses from the geocoder. While the user types,
  * saved and recent places are filtered down to the ones that match.
  */
+import type { ListingLink, ListingWithoutAddress } from "@/lib/geocode/listingLink";
 import { parseCoordinates, type PlaceSuggestion } from "@/lib/geocode/photon";
 import { PLACE_SEARCH_MIN_LENGTH } from "@/lib/geocode/usePlaceSearch";
 import { formatPlaceCoordinates, placeEntryId, type PlaceEntry } from "@/state/places";
@@ -13,6 +14,10 @@ import { formatPlaceCoordinates, placeEntryId, type PlaceEntry } from "@/state/p
 export type SearchRow =
   | { kind: "location"; key: string }
   | { kind: "map"; key: string }
+  /** "Paste a listing link": reads the clipboard. */
+  | { kind: "paste"; key: string }
+  /** "Edit this address": puts a listing link's address into the field as text. */
+  | { kind: "edit"; key: string; address: string }
   | { kind: "saved" | "recent"; key: string; entry: PlaceEntry }
   | { kind: "suggestion"; key: string; suggestion: PlaceSuggestion; coordinates: boolean }
   /** "Search for …": runs one search for the typed text (live suggestions are unavailable). */
@@ -40,10 +45,38 @@ export type SuggestionsState =
   | "submit"
   /** The geocoder knows no such address. */
   | "empty"
+  /** The field holds a listing link that does not spell its address out. */
+  | "no-address"
   | "error";
 
 export const LOCATION_ROW: SearchRow = { kind: "location", key: "location" };
 export const MAP_ROW: SearchRow = { kind: "map", key: "map" };
+export const PASTE_ROW: SearchRow = { kind: "paste", key: "paste" };
+
+/** The heading over what a listing link's address led to. */
+export function listingTitle(link: ListingLink): string {
+  return `From this ${link.site} link`;
+}
+
+/**
+ * What to do about a listing link that does not carry its address. Plain,
+ * specific, and with the way out.
+ */
+export function noAddressMessage(link: ListingWithoutAddress): string {
+  switch (link.reason) {
+    case "short-link":
+      return `This ${link.site} short link doesn’t show the address. Open it, copy the link from the listing’s page, and paste that — or type the address.`;
+    case "building":
+      return `This ${link.site} link is for a whole building and names it without its address. Type the building’s street address instead.`;
+    case "id":
+      return `This ${link.site} link doesn’t include the address. Copy the link from the listing’s Share button, or type the address.`;
+  }
+}
+
+/** Nothing was found for a listing link's address. */
+export function listingNotFoundNote(address: string): string {
+  return `No match for “${address}”. The map may not have this house yet — edit the address, or choose the spot on the map.`;
+}
 
 /** Shown above the "Search for …" row while suggestions cannot arrive as the user types. */
 export const SUBMIT_MODE_NOTE =
@@ -100,6 +133,15 @@ export interface BuildSectionsInput {
    * yet: offer a "Search for …" row instead of addresses.
    */
   awaitingSubmit?: boolean;
+  /** The clipboard can be read here: offer "Paste a listing link". */
+  canPaste?: boolean;
+  /**
+   * `query` holds a listing link: `suggestions` are for the link's address,
+   * not for the text in the field.
+   */
+  listing?: ListingLink | null;
+  /** The search for the link's address has answered (with `suggestions`, or nothing). */
+  listingSettled?: boolean;
 }
 
 export function buildSections({
@@ -108,9 +150,18 @@ export function buildSections({
   recent,
   suggestions,
   awaitingSubmit = false,
+  canPaste = false,
+  listing = null,
+  listingSettled = false,
 }: BuildSectionsInput): SearchSection[] {
   const q = query.trim();
-  const sections: SearchSection[] = [{ id: "actions", title: null, rows: [LOCATION_ROW, MAP_ROW] }];
+  const sections: SearchSection[] = [
+    {
+      id: "actions",
+      title: null,
+      rows: canPaste ? [LOCATION_ROW, MAP_ROW, PASTE_ROW] : [LOCATION_ROW, MAP_ROW],
+    },
+  ];
 
   const shown = new Set<string>();
   const entryRows = (kind: "saved" | "recent", entries: readonly PlaceEntry[]): SearchRow[] =>
@@ -125,6 +176,12 @@ export function buildSections({
   if (savedRows.length > 0) sections.push({ id: "saved", title: "Saved", rows: savedRows });
   const recentRows = entryRows("recent", recent);
   if (recentRows.length > 0) sections.push({ id: "recent", title: "Recent", rows: recentRows });
+
+  if (listing) {
+    const section = listingSection(listing, suggestions, awaitingSubmit, listingSettled);
+    if (section) sections.push(section);
+    return sections;
+  }
 
   const typed = coordinatesSuggestion(q);
   let suggestionRows: SearchRow[] = [];
@@ -161,6 +218,51 @@ export function buildSections({
     });
   }
   return sections;
+}
+
+/**
+ * What a listing link in the field puts under the saved and recent places:
+ * the results for its address under a heading that says where they are from,
+ * with a way to edit that address as text — the only row when nothing was
+ * found. A link without an address has no rows (the list says why instead).
+ */
+function listingSection(
+  listing: ListingLink,
+  suggestions: readonly PlaceSuggestion[],
+  awaitingSubmit: boolean,
+  settled: boolean,
+): SearchSection | null {
+  if (listing.kind !== "address") return null;
+  const title = listingTitle(listing);
+  if (awaitingSubmit) {
+    return {
+      id: "submit",
+      title,
+      note: SUBMIT_MODE_NOTE,
+      rows: [{ kind: "submit", key: "submit", query: listing.query }],
+    };
+  }
+  const rows: SearchRow[] = [];
+  const seen = new Set<string>();
+  for (const suggestion of suggestions) {
+    if (seen.has(suggestion.id)) continue;
+    seen.add(suggestion.id);
+    rows.push({
+      kind: "suggestion",
+      key: `suggestion:${suggestion.id}`,
+      suggestion,
+      coordinates: false,
+    });
+  }
+  if (rows.length === 0 && !settled) return null;
+  const found = rows.length > 0;
+  if (settled) rows.push({ kind: "edit", key: "edit", address: listing.address });
+  return {
+    id: "suggestions",
+    title,
+    note: found ? listing.address : listingNotFoundNote(listing.address),
+    rows,
+  };
 }
 
 export function flattenRows(sections: readonly SearchSection[]): SearchRow[] {

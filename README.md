@@ -25,6 +25,8 @@ Saved places, recent places and settings live in the browser (localStorage / Ind
 account or server-side storage. A share link carries the pin, viewpoint, date and time, plus a compact
 copy of the headline numbers so link previews can show the answer.
 
+Pasting a Zillow, Redfin, Realtor.com or Trulia link into the search goes to that home: the address is read from the link's own text and geocoded — nothing is ever requested from the listing site.
+
 ## Project layout
 
 | Path                                              | What lives there                                    |

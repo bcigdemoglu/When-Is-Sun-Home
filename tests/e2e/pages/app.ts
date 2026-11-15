@@ -26,6 +26,8 @@ export class AppPage extends PageObject {
     : this.page.getByRole("complementary").getByRole("main");
   readonly useMyLocation = this.start.getByRole("button", { name: "Use my location" });
   readonly enterAddress = this.start.getByRole("button", { name: "Enter an address" });
+  /** The third, quieter way in: a listing's link from the clipboard. */
+  readonly pasteListingLink = this.start.getByRole("button", { name: "Paste a listing link" });
   readonly seeExample = this.start.getByRole("button", { name: "See an example" });
   /** Where a location problem is explained, next to the two buttons. */
   readonly startAlert = this.start.getByRole("alert");

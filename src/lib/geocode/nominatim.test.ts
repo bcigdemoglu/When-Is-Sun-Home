@@ -101,6 +101,17 @@ describe("searchPlacesNominatim", () => {
         name: "2550 Pacific Avenue, San Francisco, California, United States",
         label: "2550 Pacific Avenue",
         detail: "San Francisco, California, United States",
+        address: {
+          houseNumber: "2550",
+          street: "Pacific Avenue",
+          places: ["San Francisco", "Cow Hollow", "Pacific Heights"],
+          state: "California",
+          postcode: "94115",
+          countryCode: "us",
+        },
+        // A "house" whose object is the street's way: the number is worked
+        // out from the range along the street, not mapped.
+        approximate: true,
       },
     ]);
   });
@@ -185,6 +196,62 @@ describe("searchPlacesNominatim", () => {
     });
     expect(suggestion).toMatchObject({ label, detail });
     expect(suggestion.name).toBe(detail ? `${label}, ${detail}` : label);
+  });
+
+  test("marks a house number worked out along the street as approximate — and only that", async () => {
+    const address = { house_number: "212", road: "Murray Lane", city: "Richardson" };
+    const suggestions = await searchPlacesNominatim("212 murray ln", {
+      fetchImpl: fetchReturning(
+        listOf(
+          // From the census street ranges: a "house" whose object is the street's way.
+          item(address, { osm_type: "way", osm_id: 1, category: "place", type: "house" }),
+          // Mapped: a building, an address point, a named place.
+          item(address, { osm_type: "way", osm_id: 2, category: "building", type: "yes" }),
+          item(address, { osm_type: "node", osm_id: 3, category: "place", type: "house" }),
+          item(address, { osm_type: "relation", osm_id: 4, category: "building", type: "house" }),
+          // The street itself is no house at all.
+          item(
+            { road: "Murray Lane", city: "Richardson" },
+            { osm_type: "way", osm_id: 5, category: "highway", type: "residential" },
+          ),
+        ),
+      ),
+    });
+    expect(suggestions.map((s) => [s.id, s.approximate ?? false])).toEqual([
+      ["nominatim:W1", true],
+      ["nominatim:W2", false],
+      ["nominatim:N3", false],
+      ["nominatim:R4", false],
+      ["nominatim:W5", false],
+    ]);
+  });
+
+  test("gives the parts of the address: number, street, the place's names (not its county), state, ZIP, country", async () => {
+    const [suggestion] = await searchPlacesNominatim("895 tiffany st", {
+      fetchImpl: fetchReturning(
+        listOf(
+          item({
+            house_number: "895",
+            road: "Tiffany Street",
+            suburb: "The Bronx",
+            city: "New York",
+            county: "Bronx County",
+            state: "New York",
+            postcode: "10459",
+            country: "United States",
+            country_code: "us",
+          }),
+        ),
+      ),
+    });
+    expect(suggestion.address).toEqual({
+      houseNumber: "895",
+      street: "Tiffany Street",
+      places: ["New York", "The Bronx"],
+      state: "New York",
+      postcode: "10459",
+      countryCode: "us",
+    });
   });
 
   test("ids name the service and the OSM object, with fallbacks", async () => {

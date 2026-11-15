@@ -1,8 +1,14 @@
 "use client";
 
+import { useSyncExternalStore } from "react";
 import { SavedPlaces } from "@/components/places/SavedPlaces";
+import {
+  canReadClipboard,
+  handOffToSearch,
+  readListingFromClipboard,
+} from "@/components/search/listingPaste";
 import { Button } from "@/components/ui/Button";
-import { LocateIcon, SearchIcon, SunIcon, WarningIcon } from "@/components/ui/icons";
+import { LinkIcon, LocateIcon, SearchIcon, SunIcon, WarningIcon } from "@/components/ui/icons";
 import { showToast } from "@/components/ui/toast";
 import { pinNamedPlace, pinSpot } from "@/hooks/placeActions";
 import { IMPRECISE_ACCURACY_M, impreciseMessage, useGeolocation } from "@/hooks/useGeolocation";
@@ -22,13 +28,29 @@ const currentSpot = () => {
   return place ? `${place.lat},${place.lng}` : null;
 };
 
+/** Whether the clipboard can be read does not change while the page is open. */
+const subscribeToNothing = () => () => {};
+const cannotPasteOnServer = () => false;
+
+/**
+ * "Paste a listing link": read the clipboard (straight from the tap — the
+ * browser only allows it then) and hand a listing link over to the search,
+ * which finds its address. No link there, or no permission: a toast says so.
+ */
+function pasteListingLink(): void {
+  void readListingFromClipboard().then((text) => {
+    if (text !== null) handOffToSearch(text);
+  });
+}
+
 interface StartIntroProps {
   /** "Enter an address": hand over to the search experience. */
   onEnterAddress(): void;
 }
 
 /**
- * The first thing anyone sees: the question, and the two ways to answer it.
+ * The first thing anyone sees: the question, and the ways to answer it — two
+ * big buttons, and under them a quiet third for a listing's link.
  * Location is asked for only when the button is tapped, and every way it can
  * fail is explained right here, next to the way round it.
  */
@@ -44,6 +66,7 @@ export function StartIntro({ onEnterAddress }: StartIntroProps) {
     { getContext: currentSpot },
   );
   const locating = state.status === "locating";
+  const canPaste = useSyncExternalStore(subscribeToNothing, canReadClipboard, cannotPasteOnServer);
 
   return (
     <div>
@@ -79,6 +102,13 @@ export function StartIntro({ onEnterAddress }: StartIntroProps) {
           <SearchIcon />
           Enter an address
         </Button>
+        {/* The third way in, kept quiet: only where the browser can read the clipboard. */}
+        {canPaste && (
+          <Button variant="ghost" className="-mb-1.5 w-full" onClick={pasteListingLink}>
+            <LinkIcon />
+            Paste a listing link
+          </Button>
+        )}
       </div>
       {/* Always present, so nothing below jumps when a message appears. */}
       <div role="alert" className="min-h-0">

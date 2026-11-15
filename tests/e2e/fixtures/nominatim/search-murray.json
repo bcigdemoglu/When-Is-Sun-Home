@@ -1,0 +1,28 @@
+[
+  {
+    "place_id": 301112233,
+    "licence": "Data © OpenStreetMap contributors, ODbL 1.0. http://osm.org/copyright",
+    "osm_type": "way",
+    "osm_id": 10012294,
+    "lat": "32.9495553",
+    "lon": "-96.7574260",
+    "category": "place",
+    "type": "house",
+    "place_rank": 30,
+    "importance": 0.00001,
+    "addresstype": "place",
+    "name": "",
+    "display_name": "212, Murray Lane, Richardson, Dallas County, Texas, 75080, United States",
+    "address": {
+      "house_number": "212",
+      "road": "Murray Lane",
+      "city": "Richardson",
+      "county": "Dallas County",
+      "state": "Texas",
+      "postcode": "75080",
+      "country": "United States",
+      "country_code": "us"
+    },
+    "boundingbox": ["32.9495053", "32.9496053", "-96.7574760", "-96.7573760"]
+  }
+]
