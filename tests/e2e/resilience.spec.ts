@@ -87,7 +87,7 @@ test.describe("Resilience", () => {
       if (/elevation-tiles-prod/.test(request.url())) terrainRequests.push(request.url());
     });
     await app.openPlace(FIXTURE_QUERY);
-    expect(terrainRequests.length).toBeGreaterThan(0);
+    await expect.poll(() => terrainRequests.length).toBeGreaterThan(0);
 
     // The answer is there, and nothing shouts about it.
     await expect(app.summaryFigure).toHaveText("12 h 27 m");
@@ -167,7 +167,8 @@ test.describe("Resilience", () => {
         if (/basemaps\.cartocdn\.com/.test(request.url())) failed.push(request.url());
       });
       await app.openPlace(FIXTURE_QUERY);
-      expect(failed.length).toBeGreaterThan(0);
+      // (The map loads lazily, after the answer: wait for it to have asked for its style.)
+      await expect.poll(() => failed.length).toBeGreaterThan(0);
 
       await expect(app.summaryFigure).toHaveText("12 h 27 m");
       await expect(app.includedNote).toContainText(`${FIXTURE_BUILDING_COUNT} nearby buildings`);

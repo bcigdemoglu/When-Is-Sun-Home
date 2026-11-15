@@ -1,12 +1,13 @@
 "use client";
 
 import { CancelledError, keepPreviousData, useQuery } from "@tanstack/react-query";
-import { useEffect, useState, useSyncExternalStore } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import type { LatLng } from "@/lib/types";
 import { GeocoderTimeoutError, isAbortError } from "./net";
 import { NOMINATIM_ENABLED, searchPlacesNominatim } from "./nominatim";
 import { parseCoordinates, searchPlaces, type PlaceSuggestion } from "./photon";
 import {
+  failedInBackground,
   getPhotonHealth,
   probePhotonIfDue,
   reportPhotonFailure,
@@ -60,18 +61,12 @@ function coarseBias(bias: LatLng | null | undefined): LatLng | undefined {
 
 const getServerHealth = (): PhotonHealth => "up";
 
-/**
- * Whether a failed Photon request is worth one more try. Reports Photon as
- * down once it is not — which switches the search to submit mode.
- */
-function retryPhoton(failureCount: number, error: Error): boolean {
+/** How often a request cut off by the page going to the background is sent again. */
+const BACKGROUND_RETRIES = 3;
+
+function isCancellation(error: Error): boolean {
   // Not failures of the service: the request was simply no longer wanted.
-  if (error instanceof CancelledError || isAbortError(error)) return false;
-  // One quick retry: a typed search should fail fast and visibly, not after
-  // the default three attempts with backoff. A timeout was slow enough already.
-  if (failureCount < 1 && !(error instanceof GeocoderTimeoutError)) return true;
-  reportPhotonFailure();
-  return false;
+  return error instanceof CancelledError || isAbortError(error);
 }
 
 /**
@@ -109,6 +104,27 @@ export function usePlaceSearch(query: string, bias?: LatLng | null): UsePlaceSea
     if (trimmed.length >= PLACE_SEARCH_MIN_LENGTH) probePhotonIfDue();
   }, [trimmed]);
 
+  /** Failures of the current live query that happened in the foreground. */
+  const failures = useRef({ key: "", count: 0 });
+
+  /**
+   * Whether a failed Photon request is worth another try. Reports Photon as
+   * down once it is not — which switches the search to submit mode.
+   */
+  const retryPhoton = (failureCount: number, error: Error): boolean => {
+    if (isCancellation(error)) return false;
+    // Cut off because the user switched apps: no verdict on Photon. Try again —
+    // react-query holds the retry until the page is visible.
+    if (failedInBackground()) return failureCount < BACKGROUND_RETRIES;
+    if (failures.current.key !== debounced) failures.current = { key: debounced, count: 0 };
+    failures.current.count += 1;
+    // One quick retry: a typed search should fail fast and visibly, not after
+    // the default three attempts with backoff. A timeout was slow enough already.
+    if (failures.current.count <= 1 && !(error instanceof GeocoderTimeoutError)) return true;
+    reportPhotonFailure();
+    return false;
+  };
+
   const search = useQuery<PlaceSuggestion[], Error>({
     queryKey: ["place-search", debounced, near?.lat ?? null, near?.lng ?? null],
     queryFn: async ({ signal }) => {
@@ -133,8 +149,10 @@ export function usePlaceSearch(query: string, bias?: LatLng | null): UsePlaceSea
     enabled: fallbackActive,
     // Cached like live results: submitting the same text again asks nobody.
     staleTime: PLACE_SEARCH_STALE_TIME_MS,
-    // Exactly one request per submit.
-    retry: false,
+    // Exactly one request per submit — unless it was cut off by the page
+    // going to the background, which is worth one more.
+    retry: (failureCount, error) =>
+      !isCancellation(error) && failedInBackground() && failureCount < 1,
   });
 
   if (submitMode) {

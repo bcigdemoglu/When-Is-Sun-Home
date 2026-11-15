@@ -27,9 +27,13 @@ test.describe("Time bar", () => {
     await page.keyboard.press("ArrowRight");
     await expect(timeBar.slider).toHaveValue("541");
     await expect(timeBar.dayButton).toContainText("9:01 AM");
-    // While stepping, a readout above the thumb says the time and the state.
-    await expect(timeBar.readout).toContainText("9:01 AM");
-    await expect(timeBar.readout).toContainText("In shade");
+    // While stepping, a readout above the thumb says the time and the state. It
+    // lingers for a second after a key; any key (here one that changes nothing)
+    // brings it back, so a slow machine cannot miss it.
+    await expect(async () => {
+      await page.keyboard.press("Shift");
+      await expect(timeBar.readout).toHaveText(/9:01 AM\s*In shade/, { timeout: 800 });
+    }).toPass();
     await page.keyboard.press("ArrowLeft");
     await page.keyboard.press("ArrowLeft");
     await expect(timeBar.slider).toHaveValue("539");
