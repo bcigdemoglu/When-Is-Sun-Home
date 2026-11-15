@@ -1,0 +1,21 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "osm_type": "W",
+        "osm_id": 256998550,
+        "type": "house",
+        "housenumber": "2200",
+        "street": "Sacramento Street",
+        "city": "San Francisco",
+        "state": "California",
+        "country": "United States",
+        "postcode": "94115",
+        "countrycode": "US"
+      },
+      "geometry": { "type": "Point", "coordinates": [-122.4294986, 37.7906554] }
+    }
+  ]
+}
