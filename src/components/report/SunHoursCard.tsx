@@ -1,4 +1,4 @@
-import { useMemo, useState, type KeyboardEvent, type MouseEvent, type PointerEvent } from "react";
+import { useMemo, useRef, useState, type KeyboardEvent, type PointerEvent } from "react";
 
 import { Segmented } from "@/components/ui/Segmented";
 import type { YearAnalysis } from "@/lib/types";
@@ -13,6 +13,13 @@ import {
   parseIsoDate,
   toIsoDate,
 } from "./format";
+import {
+  gestureInput,
+  IDLE_GESTURE,
+  isFingerPointer,
+  reduceGesture,
+  type GestureInput,
+} from "./gesture";
 import { dayIndexInYear, moveSelection, type MonthSpan } from "./heatmap";
 import { useElementSize, type ElementSize } from "./hooks";
 import type { ReportModel } from "./model";
@@ -27,6 +34,7 @@ import {
 } from "./parts";
 import { REPORT_SECTION_IDS } from "./sections";
 import type { MonthDetail } from "./summary";
+import type { SunReportProps } from "./types";
 
 type View = "months" | "days";
 
@@ -39,7 +47,7 @@ interface SunHoursCardProps {
   year: YearAnalysis | null;
   model: ReportModel | null;
   date: string;
-  onSelectDateTime: (date: string, minuteOfDay?: number) => void;
+  onSelectDateTime: SunReportProps["onSelectDateTime"];
 }
 
 /** The date a month's bar jumps to: same day of the month, clamped to its length. */
@@ -205,7 +213,7 @@ interface MonthBarsProps {
   selectedMonth: number | null;
   active: number | null;
   onActive: (month: number | null) => void;
-  onSelectDateTime: (date: string, minuteOfDay?: number) => void;
+  onSelectDateTime: SunReportProps["onSelectDateTime"];
 }
 
 function MonthBars({
@@ -227,7 +235,7 @@ function MonthBars({
   return (
     <>
       <div
-        className="flex h-full items-stretch"
+        className="flex h-full touch-pan-y items-stretch"
         role="group"
         aria-label={`Average hours of direct sun per day in each month of ${year.year}`}
       >
@@ -242,13 +250,20 @@ function MonthBars({
               className="group flex min-w-0 flex-1 cursor-pointer flex-col items-center rounded-md px-px focus-visible:outline-2 focus-visible:outline-accent"
               aria-pressed={selected}
               aria-label={`${month.longLabel}: ${formatHours(month.avgSunHours)} hours of direct sun per day, out of ${formatHours(month.avgDaylightHours)} hours of daylight`}
-              onClick={() => onSelectDateTime(dateInMonth(date, year.year, month.month))}
+              onClick={() =>
+                onSelectDateTime(dateInMonth(date, year.year, month.month), undefined, "months")
+              }
               onPointerEnter={(event) => {
-                setFloating(event.pointerType === "mouse");
+                // Only a mouse hovers; a finger passing over (scrolling) must not change the reading.
+                if (isFingerPointer(event)) return;
+                setFloating(true);
                 onActive(month.month);
               }}
               onPointerLeave={leave(month.month)}
-              onFocus={() => onActive(month.month)}
+              onFocus={() => {
+                setFloating(false);
+                onActive(month.month);
+              }}
               onBlur={leave(month.month)}
             >
               <span className="relative block w-full flex-1" style={{ marginTop: LABEL_ROOM }}>
@@ -332,7 +347,7 @@ interface DayLineProps {
   selectedDay: number | null;
   hover: { day: number; floating: boolean } | null;
   onHover: (hover: { day: number; floating: boolean } | null) => void;
-  onSelectDateTime: (date: string, minuteOfDay?: number) => void;
+  onSelectDateTime: SunReportProps["onSelectDateTime"];
 }
 
 function DayLine({
@@ -345,6 +360,7 @@ function DayLine({
   onHover,
   onSelectDateTime,
 }: DayLineProps) {
+  const gesture = useRef(IDLE_GESTURE);
   const { width, height } = size;
   const plotX = MARGIN.left;
   const plotY = MARGIN.top;
@@ -375,13 +391,47 @@ function DayLine({
   const base = plotY + plotHeight;
   const monthWidth = plotWidth / 12;
 
-  const dayFromEvent = (event: PointerEvent<SVGRectElement> | MouseEvent<SVGRectElement>) => {
+  const dayFromEvent = (event: PointerEvent<SVGRectElement>) => {
     const rect = event.currentTarget.getBoundingClientRect();
     const fraction = rect.width > 0 ? (event.clientX - rect.left) / rect.width : 0;
     return Math.min(year.dayCount - 1, Math.max(0, Math.floor(fraction * year.dayCount)));
   };
-  const onPointer = (event: PointerEvent<SVGRectElement>) =>
-    onHover({ day: dayFromEvent(event), floating: event.pointerType !== "touch" });
+  const preview = (event: PointerEvent<SVGRectElement>) =>
+    onHover({
+      day: dayFromEvent(event),
+      floating: !isFingerPointer(event),
+    });
+
+  // Reading vs choosing, as on the heat map: a moving finger previews, a tap
+  // (or a mouse click) selects the day, a vertical move is the page scrolling.
+  const step = (type: GestureInput["type"], event: PointerEvent<SVGRectElement>) => {
+    const result = reduceGesture(gesture.current, gestureInput(type, event));
+    gesture.current = result.state;
+    return result.action;
+  };
+  const onPointerDown = (event: PointerEvent<SVGRectElement>) => {
+    if (!isFingerPointer(event) && event.button !== 0) return;
+    step("down", event);
+  };
+  const onPointerMove = (event: PointerEvent<SVGRectElement>) => {
+    if (gesture.current.phase === "idle") {
+      if (!isFingerPointer(event)) preview(event);
+      return;
+    }
+    const action = step("move", event);
+    if (action === "scrub") preview(event);
+    else if (action === "discard") onHover(null);
+  };
+  const onPointerUp = (event: PointerEvent<SVGRectElement>) => {
+    if (step("up", event) === "tap") {
+      onSelectDateTime(year.days[dayFromEvent(event)].date, undefined, "days");
+    }
+    if (isFingerPointer(event)) onHover(null);
+  };
+  const onPointerCancel = (event: PointerEvent<SVGRectElement>) => {
+    step("cancel", event);
+    onHover(null);
+  };
 
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     if (event.key === "ArrowUp" || event.key === "ArrowDown") return;
@@ -394,15 +444,16 @@ function DayLine({
     }
     if (!next) return;
     event.preventDefault();
-    onSelectDateTime(next.date);
+    onSelectDateTime(next.date, undefined, "days");
   };
 
   const hovered = hover ? year.days[hover.day] : null;
   const selected = selectedDay !== null ? year.days[selectedDay] : null;
 
   return (
+    // touch-action lives on this HTML element: browsers do not honour it on the SVG hit rect.
     <div
-      className="absolute inset-0 rounded-md outline-offset-4 focus-visible:outline-2 focus-visible:outline-accent"
+      className="absolute inset-0 touch-pan-y rounded-md outline-offset-4 focus-visible:outline-2 focus-visible:outline-accent"
       role="group"
       tabIndex={0}
       aria-roledescription="interactive chart"
@@ -513,13 +564,18 @@ function DayLine({
           width={plotWidth}
           height={plotHeight}
           fill="transparent"
-          className="cursor-crosshair touch-pan-y"
+          className="cursor-crosshair"
           style={{ pointerEvents: "all" }}
-          onPointerDown={onPointer}
-          onPointerMove={onPointer}
-          onPointerLeave={() => onHover(null)}
-          onPointerCancel={() => onHover(null)}
-          onClick={(event) => onSelectDateTime(year.days[dayFromEvent(event)].date)}
+          onPointerDown={onPointerDown}
+          onPointerMove={onPointerMove}
+          onPointerUp={onPointerUp}
+          onPointerCancel={onPointerCancel}
+          onPointerLeave={(event) => {
+            if (!isFingerPointer(event)) {
+              gesture.current = IDLE_GESTURE;
+              onHover(null);
+            }
+          }}
         />
       </svg>
 

@@ -10,6 +10,13 @@ import {
   formatPercent,
   formatRangeList,
 } from "./format";
+import {
+  gestureInput,
+  IDLE_GESTURE,
+  isFingerPointer,
+  reduceGesture,
+  type GestureInput,
+} from "./gesture";
 import { useElementSize } from "./hooks";
 import {
   ReportCard,
@@ -23,6 +30,7 @@ import {
 import { REPORT_SECTION_IDS } from "./sections";
 import { blockedLabel, legendStates, stateMeta } from "./states";
 import { stateRuns, type StateRun } from "./summary";
+import type { SunReportProps } from "./types";
 
 interface TodayCardProps {
   date: string;
@@ -30,7 +38,7 @@ interface TodayCardProps {
   day: DayAnalysis | null;
   observer: Observer;
   hasTerrain: boolean;
-  onSelectDateTime: (date: string, minuteOfDay?: number) => void;
+  onSelectDateTime: SunReportProps["onSelectDateTime"];
 }
 
 export interface DayLegendRow {
@@ -190,7 +198,7 @@ interface DayBarProps {
   day: DayAnalysis | null;
   runs: StateRun[];
   onProbe: (minute: number | null) => void;
-  onSelectDateTime: (date: string, minuteOfDay?: number) => void;
+  onSelectDateTime: SunReportProps["onSelectDateTime"];
 }
 
 function DayBar({ date, minuteOfDay, day, runs, onProbe, onSelectDateTime }: DayBarProps) {
@@ -198,6 +206,7 @@ function DayBar({ date, minuteOfDay, day, runs, onProbe, onSelectDateTime }: Day
   const [ref, size] = useElementSize<HTMLDivElement>();
   const clipId = `clip-${useId().replace(/[^a-zA-Z0-9]/g, "")}`;
   const dragging = useRef(false);
+  const gesture = useRef(IDLE_GESTURE);
 
   const width = size?.width ?? 0;
   const xOf = (minute: number) => (minute / 1440) * width;
@@ -209,26 +218,56 @@ function DayBar({ date, minuteOfDay, day, runs, onProbe, onSelectDateTime }: Day
     return Math.min(1439, Math.max(0, minute));
   };
 
+  const select = (minute: number) => onSelectDateTime(date, minute, "today");
+  const step = (type: GestureInput["type"], event: PointerEvent<HTMLDivElement>) => {
+    const result = reduceGesture(gesture.current, gestureInput(type, event));
+    gesture.current = result.state;
+    return result.action;
+  };
+
+  // A mouse sets the time the moment it presses and while it drags. A finger
+  // first has to show what it means: a tap sets the time on release, a sideways
+  // drag moves the needle continuously, and an up-or-down move is the page
+  // scrolling — which sets nothing.
   const onPointerDown = (event: PointerEvent<HTMLDivElement>) => {
+    if (isFingerPointer(event)) {
+      step("down", event);
+      return;
+    }
     if (event.pointerType === "mouse" && event.button !== 0) return;
     dragging.current = true;
     event.currentTarget.setPointerCapture?.(event.pointerId);
     const minute = minuteAt(event.clientX, event.currentTarget);
     onProbe(minute);
-    onSelectDateTime(date, minute);
+    select(minute);
   };
   const onPointerMove = (event: PointerEvent<HTMLDivElement>) => {
     const minute = minuteAt(event.clientX, event.currentTarget);
-    if (dragging.current) {
+    if (isFingerPointer(event)) {
+      const action = step("move", event);
+      if (action === "scrub") {
+        onProbe(minute);
+        if (minute !== minuteOfDay) select(minute);
+      } else if (action === "discard") {
+        onProbe(null);
+      }
+    } else if (dragging.current) {
       onProbe(minute);
-      if (minute !== minuteOfDay) onSelectDateTime(date, minute);
-    } else if (event.pointerType === "mouse") {
+      if (minute !== minuteOfDay) select(minute);
+    } else {
       onProbe(minute);
     }
   };
-  const stopDragging = (event: PointerEvent<HTMLDivElement>) => {
+  const onPointerUp = (event: PointerEvent<HTMLDivElement>) => {
     dragging.current = false;
-    if (event.pointerType !== "mouse") onProbe(null);
+    if (!isFingerPointer(event)) return;
+    if (step("up", event) === "tap") select(minuteAt(event.clientX, event.currentTarget));
+    onProbe(null);
+  };
+  const onPointerCancel = (event: PointerEvent<HTMLDivElement>) => {
+    dragging.current = false;
+    step("cancel", event);
+    if (isFingerPointer(event)) onProbe(null);
   };
 
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
@@ -242,7 +281,7 @@ function DayBar({ date, minuteOfDay, day, runs, onProbe, onSelectDateTime }: Day
     else if (event.key === "End") next = 1439;
     if (next === null) return;
     event.preventDefault();
-    onSelectDateTime(date, Math.min(1439, Math.max(0, next)));
+    select(Math.min(1439, Math.max(0, next)));
   };
 
   const state = day
@@ -267,8 +306,8 @@ function DayBar({ date, minuteOfDay, day, runs, onProbe, onSelectDateTime }: Day
       aria-valuetext={state === null ? clock : `${clock}, ${stateMeta(state).phrase}`}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
-      onPointerUp={stopDragging}
-      onPointerCancel={stopDragging}
+      onPointerUp={onPointerUp}
+      onPointerCancel={onPointerCancel}
       onPointerLeave={() => {
         if (!dragging.current) onProbe(null);
       }}

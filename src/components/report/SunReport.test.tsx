@@ -291,28 +291,40 @@ describe("selected day", () => {
     expect(slider.getAttribute("aria-valuenow")).toBe("600");
     expect(slider.getAttribute("aria-valuetext")).toBe("10:00 AM, In direct sun");
     fireEvent.keyDown(slider, { key: "ArrowRight" });
-    expect(onSelectDateTime).toHaveBeenLastCalledWith("2026-06-15", 605);
+    expect(onSelectDateTime).toHaveBeenLastCalledWith("2026-06-15", 605, "today");
     fireEvent.keyDown(slider, { key: "ArrowLeft", shiftKey: true });
-    expect(onSelectDateTime).toHaveBeenLastCalledWith("2026-06-15", 540);
+    expect(onSelectDateTime).toHaveBeenLastCalledWith("2026-06-15", 540, "today");
     fireEvent.keyDown(slider, { key: "End" });
-    expect(onSelectDateTime).toHaveBeenLastCalledWith("2026-06-15", 1439);
+    expect(onSelectDateTime).toHaveBeenLastCalledWith("2026-06-15", 1439, "today");
 
     // The bar is 560 px wide: 3/4 of the way along is 18:00.
-    fireEvent.pointerDown(slider, { clientX: 420, button: 0, pointerId: 1 });
-    expect(onSelectDateTime).toHaveBeenLastCalledWith("2026-06-15", 1080);
+    // A mouse sets the time as soon as it presses, and keeps setting it while it drags.
+    fireEvent.pointerDown(slider, { clientX: 420, button: 0, pointerId: 1, pointerType: "mouse" });
+    expect(onSelectDateTime).toHaveBeenLastCalledWith("2026-06-15", 1080, "today");
+    fireEvent.pointerMove(slider, { clientX: 280, pointerId: 1, pointerType: "mouse" });
+    expect(onSelectDateTime).toHaveBeenLastCalledWith("2026-06-15", 720, "today");
+    fireEvent.pointerUp(slider, { clientX: 280, pointerId: 1, pointerType: "mouse" });
+    const calls = onSelectDateTime.mock.calls.length;
+    fireEvent.pointerMove(slider, { clientX: 100, pointerId: 1, pointerType: "mouse" });
+    expect(onSelectDateTime).toHaveBeenCalledTimes(calls);
   });
 
   it("turns the value line into the reading under the finger", () => {
     render(<SunReport {...props()} />);
     const slider = screen.getByRole("slider", { name: /time of day/i });
     // 13:20 is in the shade between the two sunny spells.
-    fireEvent.pointerDown(slider, { clientX: (800 / 1440) * 560, button: 0, pointerId: 1 });
+    fireEvent.pointerDown(slider, {
+      clientX: (800 / 1440) * 560,
+      button: 0,
+      pointerId: 1,
+      pointerType: "mouse",
+    });
     expect(today().getByText("1:20 PM")).toBeTruthy();
     expect(today().getByText("Shaded by a building")).toBeTruthy();
     // Only the legend row still shows the day's total.
     expect(today().getAllByText("5 h 10 m")).toHaveLength(1);
-    fireEvent.pointerUp(slider, { pointerId: 1, pointerType: "touch" });
-    fireEvent.pointerLeave(slider);
+    fireEvent.pointerUp(slider, { pointerId: 1, pointerType: "mouse" });
+    fireEvent.pointerLeave(slider, { pointerType: "mouse" });
     expect(today().getAllByText("5 h 10 m")).toHaveLength(2);
   });
 });
@@ -378,13 +390,13 @@ describe("year heat map", () => {
     render(<SunReport {...props({ onSelectDateTime })} />);
     const chart = getChart();
     fireEvent.keyDown(chart, { key: "ArrowRight" });
-    expect(onSelectDateTime).toHaveBeenLastCalledWith("2026-06-16", 600);
+    expect(onSelectDateTime).toHaveBeenLastCalledWith("2026-06-16", 600, "heatmap");
     fireEvent.keyDown(chart, { key: "ArrowLeft" });
-    expect(onSelectDateTime).toHaveBeenLastCalledWith("2026-06-14", 600);
+    expect(onSelectDateTime).toHaveBeenLastCalledWith("2026-06-14", 600, "heatmap");
     fireEvent.keyDown(chart, { key: "ArrowDown" });
-    expect(onSelectDateTime).toHaveBeenLastCalledWith("2026-06-15", 615);
+    expect(onSelectDateTime).toHaveBeenLastCalledWith("2026-06-15", 615, "heatmap");
     fireEvent.keyDown(chart, { key: "ArrowUp" });
-    expect(onSelectDateTime).toHaveBeenLastCalledWith("2026-06-15", 585);
+    expect(onSelectDateTime).toHaveBeenLastCalledWith("2026-06-15", 585, "heatmap");
     expect(onSelectDateTime).toHaveBeenCalledTimes(4);
     fireEvent.keyDown(chart, { key: "a" });
     fireEvent.keyDown(chart, { key: "ArrowRight", ctrlKey: true });
@@ -406,19 +418,14 @@ describe("year heat map", () => {
     const tooltip = screen.getByTestId("chart-tooltip");
     expect(tooltip.textContent).toMatch(/Sat, Apr 11 · 3:00 PM/);
     expect(tooltip.textContent).toMatch(/9 h of direct sun that day/);
-    fireEvent.click(hit, point);
-    expect(onSelectDateTime).toHaveBeenCalledWith("2026-04-11", 900);
+    expect(onSelectDateTime).not.toHaveBeenCalled();
+    fireEvent.pointerDown(hit, { ...point, button: 0, pointerType: "mouse" });
+    fireEvent.pointerUp(hit, { ...point, button: 0, pointerType: "mouse" });
+    expect(onSelectDateTime).toHaveBeenCalledTimes(1);
+    expect(onSelectDateTime).toHaveBeenCalledWith("2026-04-11", 900, "heatmap");
     fireEvent.pointerLeave(hit);
     expect(screen.queryByTestId("chart-tooltip")).toBeNull();
     expect(year.getByText("Mon, Jun 15 · 10:00 AM")).toBeTruthy();
-  });
-
-  it("shows no floating tooltip under a finger: the value line is the tooltip", () => {
-    render(<SunReport {...props()} />);
-    const hit = screen.getByTestId("heatmap-hit");
-    fireEvent.pointerDown(hit, { ...cellPoint(100, 15 * 60 + 15), pointerType: "touch" });
-    expect(within(card("Through the year")).getByText("Sat, Apr 11 · 3:00 PM")).toBeTruthy();
-    expect(screen.queryByTestId("chart-tooltip")).toBeNull();
   });
 
   it("offers the monthly numbers as a table", () => {
@@ -467,6 +474,180 @@ describe("year heat map", () => {
   });
 });
 
+describe("touch: reading is not choosing", () => {
+  const finger = { pointerType: "touch", pointerId: 7 };
+  // Heat-map plot: 515 × 278 px showing 05:00–19:00 in 30-minute slots.
+  const cell = (dayIndex: number, minute: number) => ({
+    clientX: ((dayIndex + 0.5) / 365) * 515,
+    clientY: ((minute - 5 * 60) / (14 * 60)) * 278,
+  });
+  const yearValue = () => card("Through the year").querySelector("p")?.textContent;
+
+  it("a tap on the heat map selects that cell, once, on release", () => {
+    const onSelectDateTime = vi.fn();
+    render(<SunReport {...props({ onSelectDateTime })} />);
+    const hit = screen.getByTestId("heatmap-hit");
+    const point = cell(100, 15 * 60 + 15);
+    fireEvent.pointerDown(hit, { ...point, ...finger });
+    // Not yet: the finger may be about to scroll the page.
+    expect(onSelectDateTime).not.toHaveBeenCalled();
+    expect(yearValue()).toBe("Mon, Jun 15 · 10:00 AM");
+    fireEvent.pointerUp(hit, { ...point, ...finger });
+    expect(onSelectDateTime).toHaveBeenCalledTimes(1);
+    expect(onSelectDateTime).toHaveBeenCalledWith("2026-04-11", 900, "heatmap");
+    expect(screen.queryByTestId("chart-tooltip")).toBeNull();
+  });
+
+  it("a sideways scrub on the heat map previews on the value line and selects nothing", () => {
+    const onSelectDateTime = vi.fn();
+    render(<SunReport {...props({ onSelectDateTime })} />);
+    const hit = screen.getByTestId("heatmap-hit");
+    const start = cell(100, 15 * 60 + 15);
+    fireEvent.pointerDown(hit, { ...start, ...finger });
+    fireEvent.pointerMove(hit, { ...cell(130, 15 * 60 + 15), ...finger });
+    expect(yearValue()).toBe("Mon, May 11 · 3:00 PM");
+    fireEvent.pointerMove(hit, { ...cell(200, 9 * 60 + 15), ...finger });
+    expect(yearValue()).toBe("Mon, Jul 20 · 9:00 AM");
+    // Under a finger the value line is the tooltip: nothing floats.
+    expect(screen.queryByTestId("chart-tooltip")).toBeNull();
+    fireEvent.pointerUp(hit, { ...cell(200, 9 * 60 + 15), ...finger });
+    expect(onSelectDateTime).not.toHaveBeenCalled();
+    // The preview is gone; the value line is back on the selection.
+    expect(yearValue()).toBe("Mon, Jun 15 · 10:00 AM");
+  });
+
+  it("a vertical move that starts on the heat map is the page scrolling: nothing happens", () => {
+    const onSelectDateTime = vi.fn();
+    render(<SunReport {...props({ onSelectDateTime })} />);
+    const hit = screen.getByTestId("heatmap-hit");
+    const start = cell(100, 9 * 60);
+    fireEvent.pointerDown(hit, { ...start, ...finger });
+    fireEvent.pointerMove(hit, {
+      clientX: start.clientX + 2,
+      clientY: start.clientY + 30,
+      ...finger,
+    });
+    fireEvent.pointerMove(hit, {
+      clientX: start.clientX + 40,
+      clientY: start.clientY + 120,
+      ...finger,
+    });
+    expect(yearValue()).toBe("Mon, Jun 15 · 10:00 AM");
+    // The browser takes the gesture over and cancels the pointer.
+    fireEvent.pointerCancel(hit, finger);
+    fireEvent.pointerUp(hit, { ...start, ...finger });
+    expect(onSelectDateTime).not.toHaveBeenCalled();
+    expect(yearValue()).toBe("Mon, Jun 15 · 10:00 AM");
+  });
+
+  it("a cancelled scrub discards its preview and selects nothing", () => {
+    const onSelectDateTime = vi.fn();
+    render(<SunReport {...props({ onSelectDateTime })} />);
+    const hit = screen.getByTestId("heatmap-hit");
+    fireEvent.pointerDown(hit, { ...cell(100, 9 * 60), ...finger });
+    fireEvent.pointerMove(hit, { ...cell(140, 9 * 60), ...finger });
+    expect(yearValue()).not.toBe("Mon, Jun 15 · 10:00 AM");
+    fireEvent.pointerCancel(hit, finger);
+    expect(yearValue()).toBe("Mon, Jun 15 · 10:00 AM");
+    expect(onSelectDateTime).not.toHaveBeenCalled();
+  });
+
+  it("the day bar ignores a press and a vertical move", () => {
+    const onSelectDateTime = vi.fn();
+    render(<SunReport {...props({ onSelectDateTime })} />);
+    const slider = screen.getByRole("slider", { name: /time of day/i });
+    fireEvent.pointerDown(slider, { clientX: 420, clientY: 20, ...finger });
+    fireEvent.pointerMove(slider, { clientX: 423, clientY: 60, ...finger });
+    fireEvent.pointerCancel(slider, finger);
+    expect(onSelectDateTime).not.toHaveBeenCalled();
+    expect(within(card("Mon, Jun 15")).getAllByText("5 h 10 m")).toHaveLength(2);
+  });
+
+  it("a tap on the day bar sets the time on release", () => {
+    const onSelectDateTime = vi.fn();
+    render(<SunReport {...props({ onSelectDateTime })} />);
+    const slider = screen.getByRole("slider", { name: /time of day/i });
+    fireEvent.pointerDown(slider, { clientX: 420, clientY: 20, ...finger });
+    expect(onSelectDateTime).not.toHaveBeenCalled();
+    fireEvent.pointerUp(slider, { clientX: 420, clientY: 20, ...finger });
+    expect(onSelectDateTime).toHaveBeenCalledTimes(1);
+    expect(onSelectDateTime).toHaveBeenCalledWith("2026-06-15", 1080, "today");
+  });
+
+  it("dragging the needle sideways sets the time continuously", () => {
+    const onSelectDateTime = vi.fn();
+    render(<SunReport {...props({ onSelectDateTime })} />);
+    const slider = screen.getByRole("slider", { name: /time of day/i });
+    fireEvent.pointerDown(slider, { clientX: 280, clientY: 20, ...finger });
+    fireEvent.pointerMove(slider, { clientX: 284, clientY: 21, ...finger }); // still within the slop
+    expect(onSelectDateTime).not.toHaveBeenCalled();
+    fireEvent.pointerMove(slider, { clientX: 350, clientY: 22, ...finger });
+    expect(onSelectDateTime).toHaveBeenLastCalledWith("2026-06-15", 900, "today");
+    // The value line reads the time under the finger while it drags.
+    expect(within(card("Mon, Jun 15")).getByText("3:00 PM")).toBeTruthy();
+    fireEvent.pointerMove(slider, { clientX: 420, clientY: 30, ...finger });
+    expect(onSelectDateTime).toHaveBeenLastCalledWith("2026-06-15", 1080, "today");
+    fireEvent.pointerUp(slider, { clientX: 420, clientY: 30, ...finger });
+    expect(onSelectDateTime).toHaveBeenCalledTimes(2);
+    expect(within(card("Mon, Jun 15")).queryByText("6:00 PM")).toBeNull();
+  });
+
+  it("the days line previews under a scrub and selects on a tap", () => {
+    const onSelectDateTime = vi.fn();
+    render(<SunReport {...props({ onSelectDateTime })} />);
+    fireEvent.click(screen.getByRole("radio", { name: "Days" }));
+    const sunHours = within(card("Sun hours"));
+    const hit = screen.getByTestId("daily-hit");
+    hit.getBoundingClientRect = () => ({ left: 0, top: 0, width: 365, height: 100 }) as DOMRect;
+    // Scroll: nothing.
+    fireEvent.pointerDown(hit, { clientX: 10.5, clientY: 10, ...finger });
+    fireEvent.pointerMove(hit, { clientX: 11, clientY: 60, ...finger });
+    fireEvent.pointerCancel(hit, finger);
+    expect(sunHours.getByText("on Mon, Jun 15")).toBeTruthy();
+    // Scrub: preview only.
+    fireEvent.pointerDown(hit, { clientX: 10.5, clientY: 10, ...finger });
+    fireEvent.pointerMove(hit, { clientX: 40.5, clientY: 12, ...finger });
+    expect(sunHours.getByText("on Tue, Feb 10")).toBeTruthy();
+    fireEvent.pointerUp(hit, { clientX: 40.5, clientY: 12, ...finger });
+    expect(sunHours.getByText("on Mon, Jun 15")).toBeTruthy();
+    expect(onSelectDateTime).not.toHaveBeenCalled();
+    // Tap: select.
+    fireEvent.pointerDown(hit, { clientX: 31.5, clientY: 10, ...finger });
+    fireEvent.pointerUp(hit, { clientX: 31.5, clientY: 10, ...finger });
+    expect(onSelectDateTime).toHaveBeenCalledTimes(1);
+    expect(onSelectDateTime).toHaveBeenCalledWith("2026-02-01", undefined, "days");
+  });
+
+  it("a finger passing over the month bars does not change the reading", () => {
+    render(<SunReport {...props()} />);
+    const sunHours = within(card("Sun hours"));
+    fireEvent.pointerEnter(screen.getByRole("button", { name: /^October:/ }), finger);
+    expect(sunHours.getByText("a day in June")).toBeTruthy();
+    fireEvent.pointerEnter(screen.getByRole("button", { name: /^October:/ }), {
+      pointerType: "mouse",
+    });
+    expect(sunHours.getByText("a day in October")).toBeTruthy();
+  });
+
+  it("keeps vertical panning with the browser on every chart", () => {
+    render(<SunReport {...props()} />);
+    fireEvent.click(screen.getByRole("radio", { name: "Days" }));
+    expect(screen.getByTestId("heatmap-hit").className).toContain("touch-pan-y");
+    expect(screen.getByRole("slider", { name: /time of day/i }).className).toContain("touch-pan-y");
+    expect(
+      screen.getByRole("group", { name: /line chart of hours of direct sun/i }).className,
+    ).toContain("touch-pan-y");
+    const scroller = screen.getByTestId("skyline-scroller").className;
+    expect(scroller).toContain("touch-pan-x");
+    expect(scroller).toContain("touch-pan-y");
+    fireEvent.click(screen.getByRole("radio", { name: "Months" }));
+    expect(
+      screen.getByRole("group", { name: /Average hours of direct sun per day in each month/ })
+        .className,
+    ).toContain("touch-pan-y");
+  });
+});
+
 describe("sun hours", () => {
   const sunHours = () => within(card("Sun hours"));
 
@@ -490,9 +671,9 @@ describe("sun hours", () => {
       "true",
     );
     fireEvent.click(june);
-    expect(onSelectDateTime).toHaveBeenLastCalledWith("2026-06-30");
+    expect(onSelectDateTime).toHaveBeenLastCalledWith("2026-06-30", undefined, "months");
     fireEvent.click(screen.getByRole("button", { name: /^February:/ }));
-    expect(onSelectDateTime).toHaveBeenLastCalledWith("2026-02-28");
+    expect(onSelectDateTime).toHaveBeenLastCalledWith("2026-02-28", undefined, "months");
   });
 
   it("puts a focused month on the value line", () => {
@@ -517,7 +698,7 @@ describe("sun hours", () => {
     expect(sunHours().getByText(/on every day of the year/)).toBeTruthy();
 
     fireEvent.keyDown(chart, { key: "ArrowRight" });
-    expect(onSelectDateTime).toHaveBeenLastCalledWith("2026-06-16");
+    expect(onSelectDateTime).toHaveBeenLastCalledWith("2026-06-16", undefined, "days");
     fireEvent.keyDown(chart, { key: "ArrowDown" });
     expect(onSelectDateTime).toHaveBeenCalledTimes(1);
 
@@ -525,8 +706,9 @@ describe("sun hours", () => {
     const hit = screen.getByTestId("daily-hit");
     fireEvent.pointerMove(hit, { clientX: 0 });
     expect(sunHours().getByText("on Thu, Jan 1")).toBeTruthy();
-    fireEvent.click(hit, { clientX: 0 });
-    expect(onSelectDateTime).toHaveBeenLastCalledWith("2026-01-01");
+    fireEvent.pointerDown(hit, { clientX: 0, button: 0, pointerType: "mouse" });
+    fireEvent.pointerUp(hit, { clientX: 0, button: 0, pointerType: "mouse" });
+    expect(onSelectDateTime).toHaveBeenLastCalledWith("2026-01-01", undefined, "days");
 
     fireEvent.click(screen.getByRole("radio", { name: "Months" }));
     expect(sunHours().getAllByRole("button", { name: /hours of direct sun per day/ })).toHaveLength(
@@ -576,7 +758,10 @@ describe("what blocks the sun", () => {
     const hit = screen.getByTestId("skyline-hit");
     hit.getBoundingClientRect = () => ({ left: 0, top: 0, width: 680, height: 200 }) as DOMRect;
     // 3/4 of the way across a south-centred panorama is due west.
-    fireEvent.pointerDown(hit, { clientX: 510, pointerType: "touch", pointerId: 1 });
+    fireEvent.pointerDown(hit, { clientX: 510, clientY: 50, pointerType: "touch", pointerId: 1 });
+    // Nothing yet: the finger might be about to pan or scroll.
+    expect(skyline().queryByText("W · 270°")).toBeNull();
+    fireEvent.pointerUp(hit, { clientX: 510, clientY: 50, pointerType: "touch", pointerId: 1 });
     expect(skyline().getByText("W · 270°")).toBeTruthy();
     expect(skyline().getByText(/85° up · building 40 m away/)).toBeTruthy();
     expect(screen.queryByTestId("chart-tooltip")).toBeNull();

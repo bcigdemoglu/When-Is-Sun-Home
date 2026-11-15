@@ -11,7 +11,6 @@ import { SunSummaryHeader } from "@/components/report/SummaryHeader";
 import type { SunSummaryHeaderProps } from "@/components/report/types";
 import type { BuildingCollection, Observer } from "@/lib/types";
 
-import "../harness.css";
 import {
   analyzeScenarioDay,
   DEFAULT_PIN,
@@ -91,7 +90,7 @@ const CASES: Case[] = [
 export default function SummaryStatesPage() {
   const fixture = useFixtureBuildings(true);
   return (
-    <div className="harness-theme min-h-screen">
+    <div className="min-h-screen bg-page text-ink">
       <main className="mx-auto w-full max-w-[820px] px-4 py-4">
         <header className="mb-3 text-xs text-ink-2">
           <h1 className="text-sm font-semibold text-ink">Summary header states</h1>

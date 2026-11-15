@@ -18,6 +18,13 @@ import {
   formatDistance,
   formatHourTick,
 } from "./format";
+import {
+  gestureInput,
+  IDLE_GESTURE,
+  isFingerPointer,
+  reduceGesture,
+  type GestureInput,
+} from "./gesture";
 import { dayIndexInYear } from "./heatmap";
 import { useElementSize } from "./hooks";
 import {
@@ -109,6 +116,7 @@ export function SkylineChart({ grid, horizon, observer, date, instant }: Skyline
   const [sizeRef, size] = useElementSize<HTMLDivElement>();
   const scrollerRef = useRef<HTMLDivElement>(null);
   const drag = useRef<{ startX: number; startScroll: number } | null>(null);
+  const gesture = useRef(IDLE_GESTURE);
   const [probe, setProbe] = useState<Probe | null>(null);
   const { mode, heightM, facingDeg, fovDeg } = observer;
 
@@ -192,10 +200,22 @@ export function SkylineChart({ grid, horizon, observer, date, instant }: Skyline
     return {
       fraction: Math.min(1, Math.max(0, (event.clientX - rect.left) / rect.width)),
       frameX: event.clientX - frameLeft,
-      floating: event.pointerType !== "touch",
+      floating: !isFingerPointer(event),
     };
   };
+  const step = (type: GestureInput["type"], event: PointerEvent<SVGRectElement>) => {
+    const result = reduceGesture(gesture.current, gestureInput(type, event));
+    gesture.current = result.state;
+    return result.action;
+  };
+
+  // A finger pans the panorama (natively, sideways) or scrolls the page; only
+  // a tap asks about a direction. A mouse hovers to ask and drags to pan.
   const onPointerDown = (event: PointerEvent<SVGRectElement>) => {
+    if (isFingerPointer(event)) {
+      step("down", event);
+      return;
+    }
     const dragging = pannable && event.pointerType === "mouse" && scrollerRef.current !== null;
     // While a mouse drags the panorama the floating tooltip would only be in the way.
     setProbe({ ...probeFromEvent(event), ...(dragging ? { floating: false } : {}) });
@@ -206,15 +226,24 @@ export function SkylineChart({ grid, horizon, observer, date, instant }: Skyline
     }
   };
   const onPointerMove = (event: PointerEvent<SVGRectElement>) => {
+    if (isFingerPointer(event)) {
+      step("move", event);
+      return;
+    }
     if (drag.current && scrollerRef.current) {
       scrollerRef.current.scrollLeft =
         drag.current.startScroll - (event.clientX - drag.current.startX);
       return;
     }
-    if (event.pointerType === "mouse") setProbe(probeFromEvent(event));
+    setProbe(probeFromEvent(event));
   };
-  const endDrag = () => {
+  const onPointerUp = (event: PointerEvent<SVGRectElement>) => {
     drag.current = null;
+    if (isFingerPointer(event) && step("up", event) === "tap") setProbe(probeFromEvent(event));
+  };
+  const onPointerCancel = (event: PointerEvent<SVGRectElement>) => {
+    drag.current = null;
+    step("cancel", event);
   };
 
   const reading = (() => {
@@ -310,7 +339,7 @@ export function SkylineChart({ grid, horizon, observer, date, instant }: Skyline
             <div
               ref={scrollerRef}
               data-testid="skyline-scroller"
-              className="absolute inset-0 overflow-x-auto overflow-y-hidden overscroll-x-contain rounded-lg outline-offset-2 [scrollbar-width:none] focus-visible:outline-2 focus-visible:outline-accent"
+              className="absolute inset-0 overflow-x-auto overflow-y-hidden touch-pan-x touch-pan-y overscroll-x-contain rounded-lg outline-offset-2 [scrollbar-width:none] focus-visible:outline-2 focus-visible:outline-accent"
               tabIndex={pannable ? 0 : undefined}
               role={pannable ? "group" : undefined}
               aria-label={pannable ? "Skyline panorama; scroll sideways to look around" : undefined}
@@ -363,10 +392,10 @@ export function SkylineChart({ grid, horizon, observer, date, instant }: Skyline
                   style={{ pointerEvents: "all" }}
                   onPointerDown={onPointerDown}
                   onPointerMove={onPointerMove}
-                  onPointerUp={endDrag}
-                  onPointerCancel={endDrag}
+                  onPointerUp={onPointerUp}
+                  onPointerCancel={onPointerCancel}
                   onPointerLeave={(event) => {
-                    if (event.pointerType === "mouse" && !drag.current) setProbe(null);
+                    if (!isFingerPointer(event) && !drag.current) setProbe(null);
                   }}
                 />
               </svg>

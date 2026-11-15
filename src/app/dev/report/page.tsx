@@ -15,7 +15,9 @@
  *   buildings       "fixture" (default) | "none"
  *   state           "ready" (default) | "loading" | "error" | "skeleton"
  *   terrain         "demo" adds a made-up ridge to the south, marked as terrain
- *   theme           "app" uses the app's own tokens instead of the revamp preview
+ *
+ * Every `onSelectDateTime` call is appended to `window.__selectCalls` (date, minute,
+ * origin), so a browser test can tell a selection from a scroll.
  *
  * /dev/report/summary shows the summary header in every state side by side.
  */
@@ -24,10 +26,10 @@ import { use, useEffect, useMemo, useState } from "react";
 
 import { SunSummaryHeader } from "@/components/report/SummaryHeader";
 import { REPORT_SECTIONS, SunReport } from "@/components/report/SunReport";
+import type { SelectionOrigin } from "@/components/report/types";
 import { analyzeYear, timeZoneAt } from "@/lib/analysis";
 import type { ObserverMode } from "@/lib/types";
 
-import "./harness.css";
 import {
   analyzeScenarioDay,
   DEFAULT_PIN,
@@ -44,7 +46,6 @@ interface HarnessParams extends Scenario {
   width: number;
   live: boolean;
   state: "ready" | "loading" | "error" | "skeleton";
-  appTheme: boolean;
 }
 
 const DEFAULTS = { date: "2026-11-14", minute: 13 * 60 };
@@ -99,8 +100,19 @@ function parseQuery(query: Query): HarnessParams {
     buildings: first(query.buildings) === "none" ? "none" : "fixture",
     state: state === "loading" || state === "error" || state === "skeleton" ? state : "ready",
     ridgeDeg: first(query.terrain) === "demo" ? 16 : 0,
-    appTheme: first(query.theme) === "app",
   };
+}
+
+interface SelectionCall {
+  date: string;
+  minute: number | undefined;
+  origin: SelectionOrigin | undefined;
+}
+
+/** Keep a log of selections on `window` for browser tests and the console. */
+function recordSelection(call: SelectionCall): void {
+  const target = window as unknown as { __selectCalls?: SelectionCall[] };
+  (target.__selectCalls ??= []).push(call);
 }
 
 export default function ReportHarnessPage({ searchParams }: { searchParams: Promise<Query> }) {
@@ -170,14 +182,12 @@ function Harness({ params }: { params: HarnessParams }) {
   }, [yearAnalysis, grid, day, horizon, instant, date, minute]);
 
   const link = (query: string, width = params.width) => {
-    const all = [query, width === 390 ? "" : `w=${width}`, params.appTheme ? "theme=app" : ""]
-      .filter(Boolean)
-      .join("&");
+    const all = [query, width === 390 ? "" : `w=${width}`].filter(Boolean).join("&");
     return all ? `/dev/report?${all}` : "/dev/report";
   };
 
   return (
-    <div className={`min-h-screen ${params.appTheme ? "bg-page" : "harness-theme"}`}>
+    <div className="min-h-screen bg-page text-ink">
       <main className="mx-auto w-full px-4 py-4" style={{ maxWidth: params.width }}>
         <header className="mb-3 text-xs text-ink-2">
           <h1 className="text-sm font-semibold text-ink">Sun report harness</h1>
@@ -274,7 +284,8 @@ function Harness({ params }: { params: HarnessParams }) {
           }}
           terrain={ridgeDeg > 0 ? "ready" : "idle"}
           pinOnBuilding={containingBuildingIndex >= 0}
-          onSelectDateTime={(nextDate, nextMinute) => {
+          onSelectDateTime={(nextDate, nextMinute, origin) => {
+            recordSelection({ date: nextDate, minute: nextMinute, origin });
             setDate(nextDate);
             if (nextMinute !== undefined) setMinute(nextMinute);
           }}

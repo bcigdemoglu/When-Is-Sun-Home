@@ -1,12 +1,4 @@
-import {
-  useEffect,
-  useId,
-  useRef,
-  useState,
-  type KeyboardEvent,
-  type MouseEvent,
-  type PointerEvent,
-} from "react";
+import { useEffect, useId, useRef, useState, type KeyboardEvent, type PointerEvent } from "react";
 
 import { horizonBinFor } from "@/lib/analysis";
 import {
@@ -39,6 +31,13 @@ import {
   type HeatmapCell,
   type HeatmapGeometry,
 } from "./heatmap";
+import {
+  gestureInput,
+  IDLE_GESTURE,
+  isFingerPointer,
+  reduceGesture,
+  type GestureInput,
+} from "./gesture";
 import { createHeatmapBitmap, drawHeatmapBase, type HeatmapBitmap } from "./heatmapCanvas";
 import { useColorSchemeKey, useDevicePixelRatio, useElementSize } from "./hooks";
 import type { ReportModel } from "./model";
@@ -61,6 +60,7 @@ import {
   statePhrase,
   stateShort,
 } from "./states";
+import type { SunReportProps } from "./types";
 
 const MARGIN = { left: 44, right: 1, top: 20, bottom: 22 };
 
@@ -74,7 +74,7 @@ interface YearHeatmapProps {
   date: string;
   minuteOfDay: number;
   observer: Observer;
-  onSelectDateTime: (date: string, minuteOfDay?: number) => void;
+  onSelectDateTime: SunReportProps["onSelectDateTime"];
 }
 
 /** The cell under the pointer, where it is, and whether a floating tooltip suits the pointer. */
@@ -95,6 +95,7 @@ export function YearHeatmap({
   const { hour12 } = useReport();
   const [sizeRef, size] = useElementSize<HTMLDivElement>();
   const [hover, setHover] = useState<HoverCell | null>(null);
+  const gesture = useRef(IDLE_GESTURE);
   const [tableOpen, setTableOpen] = useState(false);
   const liveId = useId();
   const tableId = useId();
@@ -116,22 +117,47 @@ export function YearHeatmap({
 
   const selectedDay = year ? dayIndexInYear(year, date) : null;
 
-  const cellFromEvent = (
-    event: PointerEvent<HTMLDivElement> | MouseEvent<HTMLDivElement>,
-  ): HoverCell | null => {
+  const cellFromEvent = (event: PointerEvent<HTMLDivElement>): HoverCell | null => {
     if (!geometry) return null;
     const rect = event.currentTarget.getBoundingClientRect();
     const x = geometry.x + (event.clientX - rect.left);
     const y = geometry.y + (event.clientY - rect.top);
     const cell = cellAtPoint(geometry, x, y, true);
-    const touch = "pointerType" in event && event.pointerType === "touch";
-    return cell ? { ...cell, x, y, floating: !touch } : null;
+    return cell ? { ...cell, x, y, floating: !isFingerPointer(event) } : null;
   };
 
-  const onPointer = (event: PointerEvent<HTMLDivElement>) => setHover(cellFromEvent(event));
-  const onClick = (event: MouseEvent<HTMLDivElement>) => {
-    const cell = cellFromEvent(event);
-    if (cell && year) onSelectDateTime(year.days[cell.dayIndex].date, cell.minute);
+  // Reading vs choosing: a moving finger previews (the value line follows it),
+  // only a tap — or a mouse click — commits. A vertical move is the page scrolling.
+  const step = (type: GestureInput["type"], event: PointerEvent<HTMLDivElement>) => {
+    const result = reduceGesture(gesture.current, gestureInput(type, event));
+    gesture.current = result.state;
+    return result.action;
+  };
+  const onPointerDown = (event: PointerEvent<HTMLDivElement>) => {
+    if (!isFingerPointer(event) && event.button !== 0) return;
+    step("down", event);
+  };
+  const onPointerMove = (event: PointerEvent<HTMLDivElement>) => {
+    if (gesture.current.phase === "idle") {
+      if (!isFingerPointer(event)) setHover(cellFromEvent(event));
+      return;
+    }
+    const action = step("move", event);
+    if (action === "scrub") setHover(cellFromEvent(event));
+    else if (action === "discard") setHover(null);
+  };
+  const onPointerUp = (event: PointerEvent<HTMLDivElement>) => {
+    const action = step("up", event);
+    if (action === "tap") {
+      const cell = cellFromEvent(event);
+      if (cell && year) onSelectDateTime(year.days[cell.dayIndex].date, cell.minute, "heatmap");
+    }
+    // A lifted finger leaves no hover behind; a mouse is still over the chart.
+    if (isFingerPointer(event)) setHover(null);
+  };
+  const onPointerCancel = (event: PointerEvent<HTMLDivElement>) => {
+    step("cancel", event);
+    setHover(null);
   };
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     if (event.altKey || event.ctrlKey || event.metaKey) return;
@@ -143,7 +169,7 @@ export function YearHeatmap({
     }
     if (!next) return;
     event.preventDefault();
-    onSelectDateTime(next.date, next.minute);
+    onSelectDateTime(next.date, next.minute, "heatmap");
   };
 
   const selectedState =
@@ -257,11 +283,16 @@ export function YearHeatmap({
                 width: geometry.width,
                 height: geometry.height,
               }}
-              onPointerDown={onPointer}
-              onPointerMove={onPointer}
-              onPointerLeave={() => setHover(null)}
-              onPointerCancel={() => setHover(null)}
-              onClick={onClick}
+              onPointerDown={onPointerDown}
+              onPointerMove={onPointerMove}
+              onPointerUp={onPointerUp}
+              onPointerCancel={onPointerCancel}
+              onPointerLeave={(event) => {
+                if (!isFingerPointer(event)) {
+                  gesture.current = IDLE_GESTURE;
+                  setHover(null);
+                }
+              }}
             />
             {/* With a mouse the reading also floats beside the pointer; a finger would cover it. */}
             {hover && hover.floating && (
