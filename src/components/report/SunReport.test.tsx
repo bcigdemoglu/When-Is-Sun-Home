@@ -13,7 +13,9 @@ import type { SunReportProps } from "./types";
 // jsdom has no canvas: the drawing module is the one place that needs one.
 vi.mock("./heatmapCanvas", () => ({
   createHeatmapBitmap: vi.fn(() => ({ cells: {}, outMask: null })),
-  drawHeatmapBase: vi.fn(),
+  drawHeatmapBase: vi.fn(() => true),
+  releaseHeatmapBitmap: vi.fn(),
+  releaseHeatmapScratch: vi.fn(),
 }));
 
 // Pin the clock style so expectations do not depend on the machine's locale.

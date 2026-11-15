@@ -1,9 +1,10 @@
 // @vitest-environment jsdom
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { act, cleanup, render, screen, within } from "@testing-library/react";
+import { act, cleanup, render, renderHook, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useToasts } from "@/components/ui/toast";
+import { useGeolocation } from "@/hooks/useGeolocation";
 import type { PlaceSuggestion } from "@/lib/geocode/photon";
 import type { UsePlaceSearchResult } from "@/lib/geocode/usePlaceSearch";
 import type { Observer, Place, PlaceSummary } from "@/lib/types";
@@ -90,6 +91,37 @@ function mockGeolocation() {
       },
     },
   });
+}
+
+/**
+ * What the geolocation hook itself says for a failure — the row must show
+ * exactly that (the hook owns the wording, platform-specific help included).
+ * `code` is a GeolocationPositionError code; null = no geolocation at all.
+ */
+function hookMessage(code: 1 | 2 | 3 | null): string {
+  const saved = Object.getOwnPropertyDescriptor(navigator, "geolocation");
+  if (code === null) {
+    Object.defineProperty(navigator, "geolocation", { configurable: true, value: undefined });
+  } else {
+    Object.defineProperty(navigator, "geolocation", {
+      configurable: true,
+      value: {
+        getCurrentPosition: (_ok: unknown, fail: (error: { code: number }) => void) =>
+          fail({ code }),
+      },
+    });
+  }
+  try {
+    const probe = renderHook(() => useGeolocation(() => {}));
+    act(() => probe.result.current.locate());
+    const state = probe.result.current.state;
+    probe.unmount();
+    if (state.status !== "error") throw new Error("the geolocation hook reported no error");
+    expect(state.message.length).toBeGreaterThan(10);
+    return state.message;
+  } finally {
+    if (saved) Object.defineProperty(navigator, "geolocation", saved);
+  }
 }
 
 /** Two saved places (the first with sun hours) and two recents. */
@@ -588,11 +620,12 @@ describe("SearchExperience — overlay (phones)", () => {
       const { user, onSelect } = setup();
       await user.click(pill());
       await user.click(row());
+      const denied = hookMessage(1);
       act(() => geoCalls[0].failure({ code: 1 }));
-      expect(row()).toHaveTextContent(
-        "Location is off for this site — allow it in your browser’s site settings, then try again",
-      );
-      expect(screen.getByRole("status")).toHaveTextContent(/location is off for this site/i);
+      // The hook's own words, not a copy of them: one source of truth.
+      expect(row()).toHaveTextContent(denied);
+      expect(row()).toHaveAccessibleName(`Use my current location. ${denied}`);
+      expect(screen.getByRole("status")).toHaveTextContent(denied);
       expect(screen.getByRole("dialog")).toBeInTheDocument();
       expect(onSelect).not.toHaveBeenCalled();
       expect(screen.getAllByRole("option")).toHaveLength(6);
@@ -602,24 +635,28 @@ describe("SearchExperience — overlay (phones)", () => {
       const { user, onSelect } = setup();
       await user.click(pill());
       await user.click(row());
+      const unavailable = hookMessage(2);
+      const slow = hookMessage(3);
+      expect(unavailable).not.toBe(slow);
       act(() => geoCalls[0].failure({ code: 2 }));
-      expect(row()).toHaveTextContent("Couldn’t find you just now — tap to try again");
+      expect(row()).toHaveTextContent(unavailable);
       await user.click(row());
       expect(geoCalls).toHaveLength(2);
       expect(row()).toHaveTextContent("Finding you…");
       act(() => geoCalls[1].failure({ code: 3 }));
-      expect(row()).toHaveTextContent("That took too long — tap to try again");
+      expect(row()).toHaveTextContent(slow);
       await user.click(row());
       act(() => geoCalls[2].success({ coords: { latitude: 5, longitude: 6, accuracy: 10 } }));
       expect(onSelect).toHaveBeenCalledWith({ place: { lat: 5, lng: 6 }, source: "location" });
     });
 
     it("says when the browser cannot share a location at all", async () => {
+      const unsupported = hookMessage(null);
       Object.defineProperty(navigator, "geolocation", { configurable: true, value: undefined });
       const { user } = setup();
       await user.click(pill());
       await user.click(row());
-      expect(row()).toHaveTextContent(/this browser can’t share its location/i);
+      expect(row()).toHaveTextContent(unsupported);
     });
 
     it("ignores a position that arrives after search was closed", async () => {
@@ -630,6 +667,104 @@ describe("SearchExperience — overlay (phones)", () => {
       act(() => geoCalls[0].success({ coords: { latitude: 1, longitude: 2, accuracy: 10 } }));
       expect(onSelect).not.toHaveBeenCalled();
     });
+  });
+});
+
+describe("SearchExperience — iOS Safari keyboard", () => {
+  /** Pretend the keyboard scrolled the document, as iOS does. */
+  function scrolledBy(y: number) {
+    let scrollY = y;
+    const scrollTo = vi.fn(() => {
+      scrollY = 0;
+    });
+    vi.spyOn(window, "scrollY", "get").mockImplementation(() => scrollY);
+    vi.stubGlobal("scrollTo", scrollTo);
+    return {
+      scrollTo,
+      scrollAgain: (to: number) => {
+        scrollY = to;
+      },
+    };
+  }
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.useRealTimers();
+  });
+
+  it("puts the document back when the overlay closes, if the keyboard had scrolled it", async () => {
+    const { user } = setup();
+    await user.click(pill());
+    const { scrollTo } = scrolledBy(120);
+    await user.keyboard("{Escape}");
+    expect(scrollTo).toHaveBeenCalledWith(0, 0);
+  });
+
+  it("puts it back when the field loses focus (the keyboard closing), and again once it has closed", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <SearchExperience
+          variant="overlay"
+          place={null}
+          onSelect={() => {}}
+          onChooseOnMap={() => {}}
+          onClear={() => {}}
+        />
+      </QueryClientProvider>,
+    );
+    await user.click(pill());
+    const { scrollTo, scrollAgain } = scrolledBy(80);
+    act(() => field().blur());
+    expect(scrollTo).toHaveBeenCalledTimes(1);
+    // Safari shifts the page once more while the keyboard slides away.
+    scrollAgain(40);
+    act(() => void vi.advanceTimersByTime(400));
+    expect(scrollTo).toHaveBeenCalledTimes(2);
+    expect(scrollTo).toHaveBeenLastCalledWith(0, 0);
+  });
+
+  it("never scrolls a document that was not scrolled", async () => {
+    const { user } = setup();
+    const { scrollTo } = scrolledBy(0);
+    await user.click(pill());
+    act(() => field().blur());
+    await user.click(screen.getByRole("button", { name: "Back" }));
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    expect(scrollTo).not.toHaveBeenCalled();
+  });
+
+  it("the desktop field does the same on a touch screen only (an iPad in landscape)", async () => {
+    const coarse = vi.fn((query: string) => ({ matches: query === "(pointer: coarse)" }));
+    vi.stubGlobal("matchMedia", coarse);
+    const touch = setup({ variant: "panel" });
+    await touch.user.click(field());
+    const first = scrolledBy(60);
+    act(() => field().blur());
+    expect(first.scrollTo).toHaveBeenCalledWith(0, 0);
+    touch.view.unmount();
+    vi.unstubAllGlobals();
+
+    vi.stubGlobal(
+      "matchMedia",
+      vi.fn(() => ({ matches: false })),
+    );
+    const mouse = setup({ variant: "panel" });
+    await mouse.user.click(field());
+    const second = scrolledBy(60);
+    act(() => field().blur());
+    expect(second.scrollTo).not.toHaveBeenCalled();
+  });
+
+  it("both search fields are 16 px, so focusing them never makes Safari zoom", async () => {
+    const overlay = setup();
+    await overlay.user.click(pill());
+    expect(field().className).toContain("text-[16px]");
+    overlay.view.unmount();
+    setup({ variant: "panel" });
+    expect(field().className).toContain("text-[16px]");
+    expect(field().className).not.toMatch(/text-\[1[0-5]px\]/);
   });
 });
 

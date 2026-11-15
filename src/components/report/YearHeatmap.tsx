@@ -39,7 +39,13 @@ import {
   reduceGesture,
   type GestureInput,
 } from "./gesture";
-import { createHeatmapBitmap, drawHeatmapBase, type HeatmapBitmap } from "./heatmapCanvas";
+import {
+  createHeatmapBitmap,
+  drawHeatmapBase,
+  releaseHeatmapBitmap,
+  releaseHeatmapScratch,
+  type HeatmapBitmap,
+} from "./heatmapCanvas";
 import { useColorSchemeKey, useDevicePixelRatio, useElementSize } from "./hooks";
 import type { ReportModel } from "./model";
 import { MonthlyTable } from "./MonthlyTable";
@@ -424,7 +430,7 @@ interface BitmapCache {
   startMinute: number;
   endMinute: number;
   colorsKey: string;
-  bitmap: HeatmapBitmap | null;
+  bitmap: HeatmapBitmap;
 }
 
 /**
@@ -454,18 +460,30 @@ function HeatmapCanvas({ year, geometry }: { year: YearAnalysis; geometry: Heatm
       entry.colorsKey !== colors.key
     ) {
       const pixels = buildHeatmapPixels(year, { startMinute, endMinute }, colors);
-      entry = {
-        year,
-        startMinute,
-        endMinute,
-        colorsKey: colors.key,
-        bitmap: createHeatmapBitmap(pixels),
-      };
+      // Repaint the previous bitmap's canvases in place: a new analysis can
+      // arrive many times a second, and canvas memory is a hard budget on iOS.
+      const bitmap = createHeatmapBitmap(pixels, entry?.bitmap ?? null);
+      // No context to be had: keep the frame that is on screen.
+      if (!bitmap) return;
+      entry = { year, startMinute, endMinute, colorsKey: colors.key, bitmap };
       cache.current = entry;
     }
-    if (entry.bitmap)
-      drawHeatmapBase(canvas, entry.bitmap, width, height, pixelRatio, colors.hatch);
+    drawHeatmapBase(canvas, entry.bitmap, width, height, pixelRatio, colors.hatch);
   }, [year, startMinute, endMinute, width, height, pixelRatio, scheme]);
+
+  // Hand the canvas memory back as soon as the chart goes away.
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    return () => {
+      releaseHeatmapBitmap(cache.current?.bitmap ?? null);
+      cache.current = null;
+      releaseHeatmapScratch();
+      if (canvas) {
+        canvas.width = 0;
+        canvas.height = 0;
+      }
+    };
+  }, []);
 
   return (
     <canvas

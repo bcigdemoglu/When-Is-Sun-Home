@@ -7,6 +7,7 @@ import { GeocoderTimeoutError, isAbortError } from "./net";
 import { NOMINATIM_ENABLED, searchPlacesNominatim } from "./nominatim";
 import { parseCoordinates, searchPlaces, type PlaceSuggestion } from "./photon";
 import {
+  BACKGROUND_GRACE_MS,
   failedInBackground,
   getPhotonHealth,
   probePhotonIfDue,
@@ -135,7 +136,9 @@ export function usePlaceSearch(query: string, bias?: LatLng | null): UsePlaceSea
     enabled: liveEnabled,
     staleTime: PLACE_SEARCH_STALE_TIME_MS,
     retry: retryPhoton,
-    retryDelay: 400,
+    // After a cut-off, wait out the grace period, so that the try after it is
+    // judged on its own: if Photon really is down, that is found out then.
+    retryDelay: () => (failedInBackground() ? BACKGROUND_GRACE_MS + 200 : 400),
     placeholderData: keepPreviousData,
   });
 

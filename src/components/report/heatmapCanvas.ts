@@ -65,9 +65,10 @@ function paintPixels(
   width: number,
   height: number,
 ): boolean {
-  resize(canvas, width, height);
+  // The context first: without one the canvas must keep the picture it has.
   const ctx = canvas.getContext("2d");
   if (!ctx) return false;
+  resize(canvas, width, height);
   const image = ctx.createImageData(width, height);
   image.data.set(data);
   ctx.putImageData(image, 0, 0);

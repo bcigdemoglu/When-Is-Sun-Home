@@ -44,6 +44,28 @@ function warnIfImprecise(accuracyM: number | null): void {
   }
 }
 
+/** About how long iOS takes to slide the keyboard away. */
+const KEYBOARD_CLOSE_MS = 350;
+
+/**
+ * The app's document never scrolls — but iOS Safari scrolls it to lift a
+ * focused field above the keyboard, and can leave the fixed layout shifted
+ * once the keyboard is gone. Put it back: at once, and again when the
+ * keyboard has finished closing. Does nothing unless the document is scrolled.
+ */
+function restoreDocumentScroll(): void {
+  const restore = () => {
+    if (window.scrollY !== 0) window.scrollTo(0, 0);
+  };
+  restore();
+  window.setTimeout(restore, KEYBOARD_CLOSE_MS);
+}
+
+/** A touch screen: the device that has an on-screen keyboard to shift the page. */
+function hasCoarsePointer(): boolean {
+  return typeof window.matchMedia === "function" && window.matchMedia("(pointer: coarse)").matches;
+}
+
 /**
  * The way into the app: find a place by address, by standing on it, by
  * tapping the map, or by going back to one looked at before.
@@ -78,6 +100,7 @@ function OverlaySearch({
     setOpen(false);
     // Back to where the user came from; a button does not raise the keyboard.
     pillRef.current?.focus({ preventScroll: true });
+    restoreDocumentScroll();
   };
 
   const geo = useGeolocation((spot: LatLng, accuracyM: number | null) => {
@@ -305,6 +328,8 @@ function SearchOverlay({
             className="h-full min-w-0 flex-1 rounded-full bg-transparent pr-2 pl-5 text-[16px] leading-[22px] text-ink outline-none! placeholder:text-ink-3"
             value={value}
             onChange={(event) => setDraft(event.currentTarget.value)}
+            // The keyboard is on its way out (results scrolled, or search closed).
+            onBlur={restoreDocumentScroll}
             onKeyDown={(event) => {
               search.onKeyDown(event);
             }}
@@ -440,6 +465,7 @@ function PanelSearch({
     <div
       className={`relative ${className}`}
       onBlur={(event) => {
+        if (event.target === inputRef.current && hasCoarsePointer()) restoreDocumentScroll();
         if (!event.currentTarget.contains(event.relatedTarget)) close(false);
       }}
     >
@@ -462,7 +488,9 @@ function PanelSearch({
           autoCapitalize="words"
           spellCheck={false}
           placeholder={PLACEHOLDER}
-          className={`h-full min-w-0 flex-1 truncate bg-transparent pr-2 pl-3 text-[15px] leading-[22px] text-ink outline-none! placeholder:text-ink-3 ${
+          // 16 px, like the overlay's field: iOS Safari zooms the page when a
+          // smaller field is focused, and an iPad in landscape gets this variant.
+          className={`h-full min-w-0 flex-1 truncate bg-transparent pr-2 pl-3 text-[16px] leading-[22px] text-ink outline-none! placeholder:text-ink-3 ${
             showingPlace ? "font-medium" : ""
           }`}
           value={value}
