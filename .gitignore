@@ -43,3 +43,4 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 tests/e2e/_scratch/
+/.hook-build/

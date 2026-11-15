@@ -1,3 +1,17 @@
 # Everything CI checks, before anything leaves this machine.
+#
+# The checks run on a clean checkout of the commit being pushed, not on the
+# working tree: what is verified is exactly what is deployed, and unfinished
+# local edits can neither break a push nor hide a problem in it.
+set -e
+root=$(git rev-parse --show-toplevel)
+tmp=$(mktemp -d)
+cleanup() {
+  git -C "$root" worktree remove --force "$tmp" >/dev/null 2>&1 || rm -rf "$tmp"
+}
+trap cleanup EXIT
+git -C "$root" worktree add --quiet --detach "$tmp" HEAD
+ln -s "$root/node_modules" "$tmp/node_modules"
+cd "$tmp"
 pnpm format:check
 pnpm check

@@ -21,6 +21,7 @@ const eslintConfig = defineConfig([
     "playwright-report/**",
     "test-results/**",
     "tests/e2e/_scratch/**",
+    ".hook-build/**",
   ]),
 ]);
 

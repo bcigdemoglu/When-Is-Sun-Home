@@ -6,3 +6,4 @@ test-results
 tests/fixtures
 public
 tests/e2e/_scratch
+.hook-build
