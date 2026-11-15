@@ -239,3 +239,55 @@ export function formatDistance(meters: number): string {
   if (meters < 1000) return `${Math.round(meters)} m`;
   return `${(Math.round(meters / 100) / 10).toFixed(1)} km`;
 }
+
+// ─── Approximate clock times & lists (verdict sentences, legend rows) ──────
+
+/**
+ * A clock time rounded to the nearest `stepMinutes`, written the way people
+ * say it: "9 AM", "6:30 PM", "noon" (or "09:00", "18:30", "12:00"). Midnight at
+ * the end of the day reads "midnight".
+ */
+export function formatClockApprox(minute: number, hour12: boolean, stepMinutes = 30): string {
+  const rounded = Math.round(wholeMinute(minute) / stepMinutes) * stepMinutes;
+  if (hour12 && rounded === 720) return "noon";
+  const text = formatClock(rounded, hour12);
+  return hour12 ? text.replace(":00", "") : text;
+}
+
+/** "A", "A and B", "A, B and C". */
+export function joinList(items: readonly string[]): string {
+  if (items.length <= 1) return items[0] ?? "";
+  return `${items.slice(0, -1).join(", ")} and ${items[items.length - 1]}`;
+}
+
+export interface MinuteRange {
+  startMinute: number;
+  endMinute: number;
+}
+
+/**
+ * Clock ranges as one line of text for a legend row:
+ * "9:10 AM – 12:40 PM, 3:00 PM – 4:40 PM". At most `max` ranges are written
+ * out; the rest are counted ("+2 more"). With `openEnded`, a range touching
+ * the start or end of the day reads "until 6:54 AM" / "from 4:54 PM" (how one
+ * talks about the night) and a range covering the whole day "all day".
+ */
+export function formatRangeList(
+  ranges: readonly MinuteRange[],
+  hour12: boolean,
+  options: { max?: number; openEnded?: boolean } = {},
+): string {
+  const { max = 3, openEnded = false } = options;
+  if (ranges.length === 0) return "";
+  const one = (range: MinuteRange): string => {
+    const fromStart = range.startMinute <= 0;
+    const toEnd = range.endMinute >= 1440;
+    if (fromStart && toEnd) return "all day";
+    if (openEnded && fromStart) return `until ${formatClock(range.endMinute, hour12)}`;
+    if (openEnded && toEnd) return `from ${formatClock(range.startMinute, hour12)}`;
+    return formatClockRange(range.startMinute, range.endMinute, hour12);
+  };
+  const shown = ranges.slice(0, max).map(one);
+  const rest = ranges.length - shown.length;
+  return rest > 0 ? `${shown.join(", ")}, +${rest} more` : shown.join(", ");
+}

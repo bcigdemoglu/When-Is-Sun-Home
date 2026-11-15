@@ -5,56 +5,86 @@
  * Design tokens. Components use the Tailwind names from the @theme block
  * (bg-page, bg-surface, text-ink, border-line, …) — never raw hex — so light
  * and dark stay in sync from this one place.
+ *
+ * The look: warm paper in the light, warm near-black in the dark. Surfaces
+ * are opaque and tone-on-tone with 1px hairlines (readable outdoors); only
+ * things that float over the map carry a shadow.
  */
 :root {
   color-scheme: light;
-  --page: #f4f3ef;
-  --surface: #fcfcfb;
-  --surface-2: #efeee9;
-  --line: #dfddd5;
-  --ink: #0b0b0b;
-  --ink-2: #52514e;
-  --ink-3: #85847d;
-  --accent: #c2570c;
-  --accent-ink: #ffffff;
-  --danger: #c0392b;
+  --page: #f5f0e6;
+  --surface: #fffdf8;
+  --surface-2: #ede6d8;
+  --line: #e0d7c6;
+  --ink: #1e1a15;
+  --ink-2: #5a5348;
+  --ink-3: #756d61;
+  /* Accent as TEXT / outline (links, focus, selected) and as a FILL. */
+  --accent: #9a5200;
+  --accent-fill: #f2a01b;
+  /* Text on `accent` used as a background, and on `accent-fill`. */
+  --accent-ink: #fffdf8;
+  --accent-fill-ink: #1e1a15;
+  --danger: #b3261e;
 
   /* Sun states — the four things the sun can be doing for the observer. */
-  --state-sun: #f2a900;
-  --state-blocked: #7b8fb5;
-  --state-out: #c9c7bf;
+  --state-sun: #eda100;
+  --state-blocked: #5f82c6;
+  --state-out: #cfcdc5;
   --state-night: #23283a;
+  /* Thin sun-coloured strokes on a surface (>= 3:1). */
+  --state-sun-line: #b97a00;
+
+  /* Floating elements only: sheet, FABs, time bar card, toasts, search pill. */
+  --shadow-float-value: 0 8px 24px rgb(30 26 21 / 0.12), 0 1px 2px rgb(30 26 21 / 0.08);
+  --shadow-sheet-value: 0 -6px 24px rgb(30 26 21 / 0.1);
+  --backdrop: rgb(30 26 21 / 0.4);
 
   /* Map overlays (MapLibre needs concrete colours; read via getComputedStyle). */
-  --map-building: #aba89c;
-  --map-building-soft: #c6c3b8;
-  --map-pin-building: #e2a877;
-  --map-shadow: #1b2033;
-  --map-shadow-opacity: 0.28;
+  --map-building: #b5ad9c;
+  --map-building-soft: #cfc8b8;
+  --map-pin-building: #e6b170;
+  --map-shadow: #1e1a15;
+  --map-shadow-opacity: 0.3;
+
+  /* Layout measurements shared by CSS and JS (the shell keeps them current). */
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
+  /* Height of the docked time bar (0 when there is none). */
+  --timebar: 0px;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
     color-scheme: dark;
-    --page: #111110;
-    --surface: #1a1a19;
-    --surface-2: #242422;
-    --line: #34342f;
-    --ink: #f0efec;
-    --ink-2: #c3c2b7;
-    --ink-3: #8f8e86;
-    --accent: #f08a3c;
-    --accent-ink: #1a1a19;
-    --danger: #e66767;
+    --page: #12110e;
+    --surface: #1c1a16;
+    --surface-2: #27241e;
+    --line: #37322a;
+    --ink: #f5f0e6;
+    --ink-2: #b8b0a2;
+    --ink-3: #8f8779;
+    --accent: #ffb938;
+    --accent-fill: #ffb938;
+    --accent-ink: #1e1a15;
+    --accent-fill-ink: #1e1a15;
+    --danger: #f2877f;
 
-    --state-sun: #f2b01e;
-    --state-blocked: #5f74a0;
+    --state-sun: #c98500;
+    --state-blocked: #5878bd;
     --state-out: #4a4a45;
     --state-night: #0c0e16;
+    --state-sun-line: #c98500;
 
-    --map-building: #55544e;
-    --map-building-soft: #42413c;
-    --map-pin-building: #8a5527;
+    --shadow-float-value: 0 8px 24px rgb(0 0 0 / 0.5), 0 0 0 1px rgb(255 255 255 / 0.04);
+    --shadow-sheet-value: 0 -6px 24px rgb(0 0 0 / 0.45);
+    --backdrop: rgb(0 0 0 / 0.6);
+
+    --map-building: #5a554b;
+    --map-building-soft: #46423a;
+    --map-pin-building: #8f5f1f;
     --map-shadow: #000000;
     --map-shadow-opacity: 0.5;
   }
@@ -69,20 +99,101 @@
   --color-ink-2: var(--ink-2);
   --color-ink-3: var(--ink-3);
   --color-accent: var(--accent);
+  --color-accent-fill: var(--accent-fill);
   --color-accent-ink: var(--accent-ink);
+  --color-accent-fill-ink: var(--accent-fill-ink);
   --color-danger: var(--danger);
   --color-state-sun: var(--state-sun);
+  --color-state-sun-line: var(--state-sun-line);
   --color-state-blocked: var(--state-blocked);
   --color-state-out: var(--state-out);
   --color-state-night: var(--state-night);
+  --shadow-float: var(--shadow-float-value);
+  --shadow-sheet: var(--shadow-sheet-value);
+  /* Radii: cards 20, sheets 28 (inputs & tiles use rounded-xl = 12, pills rounded-full). */
+  --radius-card: 20px;
+  --radius-sheet: 28px;
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
+}
+
+/* ─── Type scale (Geist; every number is tabular) ───────────────────────── */
+
+@utility type-hero {
+  font-size: 64px;
+  line-height: 64px;
+  font-weight: 600;
+  letter-spacing: -0.03em;
+  font-variant-numeric: tabular-nums;
+}
+@utility type-headline {
+  font-size: 28px;
+  line-height: 32px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+@utility type-verdict {
+  font-size: 20px;
+  line-height: 26px;
+  font-weight: 500;
+}
+@utility type-title {
+  font-size: 22px;
+  line-height: 28px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+@utility type-card-title {
+  font-size: 16px;
+  line-height: 22px;
+  font-weight: 600;
+}
+@utility type-value {
+  font-size: 24px;
+  line-height: 28px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+@utility type-tile {
+  font-size: 18px;
+  line-height: 22px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+@utility type-body {
+  font-size: 15px;
+  line-height: 22px;
+}
+@utility type-label {
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 500;
+}
+@utility type-eyebrow {
+  font-size: 11px;
+  line-height: 14px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+@utility type-footnote {
+  font-size: 12px;
+  line-height: 16px;
+}
+
+html {
+  /* The app is one screen: the document itself never scrolls or bounces. */
+  overscroll-behavior: none;
+  -webkit-text-size-adjust: 100%;
 }
 
 body {
   background: var(--page);
   color: var(--ink);
   font-family: var(--font-geist-sans), system-ui, sans-serif;
+  font-size: 15px;
+  line-height: 22px;
+  -webkit-tap-highlight-color: transparent;
 }
 
 /* iOS zooms the page when a focused input is smaller than 16px. */
@@ -107,57 +218,60 @@ body {
 /* ─── Range sliders ───────────────────────────────────────────────────────── */
 
 /*
- * One look for every slider. The input itself is 40px tall (a comfortable
+ * One look for every slider. The input itself is 44px tall (a comfortable
  * touch target) and transparent; the visible track is drawn by the browser's
  * track pseudo-element. Set --range-track to paint the track (e.g. with the
- * day's sun / shade strip).
+ * day's sun / shade strip) and --range-track-h for a taller one.
  */
 .range {
   -webkit-appearance: none;
   appearance: none;
   display: block;
   width: 100%;
-  height: 40px;
+  height: 44px;
   margin: 0;
   background: transparent;
   cursor: pointer;
   /* Vertical swipes still scroll the page; horizontal ones move the thumb. */
   touch-action: pan-y;
+  --range-thumb: 28px;
+  --range-h: var(--range-track-h, 8px);
 }
 .range:disabled {
   cursor: not-allowed;
   opacity: 0.5;
 }
 .range::-webkit-slider-runnable-track {
-  height: 10px;
+  height: var(--range-h);
   border-radius: 999px;
-  border: 1px solid var(--line);
   background: var(--range-track, var(--surface-2));
+  box-shadow: inset 0 0 0 1px var(--line);
 }
 .range::-moz-range-track {
-  height: 8px;
+  height: var(--range-h);
   border-radius: 999px;
-  border: 1px solid var(--line);
   background: var(--range-track, var(--surface-2));
+  box-shadow: inset 0 0 0 1px var(--line);
 }
 .range::-webkit-slider-thumb {
   -webkit-appearance: none;
   appearance: none;
-  width: 24px;
-  height: 24px;
-  margin-top: -8px;
+  width: var(--range-thumb);
+  height: var(--range-thumb);
+  margin-top: calc((var(--range-h) - var(--range-thumb)) / 2);
   border-radius: 50%;
-  border: 2px solid var(--accent);
+  border: 2px solid var(--ink);
   background: var(--surface);
-  box-shadow: 0 1px 3px rgb(0 0 0 / 0.3);
+  box-shadow: 0 2px 6px rgb(0 0 0 / 0.25);
 }
 .range::-moz-range-thumb {
-  width: 20px;
-  height: 20px;
+  box-sizing: border-box;
+  width: var(--range-thumb);
+  height: var(--range-thumb);
   border-radius: 50%;
-  border: 2px solid var(--accent);
+  border: 2px solid var(--ink);
   background: var(--surface);
-  box-shadow: 0 1px 3px rgb(0 0 0 / 0.3);
+  box-shadow: 0 2px 6px rgb(0 0 0 / 0.25);
 }
 .range:focus-visible {
   outline: none;
@@ -171,6 +285,163 @@ body {
   outline-offset: 2px;
 }
 
+/* ─── Bottom sheet (phones) ───────────────────────────────────────────────── */
+
+/*
+ * The sheet is a native scroller laid over the map:
+ *
+ *   .sheet-scroller   fixed, scrolls vertically with snap points, and lets
+ *                     pointer events through to the map …
+ *     .sheet-spacer   … across this transparent spacer.
+ *     .sheet          The sheet itself takes input and drags the scroller.
+ *
+ * Scroll position 0 is the "peek" detent; scrolling up raises the sheet to
+ * "half" and "full", after which its content simply keeps scrolling. Real
+ * momentum and scroll hand-off come for free. JS only sets the three
+ * measurements (--sheet-peek, --sheet-half, --sheet-gap) and reads the result.
+ */
+.sheet-scroller {
+  position: fixed;
+  z-index: 20;
+  top: 0;
+  right: 0;
+  left: 0;
+  bottom: var(--timebar);
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scroll-snap-type: y mandatory;
+  scrollbar-width: none;
+  pointer-events: none;
+  /* Nothing is ever drawn above the "full" line, even once the content scrolls. */
+  clip-path: inset(var(--sheet-gap, 0px) 0 0 0 round var(--radius-sheet) var(--radius-sheet) 0 0);
+  -webkit-overflow-scrolling: touch;
+}
+.sheet-scroller::-webkit-scrollbar {
+  display: none;
+}
+.sheet-spacer {
+  height: calc(100% - var(--sheet-peek, 180px));
+  scroll-snap-align: start;
+}
+.sheet-snap-half {
+  position: absolute;
+  top: calc(var(--sheet-half, 50%) - var(--sheet-peek, 180px));
+  right: 0;
+  left: 0;
+  height: 1px;
+  scroll-snap-align: start;
+  pointer-events: none;
+}
+.sheet {
+  position: relative;
+  min-height: calc(100% - var(--sheet-gap, 0px));
+  border-radius: var(--radius-sheet) var(--radius-sheet) 0 0;
+  background: var(--surface);
+  box-shadow: var(--shadow-sheet-value);
+  pointer-events: auto;
+  scroll-snap-align: start;
+  scroll-margin-top: var(--sheet-gap, 0px);
+}
+/* The grabber stays put at the top once the sheet is fully up. */
+.sheet-handle {
+  position: sticky;
+  z-index: 2;
+  top: var(--sheet-gap, 0px);
+  border-radius: var(--radius-sheet) var(--radius-sheet) 0 0;
+  background: var(--surface);
+}
+/* Floating buttons ride on top of the sheet's edge. */
+.sheet-fabs {
+  position: absolute;
+  right: calc(12px + var(--safe-right));
+  bottom: calc(100% + 12px);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  transition: opacity 0.2s ease-out;
+}
+
+/* ─── Dialogs (bottom sheets on phones, cards on desktop) ─────────────────── */
+
+dialog.app-dialog {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  color: var(--ink);
+  background: var(--surface);
+  box-shadow: var(--shadow-float-value);
+  max-width: none;
+  max-height: none;
+  overscroll-behavior: contain;
+}
+dialog.app-dialog::backdrop {
+  background: var(--backdrop);
+}
+dialog.app-dialog[data-variant="sheet"] {
+  position: fixed;
+  inset: auto 0 0 0;
+  width: 100%;
+  max-height: min(88dvh, 100dvh - var(--safe-top) - 24px);
+  border-radius: var(--radius-sheet) var(--radius-sheet) 0 0;
+  padding-bottom: var(--safe-bottom);
+  overflow-y: auto;
+}
+@media (min-width: 1024px) {
+  dialog.app-dialog[data-variant="sheet"] {
+    inset: 0;
+    margin: auto;
+    width: min(440px, 100vw - 48px);
+    height: fit-content;
+    max-height: min(720px, 100dvh - 48px);
+    border-radius: var(--radius-card);
+    padding-bottom: 0;
+  }
+}
+dialog.app-dialog[data-variant="menu"] {
+  position: fixed;
+  inset: auto 0 0 0;
+  width: 100%;
+  max-height: 88dvh;
+  border-radius: var(--radius-sheet) var(--radius-sheet) 0 0;
+  padding-bottom: var(--safe-bottom);
+  overflow-y: auto;
+}
+@media (min-width: 1024px) {
+  /* Anchored above whatever opened it (the shell sets the two variables). */
+  dialog.app-dialog[data-variant="menu"] {
+    inset: auto auto calc(100dvh - var(--anchor-top, 50dvh) + 8px) var(--anchor-left, 50vw);
+    width: 320px;
+    border-radius: var(--radius-card);
+    padding-bottom: 0;
+  }
+}
+@media (prefers-reduced-motion: no-preference) {
+  dialog.app-dialog[open] {
+    animation: dialog-in 0.22s ease-out;
+  }
+  dialog.app-dialog[open]::backdrop {
+    animation: fade-in 0.22s ease-out;
+  }
+}
+@keyframes dialog-in {
+  from {
+    opacity: 0;
+    transform: translateY(24px);
+  }
+}
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+}
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+
 /* ─── Map chrome ──────────────────────────────────────────────────────────── */
 
 .maplibregl-map {
@@ -178,27 +449,58 @@ body {
 }
 .maplibregl-ctrl-group {
   background: var(--surface);
-  box-shadow: 0 0 0 1px var(--line);
+  border-radius: 14px;
+  overflow: hidden;
+}
+.maplibregl-ctrl-group:not(:empty) {
+  box-shadow:
+    0 0 0 1px var(--line),
+    var(--shadow-float-value);
+}
+.maplibregl-ctrl-group button {
+  width: 44px;
+  height: 44px;
 }
 .maplibregl-ctrl-group button + button {
   border-top-color: var(--line);
 }
 /* Two classes each, because MapLibre's own rules are that specific. */
 .maplibregl-ctrl.maplibregl-ctrl-attrib {
-  background: color-mix(in srgb, var(--surface) 85%, transparent);
+  background: var(--surface);
   color: var(--ink-2);
+  font-size: 11px;
 }
 .maplibregl-ctrl.maplibregl-ctrl-attrib a {
   color: var(--ink-2);
 }
 .maplibregl-ctrl.maplibregl-ctrl-attrib.maplibregl-compact {
   background: var(--surface);
+  box-shadow: 0 0 0 1px var(--line);
 }
 @media (prefers-color-scheme: dark) {
   .maplibregl-ctrl-group button .maplibregl-ctrl-icon,
   .maplibregl-ctrl-attrib-button {
     filter: invert(1);
   }
+}
+/*
+ * The map's own corner controls keep clear of what floats over the map: the
+ * search pill at the top, the sheet and time bar at the bottom (the shell
+ * keeps the two variables current).
+ */
+.maplibregl-ctrl-top-left,
+.maplibregl-ctrl-top-right {
+  top: var(--map-inset-top, 0px);
+}
+.maplibregl-ctrl-bottom-left,
+.maplibregl-ctrl-bottom-right {
+  bottom: var(--map-inset-bottom, 0px);
+}
+.maplibregl-ctrl-bottom-left {
+  left: var(--safe-left);
+}
+.maplibregl-ctrl-bottom-right {
+  right: var(--safe-right);
 }
 /* The compass lies on the ground under the pin and never takes input. */
 .sun-compass-marker,

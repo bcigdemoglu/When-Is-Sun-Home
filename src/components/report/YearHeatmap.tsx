@@ -8,12 +8,12 @@ import {
   type PointerEvent,
 } from "react";
 
-import { Card } from "@/components/ui/Card";
 import { horizonBinFor } from "@/lib/analysis";
 import {
   SunState,
   type HorizonProfile,
   type Observer,
+  type SunStateCode,
   type SunYearGrid,
   type YearAnalysis,
 } from "@/lib/types";
@@ -32,7 +32,7 @@ import {
   dayCenterX,
   dayIndexInYear,
   dayX,
-  hourTicks,
+  timeAxisTicks,
   minuteY,
   moveSelection,
   type ClockShift,
@@ -43,10 +43,26 @@ import { createHeatmapBitmap, drawHeatmapBase, type HeatmapBitmap } from "./heat
 import { useColorSchemeKey, useDevicePixelRatio, useElementSize } from "./hooks";
 import type { ReportModel } from "./model";
 import { MonthlyTable } from "./MonthlyTable";
-import { ChartTooltip, SkeletonBlock, StateLegend, StateSwatch, useReport } from "./parts";
-import { blockedLabel, legendStates, resolveStateColors, stateMeta, statePhrase } from "./states";
+import {
+  ChartTooltip,
+  ReportCard,
+  SkeletonBlock,
+  SkeletonText,
+  StateLegend,
+  StateSwatch,
+  useReport,
+} from "./parts";
+import { REPORT_SECTION_IDS } from "./sections";
+import {
+  blockedLabel,
+  legendStates,
+  resolveStateColors,
+  stateMeta,
+  statePhrase,
+  stateShort,
+} from "./states";
 
-const MARGIN = { left: 42, right: 4, top: 18, bottom: 20 };
+const MARGIN = { left: 44, right: 1, top: 20, bottom: 22 };
 
 interface YearHeatmapProps {
   year: YearAnalysis | null;
@@ -60,6 +76,9 @@ interface YearHeatmapProps {
   observer: Observer;
   onSelectDateTime: (date: string, minuteOfDay?: number) => void;
 }
+
+/** The cell under the pointer, where it is, and whether a floating tooltip suits the pointer. */
+type HoverCell = HeatmapCell & { x: number; y: number; floating: boolean };
 
 /** The hero chart: every day of the year × every time of day, coloured by state. */
 export function YearHeatmap({
@@ -75,7 +94,7 @@ export function YearHeatmap({
 }: YearHeatmapProps) {
   const { hour12 } = useReport();
   const [sizeRef, size] = useElementSize<HTMLDivElement>();
-  const [hover, setHover] = useState<(HeatmapCell & { x: number; y: number }) | null>(null);
+  const [hover, setHover] = useState<HoverCell | null>(null);
   const [tableOpen, setTableOpen] = useState(false);
   const liveId = useId();
   const tableId = useId();
@@ -99,13 +118,14 @@ export function YearHeatmap({
 
   const cellFromEvent = (
     event: PointerEvent<HTMLDivElement> | MouseEvent<HTMLDivElement>,
-  ): (HeatmapCell & { x: number; y: number }) | null => {
+  ): HoverCell | null => {
     if (!geometry) return null;
     const rect = event.currentTarget.getBoundingClientRect();
     const x = geometry.x + (event.clientX - rect.left);
     const y = geometry.y + (event.clientY - rect.top);
     const cell = cellAtPoint(geometry, x, y, true);
-    return cell ? { ...cell, x, y } : null;
+    const touch = "pointerType" in event && event.pointerType === "touch";
+    return cell ? { ...cell, x, y, floating: !touch } : null;
   };
 
   const onPointer = (event: PointerEvent<HTMLDivElement>) => setHover(cellFromEvent(event));
@@ -134,21 +154,54 @@ export function YearHeatmap({
         ]
       : null;
 
-  return (
-    <Card title="Sun through the year" aside={year ? String(year.year) : undefined}>
-      <p className="text-xs text-ink-2">
-        Each column is a day, read top to bottom from morning to evening. Tap anywhere to jump to
-        that date and time.
-      </p>
-      <StateLegend
-        states={legendStates(observer)}
-        labels={{ [SunState.Blocked]: blockedLabel(hasTerrain) }}
-        className="mt-2"
-      />
+  // The value line reads the cell under the pointer, else the selection.
+  const shown: HeatmapCell | null =
+    hover ??
+    (year && selectedDay !== null
+      ? {
+          dayIndex: selectedDay,
+          slot: Math.min(year.slotsPerDay - 1, Math.floor(minuteOfDay / year.stepMinutes)),
+          minute: minuteOfDay,
+        }
+      : null);
+  const shownState =
+    year && shown ? year.state[shown.dayIndex * year.slotsPerDay + shown.slot] : null;
 
+  return (
+    <ReportCard
+      id={REPORT_SECTION_IDS.year}
+      title="Through the year"
+      aside={year ? String(year.year) : undefined}
+      value={
+        !year ? (
+          <SkeletonText width="12rem" />
+        ) : shown ? (
+          <>
+            {formatDate(year.days[shown.dayIndex].date, { weekday: true })} {"\u00b7"}{" "}
+            {formatClock(shown.minute, hour12)}
+          </>
+        ) : (
+          String(year.year)
+        )
+      }
+      detail={
+        !year ? (
+          <SkeletonText width="14rem" />
+        ) : shown && shownState !== null ? (
+          <span data-testid="heatmap-readout">
+            <StateSwatch state={shownState as SunStateCode} className="mr-1.5 translate-y-px" />
+            {stateShort(shownState, blockerAt(grid, horizon, shown.dayIndex, shown.slot))}{" "}
+            {"\u00b7"} {formatDuration(year.days[shown.dayIndex].sunMinutes)} of sun that day
+          </span>
+        ) : (
+          "Tap the chart to pick a date and time"
+        )
+      }
+      busy={!ready}
+    >
       <div
         ref={sizeRef}
-        className="relative mt-2 h-[300px] rounded-md outline-offset-4 focus-visible:outline-2 focus-visible:outline-accent @lg:h-[340px]"
+        className="relative mt-3 h-[272px] rounded-md outline-offset-4 focus-visible:outline-2 focus-visible:outline-accent @2xl:h-[340px]"
         role="group"
         tabIndex={0}
         aria-roledescription="interactive chart"
@@ -201,7 +254,8 @@ export function YearHeatmap({
               onPointerCancel={() => setHover(null)}
               onClick={onClick}
             />
-            {hover && (
+            {/* With a mouse the reading also floats beside the pointer; a finger would cover it. */}
+            {hover && hover.floating && (
               <ChartTooltip
                 x={hover.x}
                 y={hover.y}
@@ -209,13 +263,13 @@ export function YearHeatmap({
                 containerHeight={size.height}
               >
                 <div className="font-semibold text-ink tabular-nums">
-                  {formatDate(year.days[hover.dayIndex].date, { weekday: true })} {"·"}{" "}
+                  {formatDate(year.days[hover.dayIndex].date, { weekday: true })} {"\u00b7"}{" "}
                   {formatClock(hover.minute, hour12)}
                 </div>
                 <div className="mt-1 flex items-start gap-1.5 text-ink">
                   <StateSwatch
                     state={
-                      year.state[hover.dayIndex * year.slotsPerDay + hover.slot] as 0 | 1 | 2 | 3
+                      year.state[hover.dayIndex * year.slotsPerDay + hover.slot] as SunStateCode
                     }
                     className="mt-0.5"
                   />
@@ -246,15 +300,21 @@ export function YearHeatmap({
           : ""}
       </p>
 
+      <StateLegend
+        states={legendStates(observer)}
+        labels={{ [SunState.Blocked]: blockedLabel(hasTerrain) }}
+        className="mt-3"
+      />
+
       {/* Always the same height, so the card does not grow when the analysis arrives. */}
-      <p className="mt-1 min-h-8 text-xs text-ink-3 @lg:min-h-4">
-        {model && clockShiftNote(model.clockShifts)}
+      <p className="mt-3 min-h-12 text-xs/4 text-ink-3 @md:min-h-8">
+        Each column is a day, with morning at the top. {model && clockShiftNote(model.clockShifts)}
       </p>
 
-      <div className="mt-2">
+      <div className="mt-1">
         <button
           type="button"
-          className="rounded text-xs font-medium text-ink-2 underline decoration-line underline-offset-4 hover:text-ink focus-visible:outline-2 focus-visible:outline-accent"
+          className="-mx-1 inline-flex min-h-11 cursor-pointer items-center rounded px-1 text-xs font-medium text-ink-2 underline decoration-line underline-offset-4 hover:text-ink focus-visible:outline-2 focus-visible:outline-accent"
           aria-expanded={tableOpen}
           aria-controls={tableId}
           onClick={() => setTableOpen((open) => !open)}
@@ -265,7 +325,7 @@ export function YearHeatmap({
           {tableOpen && model && year && <MonthlyTable year={year.year} details={model.details} />}
         </div>
       </div>
-    </Card>
+    </ReportCard>
   );
 }
 
@@ -385,16 +445,13 @@ function Furniture({
   const right = geometry.x + geometry.width;
   const monthWidth = geometry.width / 12;
   return (
-    <g fontSize="10">
-      {hourTicks(model.range, geometry.height).map((minute) => {
+    <g fontSize="12" fontWeight="500">
+      {timeAxisTicks(model.range).map((minute) => {
         const y = Math.round(minuteY(geometry, minute)) + 0.5;
-        const inside = minute > geometry.startMinute && minute < geometry.endMinute;
         return (
           <g key={minute}>
-            {inside && (
-              <line x1={geometry.x} x2={right} y1={y} y2={y} stroke="var(--report-heat-grid)" />
-            )}
-            <text x={geometry.x - 6} y={y} dy="0.32em" textAnchor="end" className="fill-ink-3">
+            <line x1={geometry.x} x2={right} y1={y} y2={y} stroke="var(--report-heat-grid)" />
+            <text x={geometry.x - 6} y={y} dy="0.32em" textAnchor="end" className="fill-ink-2">
               {formatHourTick(minute, hour12)}
             </text>
           </g>
@@ -404,27 +461,37 @@ function Furniture({
         const x = Math.round(dayX(geometry, month.startDay)) + 0.5;
         return (
           <g key={month.month}>
-            {month.month > 0 && (
+            {month.month > 0 && month.month % 3 === 0 && (
               <line x1={x} x2={x} y1={geometry.y} y2={bottom} stroke="var(--report-heat-grid)" />
             )}
             <text
               x={dayX(geometry, month.startDay + month.dayCount / 2)}
-              y={bottom + 14}
+              y={bottom + 15}
               textAnchor="middle"
-              className="fill-ink-3"
+              className="fill-ink-2"
             >
-              {monthWidth >= 21 ? month.label : month.label.charAt(0)}
+              {monthWidth >= 26 ? month.label : month.label.charAt(0)}
             </text>
           </g>
         );
       })}
+      {/* A hairline frame: the night at the edges must not melt into a dark card. */}
+      <rect
+        x={geometry.x + 0.5}
+        y={geometry.y + 0.5}
+        width={Math.max(0, geometry.width - 1)}
+        height={Math.max(0, geometry.height - 1)}
+        rx={3}
+        fill="none"
+        stroke="var(--report-axis)"
+      />
     </g>
   );
 }
 
 /** Horizontal extent of the selected-date flag above the plot. */
 function flagSpan(geometry: HeatmapGeometry, dayIndex: number, label: string) {
-  const half = (label.length * 5.8) / 2;
+  const half = (label.length * 7) / 2;
   const right = geometry.x + geometry.width;
   const center = Math.min(
     Math.max(dayCenterX(geometry, dayIndex), geometry.x + half),
@@ -489,7 +556,6 @@ function SelectionMark({
   const x = dayCenterX(geometry, dayIndex);
   const top = geometry.y;
   const bottom = geometry.y + geometry.height;
-  const right = geometry.x + geometry.width;
   const inRange = minute >= geometry.startMinute && minute <= geometry.endMinute;
   const y = minuteY(geometry, minute);
   const labelX = flagSpan(geometry, dayIndex, label).center;
@@ -507,24 +573,6 @@ function SelectionMark({
       <line x1={x} x2={x} y1={top - 3} y2={bottom} stroke="var(--report-marker)" strokeWidth={1} />
       {inRange && (
         <>
-          <line
-            x1={geometry.x}
-            x2={right}
-            y1={y}
-            y2={y}
-            stroke="var(--report-marker-halo)"
-            strokeWidth={3}
-            strokeOpacity={0.22}
-          />
-          <line
-            x1={geometry.x}
-            x2={right}
-            y1={y}
-            y2={y}
-            stroke="var(--report-marker)"
-            strokeWidth={1}
-            strokeOpacity={0.45}
-          />
           <circle
             cx={x}
             cy={y}
@@ -546,7 +594,7 @@ function SelectionMark({
       <text
         x={labelX}
         y={top - 6}
-        fontSize="10"
+        fontSize="12"
         fontWeight="600"
         textAnchor="middle"
         className="report-halo fill-ink"

@@ -1,6 +1,6 @@
-import { memo, useId, useMemo, useState, type PointerEvent } from "react";
+import { memo, useEffect, useId, useMemo, useRef, useState, type PointerEvent } from "react";
 
-import { Card } from "@/components/ui/Card";
+import { isInViewCone } from "@/lib/analysis";
 import {
   SunState,
   type HorizonProfile,
@@ -10,6 +10,7 @@ import {
 } from "@/lib/types";
 
 import {
+  compassPoint,
   formatAngle,
   formatBearing,
   formatClock,
@@ -19,7 +20,16 @@ import {
 } from "./format";
 import { dayIndexInYear } from "./heatmap";
 import { useElementSize } from "./hooks";
-import { ChartTooltip, LineKey, SkeletonBlock, useReport } from "./parts";
+import {
+  ChartTooltip,
+  LineKey,
+  ReportCard,
+  SkeletonBlock,
+  SkeletonText,
+  ValueUnit,
+  useReport,
+} from "./parts";
+import { REPORT_SECTION_IDS } from "./sections";
 import {
   azimuthToFraction,
   buildPathSegments,
@@ -34,16 +44,22 @@ import {
   referenceDays,
   sectorSummary,
   skylineRuns,
+  sunDirectionMask,
   sunPassageAt,
   sunPathForDay,
+  tallestObstruction,
   type ElevationScale,
   type HourMark,
+  type Obstruction,
   type PathSegment,
   type SkylineRun,
   type SunPathPoint,
 } from "./skyline";
 
-const MARGIN = { left: 28, right: 4, top: 6, bottom: 20 };
+const MARGIN = { left: 0, right: 0, top: 6, bottom: 22 };
+/** Narrow cards show about half the compass at a time; the panorama pans sideways. */
+const MIN_PANORAMA_WIDTH = 680;
+const PAN_BELOW_WIDTH = 600;
 
 interface SkylineChartProps {
   grid: SunYearGrid | null;
@@ -68,16 +84,41 @@ interface SkylineModel {
   hasTerrain: boolean;
   outside: { x0: number; x1: number }[];
   references: (PathModel & { dayIndex: number })[];
+  /** Tallest obstruction in the directions the sun passes (and the window sees). */
+  tallest: Obstruction | null;
+}
+
+interface Probe {
+  /** 0..1 across the whole panorama. */
+  fraction: number;
+  /** Pixels from the left edge of the visible frame, for the floating tooltip. */
+  frameX: number;
+  floating: boolean;
+}
+
+/** "a building to the SSW reaching 31° up, 15 m away" */
+export function obstructionPhrase(obstruction: Obstruction): string {
+  const what = obstruction.kind === "terrain" ? "a hill" : "a building";
+  const distance =
+    obstruction.distanceM > 0 ? `, ${formatDistance(obstruction.distanceM)} away` : "";
+  return `${what} to the ${compassPoint(obstruction.azimuthDeg, 16)} reaching ${formatAngle(
+    obstruction.elevationDeg,
+  )} up${distance}`;
 }
 
 /**
  * "Why": the skyline around the spot with the sun's paths drawn over it.
  * Wherever a path runs behind the silhouette, the spot is in shade.
+ *
+ * On a narrow card the panorama is wider than the card and pans sideways; it
+ * opens centred on the side of the sky the sun crosses.
  */
 export function SkylineChart({ grid, horizon, observer, date, instant }: SkylineChartProps) {
   const { hour12 } = useReport();
   const [sizeRef, size] = useElementSize<HTMLDivElement>();
-  const [hoverX, setHoverX] = useState<number | null>(null);
+  const scrollerRef = useRef<HTMLDivElement>(null);
+  const drag = useRef<{ startX: number; startScroll: number } | null>(null);
+  const [probe, setProbe] = useState<Probe | null>(null);
   const { mode, heightM, facingDeg, fovDeg } = observer;
 
   const model = useMemo((): SkylineModel | null => {
@@ -88,22 +129,37 @@ export function SkylineChart({ grid, horizon, observer, date, instant }: Skyline
     if (horizon)
       for (const elevation of horizon.elevationDeg) skylineMax = Math.max(skylineMax, elevation);
     const runs = horizon ? skylineRuns(horizon, centerDeg) : [];
+    const references = referenceDays(grid.year).map((day) => {
+      const points = sunPathForDay(grid, day.dayIndex, horizon, viewer);
+      return {
+        key: day.key,
+        label: day.label,
+        dayIndex: day.dayIndex,
+        points,
+        segments: buildPathSegments(points, centerDeg, grid.stepMinutes),
+      };
+    });
+    let tallest: Obstruction | null = null;
+    if (horizon) {
+      const mask = sunDirectionMask(
+        references.map((path) => path.points),
+        horizon.binCount,
+        grid.stepMinutes,
+      );
+      for (let bin = 0; bin < horizon.binCount; bin++) {
+        if (mask[bin] && !isInViewCone(((bin + 0.5) * 360) / horizon.binCount, viewer))
+          mask[bin] = 0;
+      }
+      tallest = tallestObstruction(horizon, mask);
+    }
     return {
       centerDeg,
       scale: createElevationScale(Math.max(maxSunAltitude(grid.lat), skylineMax) + 6),
       runs,
       hasTerrain: runs.some((run) => run.kind === "terrain"),
       outside: outsideViewSpans(viewer, centerDeg),
-      references: referenceDays(grid.year).map((day) => {
-        const points = sunPathForDay(grid, day.dayIndex, horizon, viewer);
-        return {
-          key: day.key,
-          label: day.label,
-          dayIndex: day.dayIndex,
-          points,
-          segments: buildPathSegments(points, centerDeg, grid.stepMinutes),
-        };
-      }),
+      references,
+      tallest,
     };
   }, [grid, horizon, mode, heightM, facingDeg, fovDeg]);
 
@@ -121,24 +177,58 @@ export function SkylineChart({ grid, horizon, observer, date, instant }: Skyline
     };
   }, [grid, model, horizon, selectedDay, date, mode, heightM, facingDeg, fovDeg]);
 
-  const width = size?.width ?? 0;
+  const frameWidth = size?.width ?? 0;
   const height = size?.height ?? 0;
+  const pannable = frameWidth > 0 && frameWidth < PAN_BELOW_WIDTH;
+  const width = pannable ? Math.max(frameWidth, MIN_PANORAMA_WIDTH) : frameWidth;
   const plotWidth = Math.max(0, width - MARGIN.left - MARGIN.right);
   const plotHeight = Math.max(0, height - MARGIN.top - MARGIN.bottom);
   const ready = model !== null && plotWidth > 0 && plotHeight > 0;
+
+  // Open on the sun's side: the middle of the panorama.
+  useEffect(() => {
+    const scroller = scrollerRef.current;
+    if (scroller && ready) scroller.scrollLeft = Math.max(0, (width - frameWidth) / 2);
+  }, [ready, width, frameWidth, model?.centerDeg]);
 
   const xOf = (fraction: number) => MARGIN.left + fraction * plotWidth;
   const yOf = (elevationDeg: number) =>
     MARGIN.top + plotHeight * (1 - (model?.scale.fraction(elevationDeg) ?? 0));
 
-  const onPointer = (event: PointerEvent<SVGRectElement>) => {
+  const probeFromEvent = (event: PointerEvent<SVGRectElement>): Probe => {
     const rect = event.currentTarget.getBoundingClientRect();
-    setHoverX(Math.min(1, Math.max(0, (event.clientX - rect.left) / rect.width)));
+    const frameLeft = scrollerRef.current?.getBoundingClientRect().left ?? rect.left;
+    return {
+      fraction: Math.min(1, Math.max(0, (event.clientX - rect.left) / rect.width)),
+      frameX: event.clientX - frameLeft,
+      floating: event.pointerType !== "touch",
+    };
+  };
+  const onPointerDown = (event: PointerEvent<SVGRectElement>) => {
+    const dragging = pannable && event.pointerType === "mouse" && scrollerRef.current !== null;
+    // While a mouse drags the panorama the floating tooltip would only be in the way.
+    setProbe({ ...probeFromEvent(event), ...(dragging ? { floating: false } : {}) });
+    // A mouse has no swipe: let it drag the panorama.
+    if (dragging && scrollerRef.current) {
+      drag.current = { startX: event.clientX, startScroll: scrollerRef.current.scrollLeft };
+      event.currentTarget.setPointerCapture?.(event.pointerId);
+    }
+  };
+  const onPointerMove = (event: PointerEvent<SVGRectElement>) => {
+    if (drag.current && scrollerRef.current) {
+      scrollerRef.current.scrollLeft =
+        drag.current.startScroll - (event.clientX - drag.current.startX);
+      return;
+    }
+    if (event.pointerType === "mouse") setProbe(probeFromEvent(event));
+  };
+  const endDrag = () => {
+    drag.current = null;
   };
 
-  const hover = (() => {
-    if (hoverX === null || !model) return null;
-    const azimuthDeg = fractionToAzimuth(Math.min(hoverX, 0.999999), model.centerDeg);
+  const reading = (() => {
+    if (!probe || !model) return null;
+    const azimuthDeg = fractionToAzimuth(Math.min(probe.fraction, 0.999999), model.centerDeg);
     const bin = horizon
       ? Math.min(horizon.binCount - 1, Math.floor((azimuthDeg * horizon.binCount) / 360))
       : -1;
@@ -155,17 +245,191 @@ export function SkylineChart({ grid, horizon, observer, date, instant }: Skyline
   })();
 
   const sunUp = instant !== null && Number.isFinite(instant.altitudeDeg) && instant.altitudeDeg > 0;
+  const tallest = model?.tallest ?? null;
+  const open = horizon !== null && (tallest === null || tallest.elevationDeg < 1);
+
+  let value;
+  let detail;
+  if (!model) {
+    value = <SkeletonText width="8rem" />;
+    detail = <SkeletonText width="15rem" />;
+  } else if (reading) {
+    value = formatBearing(reading.azimuthDeg);
+    detail = (
+      <>
+        {reading.kind
+          ? `${formatAngle(reading.elevationDeg)} up \u00b7 ${reading.kind === "terrain" ? "hill" : "building"} ${formatDistance(reading.distanceM)} away`
+          : horizon
+            ? "Open sky"
+            : "No building data"}
+        {reading.passage &&
+          ` \u00b7 sun ${formatClock(reading.passage.minute, hour12)}${
+            reading.passage.state === SunState.Sun ? "" : ", hidden"
+          }`}
+      </>
+    );
+  } else if (!horizon) {
+    value = "Open horizon";
+    detail = takeaway(horizon, tallest, open);
+  } else if (open || !tallest) {
+    value = "Open sky";
+    detail = takeaway(horizon, tallest, open);
+  } else {
+    value = (
+      <>
+        {formatAngle(tallest.elevationDeg)}
+        <ValueUnit>up, to the {compassPoint(tallest.azimuthDeg, 16)}</ValueUnit>
+      </>
+    );
+    detail = `The tallest obstruction in the sun\u2019s way: ${
+      tallest.kind === "terrain" ? "a hill" : "a building"
+    }${tallest.distanceM > 0 ? ` ${formatDistance(tallest.distanceM)} away` : ""}.`;
+  }
 
   return (
-    <Card title="Skyline and sun paths">
-      <p className="text-xs text-ink-2">
-        The view around this spot, with the sun{"’"}s path across the sky. Where a path runs behind
-        the buildings, the spot is in shade.
-      </p>
-      <ul className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-ink-2">
+    <ReportCard
+      id={REPORT_SECTION_IDS.skyline}
+      title="What blocks the sun"
+      value={value}
+      detail={detail}
+      detailLines={2}
+      footnoteLines={2}
+      footnote={
+        <>
+          {horizon
+            ? "Dotted: the sun\u2019s path is hidden behind the skyline."
+            : "Building data is not available."}
+          {pannable && " Drag sideways to look around."}
+        </>
+      }
+      busy={!ready}
+    >
+      <div
+        ref={sizeRef}
+        className="relative mt-3 h-[236px] @2xl:h-[264px]"
+        role="img"
+        aria-label={skylineSummary(horizon, grid !== null)}
+      >
+        {!ready || !model ? (
+          <SkeletonBlock className="absolute inset-0" />
+        ) : (
+          <>
+            <div
+              ref={scrollerRef}
+              data-testid="skyline-scroller"
+              className="absolute inset-0 overflow-x-auto overflow-y-hidden overscroll-x-contain rounded-lg outline-offset-2 [scrollbar-width:none] focus-visible:outline-2 focus-visible:outline-accent"
+              tabIndex={pannable ? 0 : undefined}
+              role={pannable ? "group" : undefined}
+              aria-label={pannable ? "Skyline panorama; scroll sideways to look around" : undefined}
+            >
+              <svg width={width} height={height} className="block" aria-hidden="true">
+                <StaticLayer
+                  model={model}
+                  selected={selected}
+                  plotWidth={plotWidth}
+                  plotHeight={plotHeight}
+                  hour12={hour12}
+                />
+
+                {sunUp && instant && (
+                  <SunDot
+                    x={xOf(azimuthToFraction(instant.azimuthDeg, model.centerDeg))}
+                    y={yOf(instant.altitudeDeg)}
+                    hidden={instant.state !== SunState.Sun}
+                  />
+                )}
+
+                {reading && probe && (
+                  <g>
+                    <line
+                      x1={xOf(probe.fraction)}
+                      x2={xOf(probe.fraction)}
+                      y1={MARGIN.top}
+                      y2={MARGIN.top + plotHeight}
+                      stroke="var(--ink)"
+                    />
+                    <circle
+                      cx={xOf(probe.fraction)}
+                      cy={yOf(reading.elevationDeg)}
+                      r={3.5}
+                      fill="var(--ink)"
+                      stroke="var(--surface)"
+                      strokeWidth={2}
+                    />
+                  </g>
+                )}
+
+                <rect
+                  data-testid="skyline-hit"
+                  x={MARGIN.left}
+                  y={MARGIN.top}
+                  width={plotWidth}
+                  height={plotHeight}
+                  fill="transparent"
+                  className={pannable ? "cursor-grab" : "cursor-crosshair"}
+                  style={{ pointerEvents: "all" }}
+                  onPointerDown={onPointerDown}
+                  onPointerMove={onPointerMove}
+                  onPointerUp={endDrag}
+                  onPointerCancel={endDrag}
+                  onPointerLeave={(event) => {
+                    if (event.pointerType === "mouse" && !drag.current) setProbe(null);
+                  }}
+                />
+              </svg>
+            </div>
+
+            <ElevationAxis scale={model.scale} plotHeight={plotHeight} />
+
+            {reading && probe && probe.floating && (
+              <ChartTooltip
+                x={probe.frameX}
+                y={Math.min(yOf(reading.elevationDeg), yOf(reading.passage?.altitudeDeg ?? 0))}
+                containerWidth={frameWidth}
+                containerHeight={height}
+              >
+                <div className="font-semibold text-ink tabular-nums">
+                  {formatBearing(reading.azimuthDeg)}
+                </div>
+                <div className="mt-1 tabular-nums">
+                  {reading.kind ? (
+                    <>
+                      <strong className="font-semibold text-ink">
+                        {formatAngle(reading.elevationDeg)}
+                      </strong>{" "}
+                      skyline {"\u2014"} {reading.kind === "terrain" ? "hill" : "building"}{" "}
+                      {formatDistance(reading.distanceM)} away
+                    </>
+                  ) : horizon ? (
+                    <>Open sky down to the horizon</>
+                  ) : (
+                    <>No building data</>
+                  )}
+                </div>
+                {reading.passage && (
+                  <div className="mt-1 tabular-nums">
+                    {formatDate(date)}: sun here at{" "}
+                    <strong className="font-semibold text-ink">
+                      {formatClock(reading.passage.minute, hour12)}
+                    </strong>
+                    , {formatAngle(reading.passage.altitudeDeg)} up {"\u2014"}{" "}
+                    {reading.passage.state === SunState.Sun
+                      ? "in view"
+                      : reading.passage.state === SunState.Blocked
+                        ? "hidden"
+                        : "outside the view"}
+                  </div>
+                )}
+              </ChartTooltip>
+            )}
+          </>
+        )}
+      </div>
+
+      <ul className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs/4 font-medium text-ink-2">
         <li className="flex items-center gap-1.5">
           <LineKey color="var(--report-sun-line)" width={3} />
-          {formatDate(date)}
+          Sun on {formatDate(date)}
         </li>
         <li className="flex items-center gap-1.5">
           <LineKey color="var(--report-sun-line)" width={1.25} />
@@ -196,129 +460,56 @@ export function SkylineChart({ grid, horizon, observer, date, instant }: Skyline
               className="report-hatch inline-block size-3 rounded-[3px] ring-1 ring-line ring-inset"
               style={{ backgroundColor: "var(--state-out)" }}
             />
-            Outside the window{"’"}s view
+            Outside the window{"\u2019"}s view
           </li>
         )}
       </ul>
 
-      <div
-        ref={sizeRef}
-        className="relative mt-2 h-[230px] @lg:h-[264px]"
-        role="img"
-        aria-label={skylineSummary(horizon, grid !== null)}
-        aria-busy={!ready}
-      >
-        {!ready || !model ? (
-          <SkeletonBlock className="absolute inset-0" />
-        ) : (
-          <>
-            <svg width={width} height={height} className="block" aria-hidden="true">
-              <StaticLayer
-                model={model}
-                selected={selected}
-                plotWidth={plotWidth}
-                plotHeight={plotHeight}
-                hour12={hour12}
-              />
-
-              {sunUp && instant && (
-                <SunDot
-                  x={xOf(azimuthToFraction(instant.azimuthDeg, model.centerDeg))}
-                  y={yOf(instant.altitudeDeg)}
-                  hidden={instant.state !== SunState.Sun}
-                />
-              )}
-
-              {hover && hoverX !== null && (
-                <g>
-                  <line
-                    x1={xOf(hoverX)}
-                    x2={xOf(hoverX)}
-                    y1={MARGIN.top}
-                    y2={MARGIN.top + plotHeight}
-                    stroke="var(--ink-2)"
-                  />
-                  <circle
-                    cx={xOf(hoverX)}
-                    cy={yOf(hover.elevationDeg)}
-                    r={3.5}
-                    fill="var(--ink)"
-                    stroke="var(--surface)"
-                    strokeWidth={2}
-                  />
-                </g>
-              )}
-
-              <rect
-                data-testid="skyline-hit"
-                x={MARGIN.left}
-                y={MARGIN.top}
-                width={plotWidth}
-                height={plotHeight}
-                fill="transparent"
-                className="cursor-crosshair touch-pan-y"
-                style={{ pointerEvents: "all" }}
-                onPointerDown={onPointer}
-                onPointerMove={onPointer}
-                onPointerLeave={() => setHoverX(null)}
-                onPointerCancel={() => setHoverX(null)}
-              />
-            </svg>
-
-            {hover && hoverX !== null && (
-              <ChartTooltip
-                x={xOf(hoverX)}
-                y={Math.min(yOf(hover.elevationDeg), yOf(hover.passage?.altitudeDeg ?? 0))}
-                containerWidth={width}
-                containerHeight={height}
-              >
-                <div className="font-semibold text-ink tabular-nums">
-                  {formatBearing(hover.azimuthDeg)}
-                </div>
-                <div className="mt-1 tabular-nums">
-                  {hover.kind ? (
-                    <>
-                      <strong className="font-semibold text-ink">
-                        {formatAngle(hover.elevationDeg)}
-                      </strong>{" "}
-                      skyline {"—"} {hover.kind === "terrain" ? "hill" : "building"}{" "}
-                      {formatDistance(hover.distanceM)} away
-                    </>
-                  ) : horizon ? (
-                    <>Open sky down to the horizon</>
-                  ) : (
-                    <>No building data</>
-                  )}
-                </div>
-                {hover.passage && (
-                  <div className="mt-1 tabular-nums">
-                    {formatDate(date)}: sun here at{" "}
-                    <strong className="font-semibold text-ink">
-                      {formatClock(hover.passage.minute, hour12)}
-                    </strong>
-                    , {formatAngle(hover.passage.altitudeDeg)} up {"—"}{" "}
-                    {hover.passage.state === SunState.Sun
-                      ? "in view"
-                      : hover.passage.state === SunState.Blocked
-                        ? "hidden"
-                        : "outside the view"}
-                  </div>
-                )}
-              </ChartTooltip>
-            )}
-          </>
-        )}
-      </div>
-
-      <p className="mt-1 min-h-8 text-xs text-ink-3 @lg:min-h-4">
-        {horizon
-          ? "Dotted: the path is hidden behind the skyline."
-          : "No building data: the horizon is drawn open."}
-        {model?.scale.stretched && " Heights are stretched near the horizon."}
-      </p>
-
       {horizon && <SectorTable horizon={horizon} />}
-    </Card>
+    </ReportCard>
+  );
+}
+
+/** The one-sentence takeaway: "Tallest obstruction in the sun’s way: a building to the SSW reaching 31° up, 15 m away." */
+function takeaway(
+  horizon: HorizonProfile | null,
+  tallest: Obstruction | null,
+  open: boolean,
+): string {
+  if (!horizon) return "No building data: the horizon is drawn open.";
+  if (open || !tallest) return "Nothing rises above the horizon where the sun passes.";
+  return `Tallest obstruction in the sun\u2019s way: ${obstructionPhrase(tallest)}.`;
+}
+
+/** Elevation labels pinned to the left edge of the frame while the panorama pans under them. */
+function ElevationAxis({ scale, plotHeight }: { scale: ElevationScale; plotHeight: number }) {
+  return (
+    <svg
+      width={40}
+      height={MARGIN.top + plotHeight}
+      className="pointer-events-none absolute top-0 left-0"
+      aria-hidden="true"
+    >
+      {scale.ticks.map((tick) => {
+        if (tick === 0 || tick >= scale.maxDeg) return null;
+        const y = MARGIN.top + plotHeight * (1 - scale.fraction(tick));
+        return (
+          <text
+            key={tick}
+            x={5}
+            y={y}
+            dy="0.32em"
+            fontSize="12"
+            fontWeight="500"
+            className="report-halo fill-ink-2"
+            style={{ stroke: "var(--report-sky)" }}
+          >
+            {tick}
+            {"\u00b0"}
+          </text>
+        );
+      })}
+    </svg>
   );
 }
 
@@ -447,21 +638,21 @@ const StaticLayer = memo(function StaticLayer({
   for (const mark of selected?.marks ?? []) {
     if (mark.hour % 3 !== 0 || mark.altitudeDeg < 3) continue;
     const x = xOf(azimuthToFraction(mark.azimuthDeg, centerDeg));
-    if (x < left + 16 || x > left + plotWidth - 16) continue;
-    if (hourLabels.some((placed) => Math.abs(placed.x - x) < 34)) continue;
+    if (x < left + 20 || x > left + plotWidth - 20) continue;
+    if (hourLabels.some((placed) => Math.abs(placed.x - x) < 44)) continue;
     hourLabels.push({ mark, x, y: yOf(mark.altitudeDeg) });
   }
 
   const labelClamp = (x: number, text: string) => {
-    const half = (text.length * 5.8) / 2;
+    const half = (text.length * 7) / 2;
     return Math.min(Math.max(x, left + half), left + plotWidth - half);
   };
 
   return (
-    <g fontSize="10">
+    <g fontSize="12" fontWeight="500">
       <defs>
         <clipPath id={clipId}>
-          <rect x={left} y={top} width={plotWidth} height={plotHeight} />
+          <rect x={left} y={top} width={plotWidth} height={plotHeight} rx={8} />
         </clipPath>
       </defs>
 
@@ -470,23 +661,23 @@ const StaticLayer = memo(function StaticLayer({
         y={top}
         width={plotWidth}
         height={plotHeight}
-        rx={3}
+        rx={8}
         fill="var(--report-sky)"
       />
 
-      {/* Elevation gridlines and labels. */}
+      {/* Elevation gridlines; their labels are pinned to the frame (see ElevationAxis). */}
       {scale.ticks.map((tick) => {
+        if (tick === 0 || tick >= scale.maxDeg) return null;
         const y = Math.round(yOf(tick)) + 0.5;
         return (
-          <g key={tick}>
-            {tick > 0 && tick < scale.maxDeg && (
-              <line x1={left} x2={left + plotWidth} y1={y} y2={y} stroke="var(--report-grid)" />
-            )}
-            <text x={left - 6} y={y} dy="0.32em" textAnchor="end" className="fill-ink-3">
-              {tick}
-              {"°"}
-            </text>
-          </g>
+          <line
+            key={tick}
+            x1={left}
+            x2={left + plotWidth}
+            y1={y}
+            y2={y}
+            stroke="var(--report-grid)"
+          />
         );
       })}
 
@@ -502,10 +693,10 @@ const StaticLayer = memo(function StaticLayer({
             <line x1={x} x2={x} y1={base} y2={base + 4} stroke="var(--report-axis)" />
             <text
               x={xOf(tick.fraction)}
-              y={base + 15}
+              y={base + 16}
               textAnchor={i === 0 ? "start" : i === 8 ? "end" : "middle"}
-              fontWeight={cardinal ? 600 : 400}
-              className={cardinal ? "fill-ink-2" : "fill-ink-3"}
+              fontWeight={cardinal ? 700 : 500}
+              className={cardinal ? "fill-ink" : "fill-ink-2"}
             >
               {tick.label}
             </text>

@@ -1,0 +1,32 @@
+/*
+ * Developer harness only: previews the revamp's warm-paper / warm near-black
+ * tokens on the harness wrapper, whatever globals.css currently holds. Once
+ * the app's own tokens match, this file changes nothing and can go.
+ */
+.harness-theme {
+  --page: #f5f0e6;
+  --surface: #fffdf8;
+  --surface-2: #ede6d8;
+  --line: #e0d7c6;
+  --ink: #1e1a15;
+  --ink-2: #5a5348;
+  --ink-3: #756d61;
+  --accent: #9a5200;
+  --danger: #b3261e;
+  background: var(--page);
+  color: var(--ink);
+}
+
+@media (prefers-color-scheme: dark) {
+  .harness-theme {
+    --page: #12110e;
+    --surface: #1c1a16;
+    --surface-2: #27241e;
+    --line: #37322a;
+    --ink: #f5f0e6;
+    --ink-2: #b8b0a2;
+    --ink-3: #8f8779;
+    --accent: #ffb938;
+    --danger: #f2877f;
+  }
+}

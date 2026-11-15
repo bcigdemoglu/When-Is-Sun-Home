@@ -18,6 +18,11 @@
  * Rounding: `lat`/`lng` to 5 decimals and `h` to 1 decimal. Everything else
  * round-trips exactly (see `roundSettingsForUrl`).
  *
+ * SHARE LINKS ONLY carry one more key, `s`: a compact copy of the place's
+ * headline numbers, so that a link preview can show the answer without any
+ * computation on the server (see "Summary" below). `s` is not a setting:
+ * `searchParamsToSettings` ignores it and the address-bar sync never writes it.
+ *
  * LEGACY FORMAT — links shared from the old app used the same keys with
  * different meanings: `t` = minutes since midnight as a plain integer ("720"),
  * `d` = day of year 1..366 as a plain integer, plus `f` (floor, 1-based),
@@ -62,11 +67,12 @@
  *
  * This module is pure and server-safe (no React, no DOM).
  */
-import type { Observer, ObserverMode, Place } from "@/lib/types";
+import type { Observer, ObserverMode, Place, PlaceSummary } from "@/lib/types";
 import {
   DEFAULT_LAYERS,
   DEFAULT_OBSERVER,
   DEFAULT_SETTINGS,
+  SETTINGS_LIMITS,
   daysInMonth,
   isLeapYear,
   isValidIsoDate,
@@ -245,18 +251,43 @@ export function settingsToSearchParams(s: Settings): URLSearchParams {
   return p;
 }
 
+export interface BuildShareUrlOptions {
+  /**
+   * Headline numbers to embed as `s`, for the link preview. Only added when
+   * the settings pin a place. Default: none.
+   */
+  summary?: PlaceSummary | null;
+  /**
+   * False leaves `d` / `t` out, so the recipient lands on "today, now" instead
+   * of the day and time the sender was looking at. Default: true.
+   */
+  includeDateTime?: boolean;
+}
+
 /**
  * `base` with its query string replaced by the settings. The path and the
  * `#hash` of `base` are kept, any existing query is dropped. `base` may be
  * absolute ("https://example.com/") or relative ("/"). Never throws.
  */
-export function buildShareUrl(settings: Settings, base: string): string {
+export function buildShareUrl(
+  settings: Settings,
+  base: string,
+  options: BuildShareUrlOptions = {},
+): string {
   const hashAt = base.indexOf("#");
   const hash = hashAt >= 0 ? base.slice(hashAt) : "";
   let path = hashAt >= 0 ? base.slice(0, hashAt) : base;
   const queryAt = path.indexOf("?");
   if (queryAt >= 0) path = path.slice(0, queryAt);
-  const query = settingsToSearchParams(settings).toString();
+
+  const shared: Settings =
+    options.includeDateTime === false ? { ...settings, date: null, minuteOfDay: null } : settings;
+  const params = settingsToSearchParams(shared);
+  if (options.summary && shared.place) {
+    const encoded = encodeSummaryParam(options.summary);
+    if (encoded !== "") params.set(SUMMARY_URL_KEY, encoded);
+  }
+  const query = params.toString();
   return path + (query ? `?${query}` : "") + hash;
 }
 
@@ -374,4 +405,284 @@ export function isEmptyPatch(patch: SettingsPatch): boolean {
 export function overlayUrlSettings(stored: Readonly<Settings>, urlPatch: SettingsPatch): Settings {
   const base = urlPatch.place ? DEFAULT_SETTINGS : stored;
   return mergeSettings(base, urlPatch);
+}
+
+// ─── Summary (share links only) ────────────────────────────────────────────
+//
+// FORMAT of `s`, version 1 — always 61 characters of [0-9a-z.]:
+//
+//   1.<head:9>.<sun:24>.<daylight:24>
+//
+//   head      avg sun per day ×10 (2) · sun share of daylight in % (2) ·
+//             best month (1) · worst month (1) · total sun hours (3)
+//   sun       12 × mean direct sun per day of the month ×10 (2 each)
+//   daylight  12 × mean daylight per day of the month ×10 (2 each)
+//
+// Every number is base 36, zero padded to its fixed width. Example:
+//
+//   s=1.1t1i401u9.00011p3a3j3h3i3f2e0d0000.2p2z3a3n3x423z3q3f322s2m
+//
+//   = 6.5 h a day, 54% of daylight, best month May (4), worst January (0),
+//     2385 h a year; then January…December sun and daylight.
+//
+// The headline values are written out rather than re-derived from the monthly
+// ones on purpose: deriving them from values already rounded to 0.1 h lands on
+// the other side of a rounding boundary about one time in eight, and then the
+// link preview would say "6.5 h" where the app says "6.4 h". The decoder still
+// checks that head and months agree, so a hand-made `s` cannot put a headline
+// on the card that its own bars contradict.
+
+/** The query key of the embedded summary. */
+export const SUMMARY_URL_KEY = "s";
+
+const SUMMARY_PATTERN = /^1\.([0-9a-z]{9})\.([0-9a-z]{24})\.([0-9a-z]{24})$/;
+const MAX_TENTHS = 240; // 24.0 h
+const MAX_TOTAL_HOURS = 366 * 24;
+
+const base36 = (value: number, width: number): string => value.toString(36).padStart(width, "0");
+
+/** A finite number as an integer in [0, max]; anything else is 0. */
+function boundedInt(value: unknown, max: number): number {
+  if (typeof value !== "number" || !Number.isFinite(value)) return 0;
+  return Math.min(max, Math.max(0, Math.round(value)));
+}
+
+function isMonthlyList(value: unknown): value is number[] {
+  return Array.isArray(value) && value.length === 12;
+}
+
+/**
+ * The value of the `s` parameter for a summary (61 characters), or "" if the
+ * summary is not in shape (missing months). Values are rounded and clamped
+ * into range; the year is not stored. Never throws.
+ */
+export function encodeSummaryParam(summary: PlaceSummary): string {
+  try {
+    if (!isMonthlyList(summary.monthlySunHours) || !isMonthlyList(summary.monthlyDaylightHours)) {
+      return "";
+    }
+    const tenths = (hours: number) => base36(boundedInt(hours * 10, MAX_TENTHS), 2);
+    const head =
+      tenths(summary.avgSunHoursPerDay) +
+      base36(boundedInt(summary.sunFraction * 100, 100), 2) +
+      base36(boundedInt(summary.bestMonth, 11), 1) +
+      base36(boundedInt(summary.worstMonth, 11), 1) +
+      base36(boundedInt(summary.totalSunHours, MAX_TOTAL_HOURS), 3);
+    const sun = summary.monthlySunHours.map(tenths).join("");
+    const daylight = summary.monthlyDaylightHours.map(tenths).join("");
+    return `1.${head}.${sun}.${daylight}`;
+  } catch {
+    return "";
+  }
+}
+
+/**
+ * Reads an `s` value back into a summary for `year` (which the caller takes
+ * from the link's date, or the current year). Strict: the wrong length, a
+ * character outside [0-9a-z.], a value out of range, or numbers that
+ * contradict each other all give null. Never throws.
+ *
+ * Checked for consistency: sun ≤ daylight ≤ 24 h in every month; the best /
+ * worst month really holds the highest / lowest monthly value; the average,
+ * the daylight share and the yearly total match the monthly values within
+ * what rounding (and a leap day) can explain.
+ */
+export function decodeSummaryParam(value: string, year: number): PlaceSummary | null {
+  try {
+    if (typeof value !== "string" || !Number.isInteger(year)) return null;
+    if (year < SETTINGS_LIMITS.year.min || year > SETTINGS_LIMITS.year.max) return null;
+    const match = SUMMARY_PATTERN.exec(value);
+    if (!match) return null;
+    const [, head, sunPart, daylightPart] = match;
+
+    const int = (text: string, from: number, width: number) =>
+      parseInt(text.slice(from, from + width), 36);
+    const avgTenths = int(head, 0, 2);
+    const percent = int(head, 2, 2);
+    const bestMonth = int(head, 4, 1);
+    const worstMonth = int(head, 5, 1);
+    const totalSunHours = int(head, 6, 3);
+    if (avgTenths > MAX_TENTHS || percent > 100 || bestMonth > 11 || worstMonth > 11) return null;
+    if (totalSunHours > MAX_TOTAL_HOURS) return null;
+
+    const sun: number[] = [];
+    const daylight: number[] = [];
+    let weightedSun = 0;
+    let weightedDaylight = 0;
+    let days = 0;
+    for (let month = 0; month < 12; month++) {
+      const s = int(sunPart, month * 2, 2);
+      const d = int(daylightPart, month * 2, 2);
+      if (d > MAX_TENTHS || s > d) return null;
+      sun.push(s);
+      daylight.push(d);
+      const length = daysInMonth(year, month + 1);
+      weightedSun += s * length;
+      weightedDaylight += d * length;
+      days += length;
+    }
+    if (sun[bestMonth] !== Math.max(...sun) || sun[worstMonth] !== Math.min(...sun)) return null;
+    // Tolerances, in the units compared: 0.15 h on the average (two roundings
+    // to 0.1 h plus a leap day), 3 points on the percentage, and on the total
+    // the same 0.15 h a day plus one day's worth for a leap-year mismatch.
+    if (Math.abs(avgTenths - weightedSun / days) > 1.5) return null;
+    const share = weightedDaylight > 0 ? (weightedSun / weightedDaylight) * 100 : 0;
+    if (Math.abs(percent - share) > 3) return null;
+    if (Math.abs(totalSunHours - (avgTenths / 10) * days) > 0.15 * days + 24) return null;
+
+    return {
+      year,
+      avgSunHoursPerDay: avgTenths / 10,
+      sunFraction: percent / 100,
+      totalSunHours,
+      monthlySunHours: sun.map((tenths) => tenths / 10),
+      monthlyDaylightHours: daylight.map((tenths) => tenths / 10),
+      bestMonth,
+      worstMonth,
+    };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The summary embedded in a share link, or null if there is none (or it is
+ * invalid). Its year is the year of the link's date, else the current year.
+ * Never throws.
+ */
+export function searchParamsToSummary(
+  params: URLSearchParams,
+  options: SearchParamsToSettingsOptions = {},
+): PlaceSummary | null {
+  try {
+    const value = params.get(SUMMARY_URL_KEY);
+    if (value === null) return null;
+    const date = params.get(K.date);
+    const year =
+      date !== null && isValidIsoDate(date)
+        ? Number(date.slice(0, 4))
+        : (options.now ?? new Date()).getFullYear();
+    return decodeSummaryParam(value, year);
+  } catch {
+    return null;
+  }
+}
+
+// ─── Share text ────────────────────────────────────────────────────────────
+
+/** English month names, January first. */
+export const MONTH_NAMES = [
+  "January",
+  "February",
+  "March",
+  "April",
+  "May",
+  "June",
+  "July",
+  "August",
+  "September",
+  "October",
+  "November",
+  "December",
+] as const;
+
+/** Hours with one decimal and the unit: "6.4 h", "10.0 h". */
+export function formatSunHours(hours: number): string {
+  const value = Number.isFinite(hours) ? Math.round(hours * 10) / 10 : 0;
+  return `${(value || 0).toFixed(1)} h`;
+}
+
+function formatDuration(minutes: number): string {
+  const total = Math.max(0, Math.round(minutes));
+  const h = Math.floor(total / 60);
+  const m = total % 60;
+  if (h === 0) return `${m} m`;
+  return m === 0 ? `${h} h` : `${h} h ${m} m`;
+}
+
+/** "June 21" from "2026-06-21"; null if it is not a real date. */
+function monthDay(date: string): string | null {
+  if (!isValidIsoDate(date)) return null;
+  return `${MONTH_NAMES[Number(date.slice(5, 7)) - 1]} ${Number(date.slice(8, 10))}`;
+}
+
+export interface ShareTextOptions {
+  /** A specific day to mention, "YYYY-MM-DD"; needs `daySunMinutes` too. */
+  date?: string;
+  /** Minutes of direct sun on that day. */
+  daySunMinutes?: number;
+}
+
+/**
+ * What to say when a place is shared. The URL is NOT part of it — it goes to
+ * `navigator.share({ title, text, url })` separately, and `text` ends so that
+ * a URL appended after a space reads naturally.
+ *
+ *   title  "Elm St backyard: 6.4 h of direct sun a day"
+ *   text   "Elm St backyard: 6.4 h of direct sun on an average day (9.8 h in
+ *           June, 1.2 h in December). See the full year:"
+ *
+ * Without a summary (still being computed): "…: see when this spot gets
+ * direct sun." Pure; never throws.
+ */
+export function shareText(
+  label: string,
+  summary: PlaceSummary | null,
+  options: ShareTextOptions = {},
+): { title: string; text: string } {
+  const name = (typeof label === "string" ? normalizePlaceName(label) : null) ?? "This spot";
+  try {
+    return describeShare(name, summary, options ?? {});
+  } catch {
+    // Only reachable with a malformed summary object.
+    return describeShare(name, null, {});
+  }
+}
+
+function describeShare(
+  name: string,
+  summary: PlaceSummary | null,
+  options: ShareTextOptions,
+): { title: string; text: string } {
+  const usable =
+    summary !== null &&
+    isMonthlyList(summary?.monthlySunHours) &&
+    Number.isFinite(summary.avgSunHoursPerDay);
+  if (!usable) {
+    return {
+      title: `${name}: see when this spot gets direct sun`,
+      text: `${name}: see when this spot gets direct sun.`,
+    };
+  }
+
+  const months = summary.monthlySunHours;
+  const best = months[boundedInt(summary.bestMonth, 11)];
+  const worst = months[boundedInt(summary.worstMonth, 11)];
+  const day =
+    typeof options.date === "string" && Number.isFinite(options.daySunMinutes)
+      ? monthDay(options.date)
+      : null;
+  const dayPart =
+    day !== null ? ` ${formatDuration(options.daySunMinutes as number)} on ${day}.` : "";
+
+  if (!(summary.avgSunHoursPerDay > 0) && !(best > 0)) {
+    return {
+      title: `${name}: no direct sun`,
+      text: `${name}: no direct sun at any time of year.${dayPart} See the full year:`,
+    };
+  }
+
+  const average = formatSunHours(summary.avgSunHoursPerDay);
+  const bestName = MONTH_NAMES[boundedInt(summary.bestMonth, 11)];
+  const worstName = MONTH_NAMES[boundedInt(summary.worstMonth, 11)];
+  // "0.0 h in January" reads like a typo; say "none".
+  const least = formatSunHours(worst) === formatSunHours(0) ? "none" : formatSunHours(worst);
+  const range =
+    formatSunHours(best) === formatSunHours(worst)
+      ? ""
+      : ` (${formatSunHours(best)} in ${bestName}, ${least} in ${worstName})`;
+  return {
+    title: `${name}: ${average} of direct sun a day`,
+    text: `${name}: ${average} of direct sun on an average day${range}.${dayPart} See the full year:`,
+  };
 }

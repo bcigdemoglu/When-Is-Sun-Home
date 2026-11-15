@@ -73,6 +73,26 @@ export function hourTicks(range: TimeRange, plotHeight: number, minGapPx = 26): 
   return ticks;
 }
 
+/**
+ * A calm time axis: at most `maxTicks` whole-hour ticks strictly inside
+ * `range`, on the coarsest of the 6 / 4 / 3 / 2 / 1-hour grids that still
+ * gives two (so a normal day reads "6 AM · 12 PM · 6 PM").
+ */
+export function timeAxisTicks(range: TimeRange, maxTicks = 4): number[] {
+  for (const step of [6, 4, 3, 2, 1]) {
+    const ticks: number[] = [];
+    for (
+      let hour = Math.ceil(range.startMinute / 60 / step) * step;
+      hour * 60 < range.endMinute;
+      hour += step
+    ) {
+      if (hour * 60 > range.startMinute) ticks.push(hour * 60);
+    }
+    if (ticks.length >= 2 && ticks.length <= maxTicks) return ticks;
+  }
+  return [];
+}
+
 // ─── Pixel ⇄ (day, minute) ─────────────────────────────────────────────────
 
 /** Where the plot sits (CSS pixels) and what it shows. */

@@ -4,6 +4,7 @@
  * The four sun-state colours are re-declared here (scoped to the report) with
  * values that pass the data-viz palette validator; see the note in
  * SunReport.tsx. Everything else is chart furniture that only the report uses.
+ * The class is a token scope: both the report and the summary header carry it.
  */
 .sun-report {
   /* Sun states. */
@@ -12,20 +13,20 @@
   --state-out: #cfcdc5;
   --state-night: #23283a;
 
-  /* Thin sun-coloured strokes on the card surface (>= 3:1). */
+  /* Thin sun-coloured strokes and the 1px edge of sun fills on the card (>= 3:1). */
   --report-sun-line: #b97a00;
   /* Hatch ink over out-of-view fills. */
   --report-hatch: #b7b5ad;
-  /* Gridlines / axes on the card surface. */
-  --report-grid: #e7e6df;
-  --report-axis: #c3c2b7;
+  /* Gridlines / axes on the card surface: derived from the app's hairline. */
+  --report-grid: color-mix(in srgb, var(--line) 55%, var(--surface));
+  --report-axis: var(--line);
   /* Gridlines drawn over the heat map itself. */
   --report-heat-grid: rgb(255 255 255 / 0.2);
   /* Selection marker drawn over the heat map / timeline. */
-  --report-marker: #0b0b0b;
-  --report-marker-halo: #ffffff;
+  --report-marker: var(--ink);
+  --report-marker-halo: var(--surface);
   /* Skyline panorama. */
-  --report-sky: #f1f3f6;
+  --report-sky: color-mix(in srgb, var(--surface-2) 55%, var(--surface));
   --report-skyline: #56627a;
   --report-terrain: #7c8a68;
   --report-hidden-path: rgb(255 255 255 / 0.8);
@@ -40,16 +41,21 @@
 
     --report-sun-line: #c98500;
     --report-hatch: #5e5e58;
-    --report-grid: #2c2c2a;
-    --report-axis: #45453f;
     --report-heat-grid: rgb(255 255 255 / 0.1);
-    --report-marker: #ffffff;
-    --report-marker-halo: #0b0b0b;
-    --report-sky: #20222a;
     --report-skyline: #4f5a73;
     --report-terrain: #5d6b4e;
     --report-hidden-path: rgb(255 255 255 / 0.6);
   }
+}
+
+/* Jump targets: a shell with a sticky header sets --report-anchor-offset. */
+.sun-report .report-section {
+  scroll-margin-top: var(--report-anchor-offset, 12px);
+}
+
+/* Sun-coloured fills are weak against a light card: give them a darker edge. */
+.sun-report .report-sun-edge {
+  box-shadow: inset 0 0 0 1px var(--report-sun-line);
 }
 
 /* Out-of-view texture for HTML swatches (SVG fills use the shared pattern). */

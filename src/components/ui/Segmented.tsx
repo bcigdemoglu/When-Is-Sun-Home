@@ -9,7 +9,8 @@ interface SegmentedProps<T extends string> {
   /** Names the group for assistive tech. */
   label: string;
   options: readonly SegmentedOption<T>[];
-  value: T;
+  /** The selected value, or null when none of the options applies. */
+  value: T | null;
   onChange(value: T): void;
   /** Tighter padding, for toolbars. Same height. */
   compact?: boolean;
@@ -33,13 +34,13 @@ export function Segmented<T extends string>({
     <div
       role="radiogroup"
       aria-label={label}
-      className={`inline-flex h-11 rounded-lg border border-line bg-surface-2 ${className}`}
+      className={`inline-flex h-11 rounded-full bg-surface-2 ${className}`}
     >
       {options.map((option) => {
         const checked = option.value === value;
         return (
-          // The label is the touch target (the full 42 px); the pill inside it is the look.
-          <label key={option.value} className="group flex flex-1 cursor-pointer p-0.5 select-none">
+          // The label is the touch target (the full 44 px); the pill inside it is the look.
+          <label key={option.value} className="group flex flex-1 cursor-pointer p-1 select-none">
             <input
               type="radio"
               className="peer sr-only"
@@ -49,9 +50,13 @@ export function Segmented<T extends string>({
               onChange={() => onChange(option.value)}
             />
             <span
-              className={`flex flex-1 items-center justify-center rounded-md text-sm font-medium whitespace-nowrap transition-colors peer-focus-visible:outline-2 peer-focus-visible:outline-offset-1 peer-focus-visible:outline-accent ${
-                compact ? "px-2.5" : "px-3.5"
-              } ${checked ? "bg-surface text-ink shadow-sm" : "text-ink-2 group-hover:text-ink"}`}
+              className={`flex flex-1 items-center justify-center rounded-full text-sm font-medium whitespace-nowrap transition-colors peer-focus-visible:outline-2 peer-focus-visible:outline-offset-1 peer-focus-visible:outline-accent ${
+                compact ? "px-3" : "px-4"
+              } ${
+                checked
+                  ? "bg-surface text-ink shadow-[0_0_0_1px_var(--line)]"
+                  : "text-ink-2 group-hover:text-ink"
+              }`}
             >
               {option.label}
             </span>

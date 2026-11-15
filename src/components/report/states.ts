@@ -83,6 +83,22 @@ export function statePhrase(code: number, blockerIndex?: number): string {
   return stateMeta(code).phrase;
 }
 
+/** The shortest wording of a state, for a value line: "Shaded by a building", "Night". */
+export function stateShort(code: number, blockerIndex?: number): string {
+  switch (code) {
+    case SunState.Sun:
+      return "In direct sun";
+    case SunState.Blocked:
+      return blockerIndex !== undefined && isTerrainBlocker(blockerIndex)
+        ? "Shaded by a hill"
+        : "Shaded by a building";
+    case SunState.OutOfView:
+      return "Sun outside the view";
+    default:
+      return "Night";
+  }
+}
+
 // ─── Colours ───────────────────────────────────────────────────────────────
 
 /** Parse "#rgb", "#rrggbb" or "rgb(r, g, b)" / "rgb(r g b)"; `null` otherwise. */

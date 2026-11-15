@@ -143,6 +143,24 @@ describe("startUrlSync", () => {
     expect(href()).toBe("/?lat=40.71280&lng=-74.00600&d=2026-06-21&t=1430&m=w&h=7.5&dir=90");
   });
 
+  test("the summary of a shared link (s) is dropped on the first write and never written", () => {
+    const s = "1.1t1i401u9.00011p3a3j3h3i3f2e0d0000.2p2z3a3n3x423z3q3f322s2m";
+    setUrl(`/${STORED_QUERY}&s=${s}#report`);
+    store.hydrateSettings();
+    // s is not a setting: the store holds exactly what the rest of the link says
+    expect(store.pickSettings(store.useSettings.getState())).toEqual(STORED);
+
+    sync.startUrlSync();
+    expect(location.search).toContain("&s=");
+    vi.advanceTimersByTime(400);
+    expect(replaceState).toHaveBeenCalledTimes(1);
+    expect(href()).toBe(`/${STORED_QUERY}#report`);
+
+    store.useSettings.getState().setMinuteOfDay(600);
+    vi.advanceTimersByTime(400);
+    expect(location.search).not.toMatch(/[?&]s=/);
+  });
+
   test("skips the call when the query string is unchanged", () => {
     setUrl(`/${STORED_QUERY}`);
     store.hydrateSettings();

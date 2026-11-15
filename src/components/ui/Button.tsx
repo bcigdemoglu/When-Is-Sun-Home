@@ -1,34 +1,55 @@
-import type { ButtonHTMLAttributes, ReactNode } from "react";
+import type { ButtonHTMLAttributes, ReactNode, Ref } from "react";
 
-type Variant = "primary" | "secondary" | "ghost";
+/**
+ * - "primary": the one main action — an ink pill.
+ * - "tonal":   everything else that should read as a button (inset fill).
+ * - "outline": a quiet button on a surface (hairline).
+ * - "ghost":   text only, until hovered.
+ * ("secondary" is the old name of "outline".)
+ */
+type Variant = "primary" | "tonal" | "outline" | "ghost" | "secondary";
+/** Height in px: 44 (default), 56 (the start screen's two big actions), 36 (dense rows). */
+type Size = "md" | "lg" | "sm";
 
 interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
+  ref?: Ref<HTMLButtonElement>;
   variant?: Variant;
-  /** Square button for a lone icon. Give it an `aria-label`. */
+  size?: Size;
+  /** Round button for a lone icon. Give it an `aria-label`. */
   iconOnly?: boolean;
   children: ReactNode;
 }
 
 const VARIANTS: Record<Variant, string> = {
-  primary: "bg-accent text-accent-ink border-transparent hover:opacity-90",
+  primary: "bg-ink text-surface border-transparent hover:opacity-90 active:opacity-80",
+  tonal: "bg-surface-2 text-ink border-transparent hover:brightness-[0.97] active:brightness-95",
+  outline: "bg-surface text-ink border-line hover:bg-surface-2",
   secondary: "bg-surface text-ink border-line hover:bg-surface-2",
   ghost: "bg-transparent text-ink-2 border-transparent hover:bg-surface-2 hover:text-ink",
 };
 
-/** Every button in the app: at least 40 px tall, so it is easy to hit on a phone. */
+const SIZES: Record<Size, { box: string; icon: string; pad: string }> = {
+  sm: { box: "h-9 text-[13px]", icon: "w-9", pad: "px-3" },
+  md: { box: "h-11 text-sm", icon: "w-11", pad: "px-4" },
+  lg: { box: "h-14 text-base", icon: "w-14", pad: "px-6" },
+};
+
+/** Every button in the app: a pill, at least 44 px tall so it is easy to hit on a phone. */
 export function Button({
-  variant = "secondary",
+  variant = "tonal",
+  size = "md",
   iconOnly = false,
   className = "",
   type = "button",
   children,
   ...props
 }: ButtonProps) {
+  const s = SIZES[size];
   return (
     <button
       type={type}
-      className={`inline-flex h-10 shrink-0 items-center justify-center gap-1.5 rounded-lg border text-sm font-medium transition-colors select-none disabled:cursor-not-allowed disabled:opacity-50 ${
-        iconOnly ? "w-10" : "px-3"
+      className={`inline-flex shrink-0 items-center justify-center gap-2 rounded-full border font-medium whitespace-nowrap transition-[background-color,opacity,filter] select-none disabled:cursor-not-allowed disabled:opacity-50 ${s.box} ${
+        iconOnly ? s.icon : s.pad
       } ${VARIANTS[variant]} ${className}`}
       {...props}
     >

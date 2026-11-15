@@ -1,46 +1,18 @@
-import { ImageResponse } from "next/og";
+import { OG_SIZE, SITE_NAME } from "./og/model";
+import { pngResponse, renderOgPng } from "./og/render";
 
-export const runtime = "edge";
-export const alt = "When is Sun Home?";
-export const size = { width: 1200, height: 630 };
+/**
+ * The site's default link-preview image: the brand card, in the same style as
+ * the per-place cards served by `/og`. Links that pin a place override it in
+ * `page.tsx`. Rendered on the Node.js runtime (the default).
+ */
+export const alt = `${SITE_NAME} Hours of direct sun for any backyard or window.`;
+export const size = OG_SIZE;
 export const contentType = "image/png";
 
-export default function OgImage() {
-  return new ImageResponse(
-    <div
-      style={{
-        display: "flex",
-        flexDirection: "column",
-        alignItems: "center",
-        justifyContent: "center",
-        width: "100%",
-        height: "100%",
-        background: "linear-gradient(135deg, #fbbf24 0%, #f59e0b 30%, #d97706 70%, #92400e 100%)",
-        fontFamily: "sans-serif",
-      }}
-    >
-      <div style={{ fontSize: 120, marginBottom: 16 }}>☀️</div>
-      <div
-        style={{
-          fontSize: 64,
-          fontWeight: 800,
-          color: "white",
-          textShadow: "0 2px 10px rgba(0,0,0,0.3)",
-          marginBottom: 12,
-        }}
-      >
-        When is Sun Home?
-      </div>
-      <div
-        style={{
-          fontSize: 28,
-          color: "rgba(255,255,255,0.9)",
-          textShadow: "0 1px 4px rgba(0,0,0,0.2)",
-        }}
-      >
-        Hours of direct sun for any backyard or window
-      </div>
-    </div>,
-    { ...size },
+export default async function OpenGraphImage(): Promise<Response> {
+  return pngResponse(
+    await renderOgPng({ kind: "brand" }),
+    "public, max-age=86400, stale-while-revalidate=604800",
   );
 }

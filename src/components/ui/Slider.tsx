@@ -57,12 +57,15 @@ export function Slider({
             : "flex flex-wrap items-center justify-between gap-x-3 gap-y-1"
         }
       >
-        <label htmlFor={id} className={hideLabel ? "sr-only" : "text-sm font-medium text-ink"}>
+        <label
+          htmlFor={id}
+          className={hideLabel ? "sr-only" : "text-[15px] leading-[22px] font-medium text-ink"}
+        >
           {label}
         </label>
         {labelExtra}
         {readout !== undefined && (
-          <span className="ml-auto text-sm text-ink-2 tabular-nums">{readout}</span>
+          <span className="ml-auto text-[15px] leading-[22px] text-ink-2 tabular-nums">{readout}</span>
         )}
       </div>
       <input
