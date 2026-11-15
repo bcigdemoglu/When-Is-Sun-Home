@@ -89,6 +89,7 @@ export {
   URL_SYNC_MAX_RETRIES,
   URL_SYNC_MIN_INTERVAL_MS,
   URL_SYNC_WINDOW_MS,
+  setLinkSummary,
   startUrlSync,
   useUrlSync,
 } from "./urlSync";

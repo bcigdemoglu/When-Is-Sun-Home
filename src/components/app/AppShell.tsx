@@ -43,7 +43,14 @@ import { usePacedValue } from "@/hooks/usePacedValue";
 import { isSameSpot } from "@/hooks/sunAnalysis";
 import { useSunAnalysis } from "@/hooks/useSunAnalysis";
 import { summarizeYear, sunTimesFor } from "@/lib/analysis";
-import { selectObserver, selectPlace, useHydrateSettings, useSettings, useUrlSync } from "@/state";
+import {
+  selectObserver,
+  selectPlace,
+  setLinkSummary,
+  useHydrateSettings,
+  useSettings,
+  useUrlSync,
+} from "@/state";
 import {
   hydratePlaces,
   placeEntryId,
@@ -231,6 +238,12 @@ function Workspace() {
     () => (measuredYear ? summarizeYear(measuredYear) : null),
     [measuredYear],
   );
+  // The address bar carries the same numbers, so a link shared from it (Safari's
+  // share button, copy and paste) previews with the place's sun hours.
+  useEffect(() => {
+    setLinkSummary(summary);
+    return () => setLinkSummary(null);
+  }, [summary]);
   const analysedPlace = analysis ? analysis.place : null;
   const analysedObserver = analysis ? analysis.observer : null;
   useEffect(() => {

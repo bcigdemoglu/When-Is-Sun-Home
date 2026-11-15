@@ -125,11 +125,20 @@ function Footer({ text }: { text: string }) {
   );
 }
 
-const CHART_HEIGHT = 250;
+const CHART_HEIGHT = 206;
 const BAR_WIDTH = 28;
 const BAR_GAP = 10;
 
-/** Twelve bars: direct sun (amber) standing in a track as tall as the month's daylight. */
+/** Hours for a bar label: one decimal, whole numbers from 10 up so twelve labels fit. */
+function barLabel(hours: number): string {
+  if (hours <= 0) return "0";
+  return hours >= 9.95 ? String(Math.round(hours)) : hours.toFixed(1);
+}
+
+/**
+ * The app's "Sun hours" card: twelve bars of direct sun (amber), each standing
+ * in a track as tall as the month's daylight, with the hours above it.
+ */
 function MonthlyBars({ summary }: { summary: PlaceSummary }) {
   const scale = Math.max(12, ...summary.monthlyDaylightHours);
   const px = (hours: number) => Math.round((Math.max(0, hours) / scale) * CHART_HEIGHT);
@@ -145,6 +154,9 @@ function MonthlyBars({ summary }: { summary: PlaceSummary }) {
       }}
     >
       <div style={{ display: "flex", alignItems: "center", fontSize: 21, color: C.ink2 }}>
+        <div style={{ display: "flex", fontSize: 27, color: C.ink, marginRight: 30 }}>
+          Sun hours
+        </div>
         <div
           style={{
             display: "flex",
@@ -168,7 +180,14 @@ function MonthlyBars({ summary }: { summary: PlaceSummary }) {
         />
         <div style={{ display: "flex", marginLeft: 9 }}>Daylight</div>
       </div>
-      <div style={{ display: "flex", alignItems: "flex-end", height: CHART_HEIGHT, marginTop: 20 }}>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "flex-end",
+          height: CHART_HEIGHT + 26,
+          marginTop: 16,
+        }}
+      >
         {summary.monthlySunHours.map((sun, month) => {
           const trackHeight = Math.max(4, px(summary.monthlyDaylightHours[month]));
           // Any sun at all gets a visible sliver; none at all gets no bar.
@@ -178,26 +197,38 @@ function MonthlyBars({ summary }: { summary: PlaceSummary }) {
               key={month}
               style={{
                 display: "flex",
-                alignItems: "flex-end",
-                width: BAR_WIDTH,
-                height: trackHeight,
-                marginLeft: month === 0 ? 0 : BAR_GAP,
-                borderRadius: 8,
-                backgroundColor: C.track,
+                flexDirection: "column",
+                alignItems: "center",
+                width: BAR_WIDTH + BAR_GAP,
+                marginLeft: month === 0 ? -BAR_GAP / 2 : 0,
               }}
             >
-              {sunHeight > 0 ? (
-                <div
-                  style={{
-                    display: "flex",
-                    width: BAR_WIDTH,
-                    height: sunHeight,
-                    borderRadius: Math.min(8, sunHeight / 2),
-                    backgroundColor: C.sun,
-                    border: `2px solid ${C.sunEdge}`,
-                  }}
-                />
-              ) : null}
+              <div style={{ display: "flex", fontSize: 16, color: C.ink, marginBottom: 6 }}>
+                {barLabel(sun)}
+              </div>
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "flex-end",
+                  width: BAR_WIDTH,
+                  height: trackHeight,
+                  borderRadius: 8,
+                  backgroundColor: C.track,
+                }}
+              >
+                {sunHeight > 0 ? (
+                  <div
+                    style={{
+                      display: "flex",
+                      width: BAR_WIDTH,
+                      height: sunHeight,
+                      borderRadius: Math.min(8, sunHeight / 2),
+                      backgroundColor: C.sun,
+                      border: `2px solid ${C.sunEdge}`,
+                    }}
+                  />
+                ) : null}
+              </div>
             </div>
           );
         })}

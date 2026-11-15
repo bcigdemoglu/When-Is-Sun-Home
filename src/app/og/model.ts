@@ -32,7 +32,7 @@ export const SITE_NAME = "When Is Sun Home?";
 export const SITE_TAGLINE = "Hours of direct sun for any backyard or window";
 export const OG_SIZE = { width: 1200, height: 630 } as const;
 /** Bump when the card's design changes, so that caches fetch the new image. */
-export const OG_VERSION = "1";
+export const OG_VERSION = "2";
 
 const LABEL_MAX_CHARS = 30;
 

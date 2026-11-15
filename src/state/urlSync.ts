@@ -41,9 +41,49 @@
  */
 import { useEffect } from "react";
 import { onSettingsHydrated, pickSettings, useSettings } from "./store";
-import { buildShareUrl, settingsToSearchParams } from "./urlCodec";
+import type { PlaceSummary } from "@/lib/types";
+import {
+  SUMMARY_URL_KEY,
+  buildShareUrl,
+  encodeSummaryParam,
+  settingsToSearchParams,
+} from "./urlCodec";
 
 export { buildShareUrl };
+
+// ─── The headline numbers in the address bar ───────────────────────────────
+//
+// A link preview (WhatsApp, iMessage…) is drawn on the server from the URL
+// alone, so the URL has to carry the place's headline numbers for the preview
+// to show its sun hours. People share from the address bar at least as often
+// as with the app's Share button — Safari's own share button sends exactly
+// this URL — so the address bar carries them too, once they are final.
+
+let linkSummary: PlaceSummary | null = null;
+const linkSummaryListeners = new Set<() => void>();
+
+/**
+ * The settled headline numbers for what is on screen, or `null` while they are
+ * not known (a new place, a changed viewpoint, data still loading). `null`
+ * removes them from the address bar: a link must never carry numbers that
+ * belong to something else.
+ */
+export function setLinkSummary(summary: PlaceSummary | null): void {
+  if (summary === linkSummary) return;
+  linkSummary = summary;
+  for (const listener of linkSummaryListeners) listener();
+}
+
+/** The query string for the address bar: the settings, plus the summary when known. */
+function currentQuery(): string {
+  const settings = pickSettings(useSettings.getState());
+  const params = settingsToSearchParams(settings);
+  if (linkSummary && settings.place) {
+    const encoded = encodeSummaryParam(linkSummary);
+    if (encoded !== "") params.set(SUMMARY_URL_KEY, encoded);
+  }
+  return params.toString();
+}
 
 export const URL_SYNC_DEBOUNCE_MS = 400;
 export const URL_SYNC_MIN_INTERVAL_MS = 400;
@@ -111,7 +151,7 @@ export function startUrlSync(options: UrlSyncOptions = {}): () => void {
     if (stopped || !dirty) return;
     const now = Date.now();
     try {
-      const query = settingsToSearchParams(pickSettings(useSettings.getState())).toString();
+      const query = currentQuery();
       const { pathname, search, hash } = window.location;
       if (query === search.replace(/^\?/, "")) {
         dirty = false;
@@ -166,6 +206,7 @@ export function startUrlSync(options: UrlSyncOptions = {}): () => void {
   const unsubscribeHydration = onSettingsHydrated(() => {
     if (stopped) return;
     unsubscribeStore = useSettings.subscribe(onChange);
+    linkSummaryListeners.add(onChange);
     document.addEventListener("visibilitychange", onVisibilityChange);
     onChange();
   });
@@ -174,6 +215,7 @@ export function startUrlSync(options: UrlSyncOptions = {}): () => void {
     stopped = true;
     unsubscribeHydration();
     unsubscribeStore?.();
+    linkSummaryListeners.delete(onChange);
     document.removeEventListener("visibilitychange", onVisibilityChange);
     if (timer !== null) {
       clearTimeout(timer);

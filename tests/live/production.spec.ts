@@ -89,7 +89,7 @@ test("a shared link shows the answer in its preview", async ({ request }) => {
   expect(head).toMatch(/<meta property="og:title" content="[^"]*6\.5 h of direct sun/);
   expect(head).toMatch(/<meta property="og:image" content="[^"]*\/og\?/);
 
-  const image = await request.get(`/og?lat=37.7912&lng=-122.4301&s=${summary}&v=1`);
+  const image = await request.get(`/og?lat=37.7912&lng=-122.4301&s=${summary}&v=2`);
   expect(image.status()).toBe(200);
   expect(image.headers()["content-type"]).toContain("image/png");
 });
