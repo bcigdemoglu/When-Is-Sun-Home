@@ -3,6 +3,13 @@ import { PageObject } from "./base";
 
 export type Detent = "peek" | "half" | "full";
 
+/**
+ * For `expect.poll` on things that settle within a few frames (a scroll
+ * position, a counter): look again every 50 ms instead of backing off to a
+ * second, which is what makes animation-bound tests slow.
+ */
+export const OFTEN = { intervals: [50] };
+
 /** Matches a duration as the app writes it: "12 h 27 m", "8 h", "45 m", "0 m". */
 export const DURATION = /^(?:\d+ h(?: \d+ m)?|\d+ m)$/;
 
@@ -130,7 +137,7 @@ export class AppPage extends PageObject {
         const detent = (await this.sheetScroller.getAttribute("data-detent")) as Detent;
         const geometry = await this.sheetGeometry();
         return Math.abs(geometry.top - geometry[detent]);
-      })
+      }, OFTEN)
       .toBeLessThanOrEqual(2);
   }
 

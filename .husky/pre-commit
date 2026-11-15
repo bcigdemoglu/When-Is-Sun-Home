@@ -1,2 +1,16 @@
 # Never commit a tree that does not build: every push is deployed by Vercel.
+#
+# The build runs on exactly what is being committed (an export of the index),
+# not on the working tree, so unfinished edits elsewhere can neither block a
+# commit nor hide a problem in it. The export lives inside the repository
+# (git-ignored) with hard-linked dependencies, because the bundler refuses a
+# node_modules that sits outside the project root.
+set -e
+root=$(git rev-parse --show-toplevel)
+work="$root/.hook-build"
+rm -rf "$work"
+trap 'rm -rf "$work"' EXIT
+git -C "$root" checkout-index --all --prefix="$work/"
+cp -al "$root/node_modules" "$work/node_modules"
+cd "$work"
 pnpm build

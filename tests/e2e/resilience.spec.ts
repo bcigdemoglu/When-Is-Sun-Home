@@ -9,9 +9,11 @@
 import {
   ErrorGuard,
   FIXTURE_BUILDING_COUNT,
+  FIXTURE_ESTIMATE_NOTE,
   FIXTURE_PIN_LABEL,
   FIXTURE_QUERY,
   MOCK_ADDRESS,
+  NO_BUILDINGS_NOTE,
   expect,
   test,
 } from "./fixtures";
@@ -20,16 +22,24 @@ test.describe("Resilience", () => {
   test("building data fails: open-sky numbers, a clear message, and Retry recovers", async ({
     app,
     report,
+    page,
     mocks,
     isPhone,
   }) => {
     mocks.buildings.fail();
+    // The public Overpass servers are the last source tried: a failed request
+    // there means one whole attempt to load the buildings has run its course.
+    const lastResort: string[] = [];
+    page.on("requestfailed", (request) => {
+      if (/\/api\/interpreter/.test(request.url())) lastResort.push(request.url());
+    });
     await app.open(FIXTURE_QUERY);
 
     // On the map, with the way out.
     await expect(app.buildingError).toBeVisible({ timeout: 30_000 });
     await expect(app.buildingError).toContainText("Couldn’t load building heights.");
-    const retry = app.buildingError.getByRole("button", { name: "Retry" });
+    // (Exact: while a retry runs the button reads "Retrying…" and is disabled.)
+    const retry = app.buildingError.getByRole("button", { name: "Retry", exact: true });
     await expect(retry).toBeEnabled();
     // In the answer: still numbers, marked as unshaded — never a blank or a spinner for ever.
     await expect(app.summaryFigure).toHaveText("≈ 14 h 37 m");
@@ -47,7 +57,9 @@ test.describe("Resilience", () => {
     if (isPhone) await app.moveSheetTo("peek");
 
     // Retrying while it is still down changes nothing — and does not get stuck on "Retrying…".
+    const attempts = lastResort.length;
     await app.press(retry);
+    await expect.poll(() => lastResort.length).toBeGreaterThan(attempts);
     await expect(retry).toBeEnabled();
     await expect(app.buildingError).toBeVisible();
     await expect(app.summaryStatus).toHaveText("Building heights unavailable");
@@ -75,31 +87,72 @@ test.describe("Resilience", () => {
     await expect(app.summaryFigure).toHaveText("12 h 27 m");
   });
 
-  test("terrain fails silently: flat ground, an honest footnote, no alarm", async ({
+  test("terrain fails quietly: flat ground, an honest footnote, no alarm", async ({
     app,
     report,
     page,
+    mocks,
     isPhone,
   }) => {
-    // Every elevation tile is refused in these tests (see `mockTerrain`).
-    const terrainRequests: string[] = [];
+    mocks.terrain.fail();
+    const refused: string[] = [];
     page.on("requestfailed", (request) => {
-      if (/elevation-tiles-prod/.test(request.url())) terrainRequests.push(request.url());
+      if (/elevation-tiles-prod/.test(request.url())) refused.push(request.url());
     });
     await app.openPlace(FIXTURE_QUERY);
-    expect(terrainRequests.length).toBeGreaterThan(0);
+    await expect.poll(() => refused.length).toBeGreaterThan(0);
 
-    // The answer is there, and nothing shouts about it.
+    // The answer is the flat-ground one (the same numbers as with level terrain) …
     await expect(app.summaryFigure).toHaveText("12 h 27 m");
-    await expect(app.includedNote).not.toContainText("hills");
+    await expect(app.heroFigure).toHaveText("6.4h");
+    // … the footnote says hills are NOT in it …
+    await expect(app.includedNote).toHaveText(
+      `Estimate: includes shade from ${FIXTURE_BUILDING_COUNT} nearby buildings, but not hills, trees, fences or clouds.`,
+    );
+    // … and nothing shouts: no alert, no toast, no retry button for it.
     await expect(page.getByRole("alert").filter({ hasText: /\S/ })).toHaveCount(0);
     await expect(page.locator("[data-toaster]")).toBeEmpty();
+    await expect(page.getByRole("button", { name: "Retry" })).toHaveCount(0);
 
     // The method note says what was assumed.
     if (isPhone) await app.moveSheetTo("full");
     await report.show(report.about);
     await report.press(report.about.getByRole("button", { name: "How it is worked out" }));
-    await expect(report.about).toContainText(/[Ff]lat ground is assumed/);
+    await expect(report.about).toContainText(
+      "Ground heights could not be loaded, so flat ground is assumed and hills are not included.",
+    );
+  });
+
+  test("terrain that loads is part of the estimate, also where there are no buildings", async ({
+    app,
+    report,
+    isPhone,
+  }) => {
+    await app.openPlace(FIXTURE_QUERY);
+    await expect(app.includedNote).toHaveText(FIXTURE_ESTIMATE_NOTE);
+    if (isPhone) await app.moveSheetTo("full");
+    await report.show(report.about);
+    await report.press(report.about.getByRole("button", { name: "How it is worked out" }));
+    await expect(report.about).toContainText("Hills and slopes around the spot are included.");
+
+    await app.openPlace("lat=37.76956&lng=-122.24604");
+    await expect(app.includedNote).toHaveText(NO_BUILDINGS_NOTE);
+  });
+
+  test("slow terrain never blocks the answer for good", async ({ app, mocks }) => {
+    mocks.terrain.hold();
+    await app.open(FIXTURE_QUERY);
+    // With buildings in and terrain still on its way, an answer shows (the app may
+    // hold the provisional one for a moment first).
+    await expect(app.summaryFigure).toHaveText(/^(≈ )?\d+ h \d+ m$/);
+    await expect(app.includedNote).toContainText(`${FIXTURE_BUILDING_COUNT} nearby buildings`, {
+      timeout: 15_000,
+    });
+    await expect(app.summaryFigure).toHaveText("12 h 27 m");
+
+    mocks.terrain.release();
+    await expect(app.includedNote).toHaveText(FIXTURE_ESTIMATE_NOTE);
+    await expect(app.summaryFigure).toHaveText("12 h 27 m");
   });
 
   test("WebGL unavailable: the map says so, everything else works", async ({
@@ -167,7 +220,8 @@ test.describe("Resilience", () => {
         if (/basemaps\.cartocdn\.com/.test(request.url())) failed.push(request.url());
       });
       await app.openPlace(FIXTURE_QUERY);
-      expect(failed.length).toBeGreaterThan(0);
+      // (The map loads lazily, after the answer: wait for it to have asked for its style.)
+      await expect.poll(() => failed.length).toBeGreaterThan(0);
 
       await expect(app.summaryFigure).toHaveText("12 h 27 m");
       await expect(app.includedNote).toContainText(`${FIXTURE_BUILDING_COUNT} nearby buildings`);

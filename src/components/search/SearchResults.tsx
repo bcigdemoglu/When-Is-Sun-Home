@@ -36,27 +36,15 @@ export interface SearchResultsProps {
   onRetry: () => void;
 }
 
-/** What the "use my location" row says under its title. */
+/**
+ * What the "use my location" row says under its title. When the browser
+ * refused or failed, that is the geolocation hook's own message — the one
+ * place that knows how to word it for the platform (where to allow location
+ * on an iPhone, in an in-app browser, …).
+ */
 export function locationSubtitle(geo: GeolocationState): { text: string; problem: boolean } {
   if (geo.status === "locating") return { text: "Finding you…", problem: false };
-  if (geo.status === "error") {
-    switch (geo.problem) {
-      case "denied":
-        return {
-          text: "Location is off for this site — allow it in your browser’s site settings, then try again",
-          problem: true,
-        };
-      case "timeout":
-        return { text: "That took too long — tap to try again", problem: true };
-      case "unavailable":
-        return { text: "Couldn’t find you just now — tap to try again", problem: true };
-      default:
-        return {
-          text: "This browser can’t share its location — search or choose on the map",
-          problem: true,
-        };
-    }
-  }
+  if (geo.status === "error") return { text: geo.message, problem: true };
   return { text: "Find the spot you’re standing on", problem: false };
 }
 

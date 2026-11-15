@@ -43,11 +43,46 @@ export function reportPhotonSuccess(): void {
   set("up");
 }
 
-/** A request to Photon failed for good (not aborted; retries used up). */
+/**
+ * A phone cuts requests off when the user switches apps (iOS Safari: "Load
+ * failed"). That says nothing about Photon: failures that end while the page
+ * is hidden, or just after it is shown again, are not counted.
+ */
+export const BACKGROUND_GRACE_MS = 1000;
+
+/** When the page last came back to the foreground. */
+let visibleSince = Number.NEGATIVE_INFINITY;
+
+function pageIsHidden(): boolean {
+  return typeof document !== "undefined" && document.visibilityState === "hidden";
+}
+
+/**
+ * True if a request that failed at `now` may have been cut off by the page
+ * going to the background rather than by the service.
+ */
+export function failedInBackground(now: number = Date.now()): boolean {
+  return pageIsHidden() || now - visibleSince < BACKGROUND_GRACE_MS;
+}
+
+if (typeof document !== "undefined") {
+  document.addEventListener("visibilitychange", () => {
+    if (pageIsHidden()) return;
+    visibleSince = Date.now();
+    // Back in front of the user is the moment to try again: do not sit out the cool-down.
+    retryAt = 0;
+  });
+}
+
+/**
+ * A request to Photon failed for good (not aborted; retries used up). Ignored
+ * when the page was in the background — see `failedInBackground`.
+ */
 export function reportPhotonFailure(now: number = Date.now()): void {
+  if (failedInBackground(now)) return;
   retryAt = now + PHOTON_COOL_DOWN_MS;
   set("down");
-  // Coming back online is the best moment to try again: do not sit out the cool-down.
+  // Coming back online is the best moment to try again, too.
   if (!listeningForOnline && typeof window !== "undefined") {
     listeningForOnline = true;
     window.addEventListener("online", () => {
@@ -75,5 +110,6 @@ export function probePhotonIfDue(now: number = Date.now()): boolean {
 /** Back to "up" with no history. For tests and dev harnesses. */
 export function resetPhotonHealth(): void {
   retryAt = 0;
+  visibleSince = Number.NEGATIVE_INFINITY;
   set("up");
 }

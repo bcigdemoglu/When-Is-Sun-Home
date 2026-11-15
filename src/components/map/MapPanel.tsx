@@ -1,13 +1,15 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ErrorBoundary } from "@/components/app/ErrorBoundary";
 import { Button } from "@/components/ui/Button";
 import { pinSpot } from "@/hooks/placeActions";
 import type { BuildingsStatus } from "@/lib/buildings/useBuildings";
 import type { BuildingCollection, Place, SunInstant } from "@/lib/types";
 import type { SunPathModel } from "./compassGeometry";
+import { shouldAutoRetry } from "./contextLoss";
+import { useMapUi } from "./mapUi";
 
 function MapLoading() {
   return (
@@ -139,6 +141,27 @@ export function MapPanel({
     setAttempt((value) => value + 1);
   };
 
+  // A map lost in the background (phones drop WebGL contexts there) usually
+  // works again when the page is next looked at: try once by ourselves. The
+  // allowance is renewed every time a map has loaded properly.
+  const mapReady = useMapUi((state) => state.ready);
+  const autoRetried = useRef(false);
+  useEffect(() => {
+    if (mapReady) autoRetried.current = false;
+  }, [mapReady]);
+  useEffect(() => {
+    if (!failed) return;
+    const onVisibility = () => {
+      const visible = document.visibilityState === "visible";
+      if (!shouldAutoRetry({ failed: true, visible, alreadyRetried: autoRetried.current })) return;
+      autoRetried.current = true;
+      setFailed(false);
+      setAttempt((value) => value + 1);
+    };
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => document.removeEventListener("visibilitychange", onVisibility);
+  }, [failed]);
+
   return (
     <div className="relative h-full w-full overflow-hidden bg-surface-2">
       {failed ? (
@@ -158,15 +181,14 @@ export function MapPanel({
         </ErrorBoundary>
       )}
 
-      <div className="pointer-events-none absolute top-[calc(var(--map-inset-top,0px)+8px)] right-3 left-3 z-10 flex justify-center lg:justify-start">
-        <div className="pointer-events-auto">
-          <BuildingNotice
-            status={buildingStatus}
-            count={buildingCount}
-            fetching={buildingsFetching}
-            onRetry={onRetryBuildings}
-          />
-        </div>
+      {/* Only as large as the notice itself: nothing invisible lies over the map. */}
+      <div className="absolute top-[calc(var(--map-inset-top,0px)+8px)] right-3 left-3 z-10 mx-auto w-fit lg:mx-0">
+        <BuildingNotice
+          status={buildingStatus}
+          count={buildingCount}
+          fetching={buildingsFetching}
+          onRetry={onRetryBuildings}
+        />
       </div>
     </div>
   );

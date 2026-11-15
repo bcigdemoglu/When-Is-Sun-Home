@@ -24,19 +24,87 @@ export function geolocationProblem(code: number | null): GeolocationProblem {
 }
 
 /**
- * What to tell the person. On the web "denied" can only be undone in the
- * browser's own site settings, so the message says where to look.
+ * Where the page is running, as far as it matters for explaining how to turn
+ * location back on. Detected conservatively: anything uncertain is "desktop",
+ * whose wording is true everywhere.
  */
-export function geolocationMessage(problem: GeolocationProblem): string {
+export type LocationPlatform =
+  /** Safari on iPhone / iPad. */
+  | "ios-safari"
+  /** Another browser on iPhone / iPad (Chrome, Firefox, Edge …). */
+  | "ios-browser"
+  /** A page opened inside another iOS app (a chat or social app's built-in browser). */
+  | "ios-in-app"
+  | "android"
+  | "desktop";
+
+interface NavigatorLike {
+  userAgent?: string;
+  platform?: string;
+  maxTouchPoints?: number;
+  userAgentData?: { platform?: string; mobile?: boolean };
+  /** iOS only: true when the page runs from the Home Screen. */
+  standalone?: boolean;
+}
+
+export function detectLocationPlatform(nav?: NavigatorLike | null): LocationPlatform {
+  const source = nav ?? (typeof navigator === "undefined" ? null : (navigator as NavigatorLike));
+  if (!source) return "desktop";
+  const ua = source.userAgent ?? "";
+  // iPadOS introduces itself as a Mac; a Mac with a touch screen does not exist.
+  const isIos =
+    /iPhone|iPad|iPod/.test(ua) ||
+    (source.platform === "MacIntel" && (source.maxTouchPoints ?? 0) > 1);
+  if (isIos) {
+    // From the Home Screen the page is Safari's (same permission, same setting),
+    // although its UA leaves "Version/… Safari/…" out like an in-app view does.
+    if (source.standalone === true) return "ios-safari";
+    if (/CriOS|FxiOS|EdgiOS|OPiOS|DuckDuckGo/.test(ua)) return "ios-browser";
+    // Real Safari says "Version/x … Safari/y"; web views inside apps leave that out
+    // or add their own name.
+    const inApp =
+      !/Safari\//.test(ua) ||
+      !/Version\//.test(ua) ||
+      /FBAN|FBAV|FB_IAB|Instagram|Line\/|MicroMessenger|WhatsApp|Snapchat|Twitter|LinkedInApp|GSA\//.test(
+        ua,
+      );
+    return inApp ? "ios-in-app" : "ios-safari";
+  }
+  if (source.userAgentData?.platform === "Android" || /Android/.test(ua)) return "android";
+  return "desktop";
+}
+
+/**
+ * What to tell the person. "Denied" can only be undone outside the page, and
+ * where exactly depends on the device — so the message says where to look
+ * THERE, and always names the way round it (an address).
+ */
+export function geolocationMessage(
+  problem: GeolocationProblem,
+  platform: LocationPlatform = "desktop",
+): string {
   switch (problem) {
     case "denied":
-      return "Location is blocked for this site. Allow it in your browser’s site settings (the icon next to the address bar), or enter an address instead.";
+      switch (platform) {
+        case "ios-safari":
+          return "Location is off for Safari. Turn it on in Settings › Privacy & Security › Location Services › Safari Websites › While Using the App, then reload — or enter an address.";
+        case "ios-browser":
+          return "Location is off for this browser. Turn it on in Settings › Privacy & Security › Location Services, then reload — or enter an address.";
+        case "ios-in-app":
+          return "This in-app browser can’t share your location. Open this page in Safari, or enter an address.";
+        case "android":
+          return "Location is blocked for this site. Tap the icon left of the address, then Permissions › Location › Allow — or enter an address.";
+        default:
+          return "Location is blocked for this site. Allow it in your browser’s site settings (the icon next to the address bar), or enter an address instead.";
+      }
     case "unavailable":
       return "Your device couldn’t work out where it is right now. Try again in the open, or enter an address.";
     case "timeout":
       return "Finding your location took too long. Try again, or enter an address.";
     default:
-      return "This browser can’t share its location. Enter an address or tap the map instead.";
+      return platform === "ios-in-app"
+        ? "This in-app browser can’t share your location. Open this page in Safari, or enter an address."
+        : "This browser can’t share its location. Enter an address or tap the map instead.";
   }
 }
 
@@ -91,7 +159,11 @@ export function useGeolocation(
   );
 
   const fail = (problem: GeolocationProblem) =>
-    setState({ status: "error", problem, message: geolocationMessage(problem) });
+    setState({
+      status: "error",
+      problem,
+      message: geolocationMessage(problem, detectLocationPlatform()),
+    });
 
   const locate = () => {
     if (typeof navigator === "undefined" || !navigator.geolocation) {

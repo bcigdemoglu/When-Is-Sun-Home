@@ -540,3 +540,74 @@ describe("usePlaceSearch — Photon down", () => {
     });
   });
 });
+
+describe("usePlaceSearch — the user switches apps mid-search (iOS cuts the request)", () => {
+  function setVisibility(state: DocumentVisibilityState): void {
+    Object.defineProperty(document, "visibilityState", { configurable: true, get: () => state });
+    document.dispatchEvent(new Event("visibilitychange", { bubbles: true }));
+  }
+
+  afterEach(() => {
+    setVisibility("visible");
+  });
+
+  test("a request cut off in the background does not mark Photon down; it is sent again on return", async () => {
+    let cut = true;
+    const calls = services(async (url) => {
+      if (cut) throw new TypeError("Load failed");
+      return photonUp(url);
+    }, nominatimUp);
+    const { result } = renderSearch("pacific");
+    setVisibility("hidden");
+    await waitFor(() => expect(calls.photon.length).toBeGreaterThanOrEqual(1));
+    await pause(700);
+    // Nothing is retried while the page is hidden, and nothing is concluded.
+    const whileHidden = calls.photon.length;
+    expect(whileHidden).toBeLessThanOrEqual(2);
+    expect(getPhotonHealth()).toBe("up");
+    expect(result.current).toMatchObject({ mode: "live", status: "loading" });
+
+    cut = false;
+    setVisibility("visible");
+    await waitFor(() => expect(result.current.status).toBe("ready"), { timeout: 3000 });
+    expect(result.current.mode).toBe("live");
+    expect(result.current.suggestions[0].label).toBe("pacific live");
+    expect(getPhotonHealth()).toBe("up");
+    expect(calls.nominatim).toEqual([]);
+  });
+
+  test("a failure in the foreground still counts after one retry", async () => {
+    const calls = services(photonDown, nominatimUp);
+    const { result } = renderSearch("pacific");
+    await waitFor(() => expect(result.current.mode).toBe("submit"), { timeout: 3000 });
+    expect(calls.photon).toEqual(["pacific", "pacific"]);
+  });
+
+  test("Photon really being down is found out after returning: one retry in the foreground, then submit mode", async () => {
+    const calls = services(photonDown, nominatimUp);
+    const { result } = renderSearch("pacific");
+    setVisibility("hidden");
+    await waitFor(() => expect(calls.photon.length).toBeGreaterThanOrEqual(1));
+    await pause(600);
+    expect(getPhotonHealth()).toBe("up");
+    setVisibility("visible");
+    await waitFor(() => expect(result.current.mode).toBe("submit"), { timeout: 8000 });
+    expect(result.current).toMatchObject({ awaitingSubmit: true, status: "idle" });
+  }, 12_000);
+
+  test("returning to the page ends the cool-down: the next keystroke probes at once", async () => {
+    const down = services(photonDown, nominatimUp);
+    const { result, rerender } = renderSearch("pacific");
+    await waitFor(() => expect(result.current.mode).toBe("submit"), { timeout: 3000 });
+    expect(down.photon).toHaveLength(2);
+
+    const back = services(photonUp, nominatimUp);
+    setVisibility("hidden");
+    setVisibility("visible");
+    rerender({ query: "pacific h" });
+    await waitFor(() => expect(result.current.mode).toBe("live"), { timeout: 3000 });
+    await waitFor(() => expect(result.current.status).toBe("ready"));
+    expect(back.photon).toEqual(["pacific h"]);
+    expect(back.nominatim).toEqual([]);
+  });
+});

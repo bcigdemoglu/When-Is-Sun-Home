@@ -1,0 +1,33 @@
+name: Post-deploy check
+
+# Runs against the real production site after Vercel reports a successful
+# production deployment (and on demand).
+on:
+  deployment_status:
+  workflow_dispatch:
+    inputs:
+      url:
+        description: Site to check
+        default: https://when-is-sun-home.vercel.app
+
+jobs:
+  live:
+    name: Live checks on production
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.deployment_status.state == 'success' &&
+       github.event.deployment.environment == 'Production')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec playwright install --with-deps chromium
+      - run: pnpm test:live
+        env:
+          CI: "true"
+          LIVE_URL: ${{ inputs.url || 'https://when-is-sun-home.vercel.app' }}

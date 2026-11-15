@@ -19,6 +19,7 @@ import { computeShadowPolygons } from "@/lib/analysis";
 import type { BuildingCollection, LatLng, Place, SunInstant } from "@/lib/types";
 import { selectLayers, selectObserver, useSettings } from "@/state";
 import type { SunPathModel } from "./compassGeometry";
+import { createContextLossWatch } from "./contextLoss";
 import { EMPTY_BUILDINGS, SHADOW_RADIUS_M, buildingsNear } from "./mapData";
 import { useMapUi } from "./mapUi";
 import {
@@ -48,7 +49,7 @@ const GL_SUN_PACING = { minIntervalMs: 33, loadFactor: 4, allowanceMs: 45 };
 const MAP_SETTLE_TIMEOUT_MS = 800;
 /** Paint changes apply at once; a 300 ms cross-fade would only blur fast scrubbing. */
 const NO_TRANSITION = { duration: 0, delay: 0 };
-/** A WebGL context that stays lost this long is treated as gone. */
+/** A WebGL context that stays lost this long — with the page visible — is treated as gone. */
 const CONTEXT_LOSS_GRACE_MS = 4000;
 
 const EMPTY_SHADOWS = { type: "FeatureCollection" as const, features: [] };
@@ -401,16 +402,21 @@ export default function SunMap({
             tilted: map.getPitch() > 5,
             bearing: Math.round(map.getBearing()),
           });
-          let lostTimer: ReturnType<typeof setTimeout> | undefined;
-          map.on("webglcontextlost", () => {
-            clearTimeout(lostTimer);
-            lostTimer = setTimeout(
-              () => onFatalError(new Error("WebGL context lost")),
-              CONTEXT_LOSS_GRACE_MS,
-            );
+          // A lost WebGL context usually comes back; give up only if it stays
+          // lost while the page is actually being looked at (see contextLoss.ts).
+          const watch = createContextLossWatch({
+            graceMs: CONTEXT_LOSS_GRACE_MS,
+            isVisible: () => document.visibilityState === "visible",
+            onGone: () => onFatalError(new Error("WebGL context lost")),
           });
-          map.on("webglcontextrestored", () => clearTimeout(lostTimer));
-          map.on("remove", () => clearTimeout(lostTimer));
+          const onVisibility = () => watch.visibilityChanged();
+          document.addEventListener("visibilitychange", onVisibility);
+          map.on("webglcontextlost", () => watch.lost());
+          map.on("webglcontextrestored", () => watch.restored());
+          map.on("remove", () => {
+            watch.dispose();
+            document.removeEventListener("visibilitychange", onVisibility);
+          });
         }}
         onError={onError}
       >

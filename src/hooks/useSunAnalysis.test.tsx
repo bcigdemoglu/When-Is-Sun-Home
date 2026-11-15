@@ -2,9 +2,11 @@
 import { act, cleanup, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { UseBuildingsResult } from "@/lib/buildings/useBuildings";
+import { loadPacificHeightsTerrain } from "@/lib/terrain/testing";
+import type { UseTerrainResult } from "@/lib/terrain";
 import { SunState, type BuildingCollection } from "@/lib/types";
 import { useSettings } from "@/state";
-import { OBSERVER_THROTTLE_MS, useSunAnalysis } from "./useSunAnalysis";
+import { OBSERVER_THROTTLE_MS, TERRAIN_HOLD_MS, useSunAnalysis } from "./useSunAnalysis";
 
 // The real engine, with every entry point counted.
 const calls = vi.hoisted(() => ({ grid: 0, horizon: 0, year: 0, day: 0, instant: 0 }));
@@ -41,10 +43,15 @@ vi.mock("@/lib/buildings/useBuildings", () => ({
   useBuildings: () => ({ ...(buildingsState.current as object) }),
 }));
 
-// Terrain is exercised in the engine's own tests; here the ground is flat.
-vi.mock("@/lib/terrain", () => ({
-  useTerrain: () => ({ terrain: null, status: "idle", error: null }),
+// Terrain itself is exercised in the engine's own tests; here only its
+// loading state is steered. Unless a test says otherwise there is none.
+const terrainState = vi.hoisted(() => ({
+  current: { terrain: null, status: "idle", error: null } as unknown,
 }));
+vi.mock("@/lib/terrain", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/terrain")>();
+  return { ...actual, useTerrain: () => ({ ...(terrainState.current as object) }) };
+});
 
 const PLACE = { lat: 37.79, lng: -122.43 };
 const M_LAT = 1 / 111_320;
@@ -96,6 +103,19 @@ function buildingsResult(partial: Partial<UseBuildingsResult>): UseBuildingsResu
 const WALL = wallToTheSouth();
 const READY = buildingsResult({ status: "ready", buildings: WALL });
 
+const NO_TERRAIN: UseTerrainResult = { terrain: null, status: "idle", error: null };
+const TERRAIN_LOADING: UseTerrainResult = { terrain: null, status: "loading", error: null };
+const TERRAIN_READY: UseTerrainResult = {
+  terrain: loadPacificHeightsTerrain(),
+  status: "ready",
+  error: null,
+};
+const TERRAIN_FAILED: UseTerrainResult = {
+  terrain: null,
+  status: "error",
+  error: new Error("tiles unreachable"),
+};
+
 function resetCalls() {
   calls.grid = calls.horizon = calls.year = calls.day = calls.instant = 0;
 }
@@ -112,6 +132,7 @@ beforeEach(() => {
   vi.setSystemTime(new Date("2026-12-21T20:00:00Z")); // noon in San Francisco
   useSettings.getState().reset();
   buildingsState.current = READY;
+  terrainState.current = NO_TERRAIN;
   resetCalls();
 });
 
@@ -330,5 +351,126 @@ describe("useSunAnalysis", () => {
     });
     expect(result.current!.minuteOfDay).toBe(12 * 60 + 1);
     expect(calls).toEqual({ grid: 0, horizon: 0, year: 0, day: 0, instant: 1 });
+  });
+  describe("waiting for the ground elevations", () => {
+    function advance(ms: number) {
+      act(() => {
+        vi.advanceTimersByTime(ms);
+      });
+    }
+
+    it("computes once, with the hills, when they arrive within the hold", () => {
+      terrainState.current = TERRAIN_LOADING;
+      const { result, rerender } = setup();
+      // Buildings are in, hills are not: still the provisional answer.
+      expect(result.current!.buildings.status).toBe("loading");
+      expect(result.current!.buildings.buildings).toBe(WALL);
+      expect(result.current!.isUnobstructed).toBe(true);
+      expect(result.current!.isSettled).toBe(false);
+      expect(result.current!.horizon).toBeNull();
+      expect(calls.horizon).toBe(0);
+
+      advance(800);
+      expect(calls.horizon).toBe(0);
+      terrainState.current = TERRAIN_READY;
+      rerender();
+      settle();
+      expect(result.current!.buildings.status).toBe("ready");
+      expect(result.current!.terrainStatus).toBe("ready");
+      expect(result.current!.isUnobstructed).toBe(false);
+      expect(result.current!.isSettled).toBe(true);
+      expect(result.current!.horizon).not.toBeNull();
+      expect(calls.horizon).toBe(1);
+
+      // The cap passing afterwards changes nothing.
+      const settled = result.current;
+      advance(TERRAIN_HOLD_MS * 2);
+      expect(result.current).toBe(settled);
+      expect(calls.horizon).toBe(1);
+    });
+
+    it("goes ahead on flat ground after the cap, then refines when the hills arrive", () => {
+      terrainState.current = TERRAIN_LOADING;
+      const { result, rerender } = setup();
+      advance(TERRAIN_HOLD_MS - 500);
+      expect(result.current!.buildings.status).toBe("loading");
+      expect(calls.horizon).toBe(0);
+
+      advance(500);
+      expect(result.current!.buildings.status).toBe("ready");
+      expect(result.current!.isUnobstructed).toBe(false);
+      expect(result.current!.terrainStatus).toBe("loading");
+      // Shown, but not yet worth remembering.
+      expect(result.current!.isSettled).toBe(false);
+      expect(calls.horizon).toBe(1);
+      const flat = result.current!.horizon;
+      expect(flat).not.toBeNull();
+
+      terrainState.current = TERRAIN_READY;
+      rerender();
+      settle();
+      expect(result.current!.isSettled).toBe(true);
+      expect(result.current!.horizon).not.toBe(flat);
+      expect(calls.horizon).toBe(2);
+    });
+
+    it("counts the cap from when the buildings arrive, not from when the pin dropped", () => {
+      terrainState.current = TERRAIN_LOADING;
+      buildingsState.current = buildingsResult({ status: "loading", isFetching: true });
+      const { result, rerender } = setup();
+      advance(TERRAIN_HOLD_MS * 2);
+      expect(calls.horizon).toBe(0);
+
+      buildingsState.current = READY;
+      rerender();
+      advance(TERRAIN_HOLD_MS - 100);
+      expect(result.current!.buildings.status).toBe("loading");
+      expect(calls.horizon).toBe(0);
+      advance(100);
+      expect(result.current!.buildings.status).toBe("ready");
+      expect(calls.horizon).toBe(1);
+    });
+
+    it("does not wait at all when the elevations have failed", () => {
+      terrainState.current = TERRAIN_FAILED;
+      const { result } = setup();
+      expect(result.current!.buildings.status).toBe("ready");
+      expect(result.current!.terrainStatus).toBe("error");
+      expect(result.current!.isUnobstructed).toBe(false);
+      expect(result.current!.isSettled).toBe(true);
+      expect(calls.horizon).toBe(1);
+    });
+
+    it("stops waiting the moment the elevations fail", () => {
+      terrainState.current = TERRAIN_LOADING;
+      const { result, rerender } = setup();
+      expect(calls.horizon).toBe(0);
+      terrainState.current = TERRAIN_FAILED;
+      rerender();
+      expect(result.current!.buildings.status).toBe("ready");
+      expect(result.current!.isSettled).toBe(true);
+      expect(calls.horizon).toBe(1);
+    });
+
+    it("does not wait again for the same block of terrain once the cap has passed", () => {
+      terrainState.current = TERRAIN_LOADING;
+      const { result } = setup();
+      advance(TERRAIN_HOLD_MS);
+      expect(result.current!.buildings.status).toBe("ready");
+
+      // The pin is nudged a few metres: same terrain tiles, still loading.
+      act(() => {
+        useSettings.getState().setPlace({ lat: PLACE.lat + 3 * M_LAT, lng: PLACE.lng });
+      });
+      settle();
+      expect(result.current!.buildings.status).toBe("ready");
+      expect(result.current!.isUnobstructed).toBe(false);
+    });
+
+    it("never calls the numbers settled while the buildings are missing", () => {
+      buildingsState.current = buildingsResult({ status: "error", error: new Error("down") });
+      const { result } = setup();
+      expect(result.current!.isSettled).toBe(false);
+    });
   });
 });

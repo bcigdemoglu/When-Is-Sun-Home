@@ -9,7 +9,8 @@
  *    that leaves localhost is aborted AND fails the test, so nothing can pass
  *    by quietly reaching a real service.
  *  - An error guard: an uncaught exception in the page or a `console.error`
- *    fails the test, unless it is on the (short, documented) allowlist below.
+ *    fails the test. Nothing is allowed by default; a mock switch that breaks
+ *    a service on purpose allows that service's failed-request lines only.
  *  - A page object per area of the app (`app`, `search`, `places`, `share`,
  *    `timeBar`, `viewpoint`, `report`).
  *
@@ -18,20 +19,13 @@
  * keeps running, so debounces, toasts and animations behave normally.
  */
 import path from "node:path";
-import {
-  test as base,
-  expect,
-  type BrowserContext,
-  type ConsoleMessage,
-  type Page,
-  type Route,
-} from "@playwright/test";
+import { test as base, expect, type BrowserContext, type Page, type Route } from "@playwright/test";
 import {
   BUILDING_TILE_URL,
   TERRAIN_TILE_URL,
   TILEJSON_URL,
   mockBuildingData,
-  mockTerrain,
+  mockFlatTerrain,
 } from "./helpers/mockMapData";
 import { AppPage } from "./pages/app";
 import { PlacesPage } from "./pages/places";
@@ -53,10 +47,63 @@ export const FIXTURE_PIN_LABEL = "37.7912° N, 122.4301° W";
 export const MOCK_ADDRESS = "2200 Sacramento Street, San Francisco";
 /** Buildings the fixture tiles hold around `FIXTURE_PIN` (see `helpers/mockMapData.ts`). */
 export const FIXTURE_BUILDING_COUNT = "3,632";
+/** The report's footnote for the fixture pin once buildings and (flat) terrain are in. */
+export const FIXTURE_ESTIMATE_NOTE = `Estimate: includes shade from ${FIXTURE_BUILDING_COUNT} nearby buildings and the hills around, but not trees, fences or clouds.`;
+/** The same footnote where the tiles hold no buildings (every place but the fixture area). */
+export const NO_BUILDINGS_NOTE =
+  "Estimate: no buildings nearby; includes shade from the hills around, but not trees, fences or clouds.";
 /** The summer solstice at 3 pm: the pinned date and time most tests use. */
 export const FIXTURE_QUERY = `lat=${FIXTURE_PIN.lat}&lng=${FIXTURE_PIN.lng}&d=2026-06-21&t=1500`;
 /** 21 June 2026, 12:00 in San Francisco (PDT, UTC−7): "now" for live-mode tests. */
 export const SUMMER_NOON = "2026-06-21T19:00:00Z";
+
+// ─── The error guard ───────────────────────────────────────────────────────
+
+/**
+ * There is NO standing allowlist: in an ordinary test not a single
+ * `console.error` is tolerated. The only errors ever expected are the lines
+ * Chromium itself logs for a request that failed ("Failed to load resource:
+ * …"), and only for requests a test made fail on purpose — each mock switch
+ * that breaks something (`mocks.terrain.fail()`, `mocks.buildings.fail()`,
+ * `mocks.photon.down()`, `mocks.nominatim.down()`, the "blocked" basemap)
+ * allows exactly its own host's lines, for that test alone.
+ */
+const failedRequestTo = (...hosts: RegExp[]): RegExp =>
+  new RegExp(`Failed to load resource.*(${hosts.map((host) => host.source).join("|")})`);
+
+/** Collects what must not happen during a test; checked when the test ends. */
+export class ErrorGuard {
+  /** Uncaught exceptions and unexpected `console.error` lines so far. */
+  readonly problems: string[] = [];
+  /** Requests that tried to leave localhost without a mock. */
+  readonly strayRequests: string[] = [];
+  private readonly expected: RegExp[] = [];
+
+  /**
+   * For the rare test that provokes an error on purpose: messages matching
+   * `pattern` are expected from here on.
+   */
+  allow(pattern: RegExp): void {
+    this.expected.push(pattern);
+  }
+
+  /** Hand over (and forget) the stray requests so far: for the test that provokes one on purpose. */
+  takeStrayRequests(): string[] {
+    return this.strayRequests.splice(0);
+  }
+
+  /** Start watching a page (the test's own, or a visitor's). */
+  watch(page: Page): void {
+    const report = (text: string) => {
+      if (!this.expected.some((pattern) => pattern.test(text))) this.problems.push(text);
+    };
+    page.on("pageerror", (error) => report(`pageerror: ${error.message}`));
+    page.on("console", (message) => {
+      if (message.type() !== "error") return;
+      report(`console.error: ${message.text()} (${message.location().url})`);
+    });
+  }
+}
 
 // ─── Geocoding: Photon (as you type) and Nominatim (the fallback) ─────────
 
@@ -84,12 +131,15 @@ export class PhotonMock {
   private isDown = false;
   private knowsAddresses = true;
 
+  constructor(private readonly guard: ErrorGuard) {}
+
   /**
    * The whole service answers HTTP 503 from now on (search and reverse).
    * The app then leaves it alone for a minute and falls back to Nominatim.
    */
   down(): void {
     this.isDown = true;
+    this.guard.allow(failedRequestTo(/photon\.komoot\.io/));
   }
   up(): void {
     this.isDown = false;
@@ -138,9 +188,12 @@ export class NominatimMock {
   private isDown = false;
   private findsNothing = false;
 
+  constructor(private readonly guard: ErrorGuard) {}
+
   /** Every request answers HTTP 503 from now on. */
   down(): void {
     this.isDown = true;
+    this.guard.allow(failedRequestTo(/nominatim\.openstreetmap\.org/));
   }
   up(): void {
     this.isDown = false;
@@ -186,7 +239,10 @@ export class BuildingDataMock {
   private holding = false;
   private failing = false;
 
-  constructor(private readonly page: Page) {}
+  constructor(
+    private readonly page: Page,
+    private readonly guard: ErrorGuard,
+  ) {}
 
   /** Installed once, in front of the fixture tiles. */
   async install(): Promise<void> {
@@ -210,9 +266,51 @@ export class BuildingDataMock {
   /** Every source of building data fails (the fallbacks always do in tests). */
   fail(): void {
     this.failing = true;
+    // The tiles, then the app's own route (mocked: 503), then the Overpass servers.
+    this.guard.allow(
+      failedRequestTo(/tiles\.openfreemap\.org/, /\/api\/buildings/, /\/api\/interpreter/),
+    );
   }
   recover(): void {
     this.failing = false;
+  }
+}
+
+/**
+ * Switches for the terrain mock. By default the ground is flat and loads at
+ * once (see `mockFlatTerrain`), so reports read "… and the hills around".
+ */
+export class TerrainMock {
+  private held: (() => void)[] = [];
+  private holding = false;
+  private failing = false;
+
+  constructor(
+    private readonly page: Page,
+    private readonly guard: ErrorGuard,
+  ) {}
+
+  /** Installed once, in front of the flat tiles. */
+  async install(): Promise<void> {
+    await this.page.route(TERRAIN_TILE_URL, async (route) => {
+      if (this.failing) return route.abort("failed");
+      if (this.holding) await new Promise<void>((resolve) => this.held.push(resolve));
+      return route.fallback();
+    });
+  }
+
+  /** Every elevation tile request fails: the app assumes flat ground and says so. */
+  fail(): void {
+    this.failing = true;
+    this.guard.allow(failedRequestTo(/elevation-tiles-prod/));
+  }
+  /** Elevation tiles wait until `release()`: terrain stays "loading". */
+  hold(): void {
+    this.holding = true;
+  }
+  release(): void {
+    this.holding = false;
+    for (const resolve of this.held.splice(0)) resolve();
   }
 }
 
@@ -233,74 +331,6 @@ async function mockBasemap(page: Page, mode: BasemapMode): Promise<void> {
   });
 }
 
-// ─── The error guard ───────────────────────────────────────────────────────
-
-/**
- * `console.error` messages that are known, verified to be harmless, and
- * cannot be avoided in these tests. Keep this list short; every entry says
- * why it is here.
- */
-const ALLOWED_CONSOLE_ERRORS: readonly {
-  why: string;
-  matches(message: ConsoleMessage): boolean;
-}[] = [
-  {
-    why: "Chromium logs every failed request. Terrain tiles are aborted on purpose (flat ground), and tests about failing data abort building / basemap requests.",
-    matches: (message) =>
-      /^Failed to load resource/.test(message.text()) &&
-      [TERRAIN_TILE_URL, TILEJSON_URL, BUILDING_TILE_URL, BASEMAP_URL, /\/api\/interpreter/].some(
-        (url) => url.test(message.location().url),
-      ),
-  },
-  {
-    why: "The mocked fallback route answers 503 on purpose; Chromium logs the status.",
-    matches: (message) =>
-      /^Failed to load resource/.test(message.text()) &&
-      /\/api\/buildings\?/.test(message.location().url),
-  },
-  {
-    why: "The geocoder mocks answer HTTP 503 in the tests about a geocoder that is down; Chromium logs the status.",
-    matches: (message) =>
-      /^Failed to load resource/.test(message.text()) &&
-      [PHOTON_URL, NOMINATIM_URL].some((url) => url.test(message.location().url)),
-  },
-];
-
-/** Collects what must not happen during a test; checked when the test ends. */
-export class ErrorGuard {
-  /** Uncaught exceptions and unexpected `console.error` lines so far. */
-  readonly problems: string[] = [];
-  /** Requests that tried to leave localhost without a mock. */
-  readonly strayRequests: string[] = [];
-  private readonly expected: RegExp[] = [];
-
-  /**
-   * For the rare test that provokes an error on purpose: messages matching
-   * `pattern` are expected from here on.
-   */
-  allow(pattern: RegExp): void {
-    this.expected.push(pattern);
-  }
-
-  /** Hand over (and forget) the stray requests so far: for the test that provokes one on purpose. */
-  takeStrayRequests(): string[] {
-    return this.strayRequests.splice(0);
-  }
-
-  /** Start watching a page (the test's own, or a visitor's). */
-  watch(page: Page): void {
-    const report = (text: string) => {
-      if (!this.expected.some((pattern) => pattern.test(text))) this.problems.push(text);
-    };
-    page.on("pageerror", (error) => report(`pageerror: ${error.message}`));
-    page.on("console", (message) => {
-      if (message.type() !== "error") return;
-      if (ALLOWED_CONSOLE_ERRORS.some((rule) => rule.matches(message))) return;
-      report(`console.error: ${message.text()} (${message.location().url})`);
-    });
-  }
-}
-
 const isLocal = (url: URL) => url.hostname === "localhost" || url.hostname === "127.0.0.1";
 
 // ─── Putting it together ───────────────────────────────────────────────────
@@ -309,6 +339,7 @@ export interface Mocks {
   photon: PhotonMock;
   nominatim: NominatimMock;
   buildings: BuildingDataMock;
+  terrain: TerrainMock;
 }
 
 interface InstallOptions {
@@ -348,19 +379,22 @@ async function prepare(page: Page, options: InstallOptions): Promise<Mocks> {
     },
   );
   await mockBasemap(page, options.basemap);
-  await mockTerrain(page);
+  if (options.basemap === "blocked") guard.allow(failedRequestTo(/basemaps\.cartocdn\.com/));
+  await mockFlatTerrain(page);
+  const terrain = new TerrainMock(page, guard);
+  await terrain.install();
   await mockBuildingData(page);
-  const buildings = new BuildingDataMock(page);
+  const buildings = new BuildingDataMock(page, guard);
   await buildings.install();
-  const photon = new PhotonMock();
+  const photon = new PhotonMock(guard);
   await page.route(PHOTON_URL, (route) => photon.handle(route));
-  const nominatim = new NominatimMock();
+  const nominatim = new NominatimMock(guard);
   await page.route(NOMINATIM_URL, (route) => nominatim.handle(route));
 
   guard.watch(page);
   await hideDevIndicator(page);
   if (options.now !== null) await page.clock.install({ time: new Date(options.now) });
-  return { photon, nominatim, buildings };
+  return { photon, nominatim, buildings, terrain };
 }
 
 /** A second person: a fresh browser context (no storage, no cache) with the same mocks. */

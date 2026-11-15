@@ -25,6 +25,48 @@ test.describe("Bottom sheet (phone)", () => {
   test("the handle steps peek → half → full → peek", async ({ app, report }) => {
     await app.openPlace(FIXTURE_QUERY);
     await app.expectSheetAt("peek");
+
+    // The sheet is really laid out as a sheet. (A build that ships without its
+    // stylesheet still passes every text assertion: this one it fails.)
+    const layout = await app.sheetScroller.evaluate((scroller) => {
+      const style = getComputedStyle(scroller);
+      const sheet = getComputedStyle(scroller.querySelector(".sheet") as HTMLElement);
+      return {
+        position: style.position,
+        overflowY: style.overflowY,
+        snap: style.scrollSnapType,
+        // iOS Safari cannot touch-scroll a container (or anything inside one)
+        // that has `pointer-events: none` (WebKit bug 183870), so the sheet's
+        // scroller and all its ancestors must take pointer events…
+        takesTouches: (() => {
+          for (let node: Element | null = scroller; node; node = node.parentElement) {
+            if (getComputedStyle(node).pointerEvents === "none") return false;
+          }
+          return true;
+        })(),
+        // …and the map must live INSIDE the scroller, not underneath it.
+        holdsTheMap: scroller.firstElementChild?.classList.contains("sheet-map") === true,
+        mapIsSticky:
+          getComputedStyle(scroller.firstElementChild as HTMLElement).position === "sticky",
+        scrollable: scroller.scrollHeight > scroller.clientHeight,
+        coversTheWidth: scroller.clientWidth === window.innerWidth,
+        sheetBackground: sheet.backgroundColor,
+        sheetRadius: sheet.borderTopLeftRadius,
+      };
+    });
+    expect(layout).toEqual({
+      position: "fixed",
+      overflowY: "auto",
+      // Proximity snapping (the default strictness, which the browser reports as plain "y").
+      snap: "y",
+      takesTouches: true,
+      holdsTheMap: true,
+      mapIsSticky: true,
+      scrollable: true,
+      coversTheWidth: true,
+      sheetBackground: "rgb(255, 253, 248)",
+      sheetRadius: "28px",
+    });
     await expect(app.sheetHandle).toHaveAccessibleName("Expand the sheet");
     await expect(app.sheetHandle).toHaveAttribute("aria-expanded", "false");
     // At peek: the answer and its actions, with the map (and its buttons) above.

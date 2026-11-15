@@ -203,18 +203,30 @@ export function Hero({
   );
 }
 
-/** "Estimate: includes shade from 384 nearby buildings and the hills around, but not trees, fences or clouds." */
-function includedText(
+/**
+ * The one-line account of what the estimate includes:
+ *  - "Estimate: includes shade from 384 nearby buildings and the hills around, but not trees, fences or clouds."
+ *  - "Estimate: no buildings nearby; includes shade from the hills around, but not trees, fences or clouds."
+ *  - terrain still loading or not asked for: the hills are simply not mentioned;
+ *  - terrain failed: "… from 384 nearby buildings, but not hills, trees, fences or clouds."
+ */
+export function includedText(
   buildings: BuildingDataStatus,
-  terrain: HeroProps["terrain"],
+  terrain: NonNullable<SunReportProps["terrain"]>,
   hasTerrain: boolean,
 ): string {
   const total = buildings.stats?.total ?? null;
   const hills = terrain === "ready" || hasTerrain;
-  const not = "but not trees, fences or clouds";
+  // Say outright that hills are missing when their data could not be loaded.
+  const noHills = !hills && terrain === "error";
+  const not = noHills
+    ? "but not hills, trees, fences or clouds"
+    : "but not trees, fences or clouds";
   if (total === 0) {
-    return hills
-      ? `Estimate: no buildings nearby; includes shade from the hills around, ${not}.`
+    if (hills)
+      return `Estimate: no buildings nearby; includes shade from the hills around, ${not}.`;
+    return noHills
+      ? "Estimate: no buildings were found nearby; hills, trees, fences and clouds are not included."
       : "Estimate: no buildings were found nearby, so nothing blocks the sun here.";
   }
   const count =

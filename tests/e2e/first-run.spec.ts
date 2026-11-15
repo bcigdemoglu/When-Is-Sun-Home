@@ -4,6 +4,10 @@
  */
 import { FIXTURE_BUILDING_COUNT, FIXTURE_PIN, MOCK_ADDRESS, expect, test } from "./fixtures";
 
+// The wording of location problems lives in one place in the app (and differs
+// by platform): the tests check that the RIGHT message shows, not its words.
+import { geolocationMessage } from "../../src/hooks/useGeolocation";
+
 interface GeolocationSpy {
   __locationRequests: number;
   __answerLocation?: (latitude: number, longitude: number) => void;
@@ -22,6 +26,18 @@ test.describe("First run", () => {
     await expect(app.startHeading).toBeVisible();
     await expect(app.useMyLocation).toBeVisible();
     await expect(app.enterAddress).toBeVisible();
+    // Styled, not just present: the design tokens are applied (an unstyled build
+    // passes every text assertion) and the two big buttons are 56 px tall.
+    expect(await page.evaluate(() => getComputedStyle(document.body).backgroundColor)).toBe(
+      "rgb(245, 240, 230)",
+    );
+    expect((await app.useMyLocation.boundingBox())?.height).toBe(56);
+    expect((await app.enterAddress.boundingBox())?.height).toBe(56);
+    if (!isPhone) {
+      // Desktop: the 440 px panel on the left, the map filling the rest.
+      expect((await page.getByRole("complementary").boundingBox())?.width).toBe(440);
+      expect((await app.map.boundingBox())?.x).toBe(440);
+    }
     await expect(isPhone ? search.pill : search.field).toBeVisible();
     await expect(places.open_).toHaveAccessibleName("Saved places");
     // No place yet: no time bar, no report, nothing in the address bar.
@@ -117,13 +133,18 @@ test.describe("First run", () => {
   test("location denied: says so next to the button, and the address path still works", async ({
     app,
     search,
+    isPhone,
   }) => {
     // No permission granted: Chromium answers "denied" at once.
     await app.open();
     await app.press(app.useMyLocation);
 
-    await expect(app.startAlert).toContainText("Location is blocked for this site.");
-    await expect(app.startAlert).toContainText("enter an address instead");
+    // The message for THIS kind of device (the phone project is an Android phone),
+    // and it always names the way round it.
+    await expect(app.startAlert).toHaveText(
+      geolocationMessage("denied", isPhone ? "android" : "desktop"),
+    );
+    await expect(app.startAlert).toContainText(/enter an address/);
     await expect(app.useMyLocation).toBeEnabled();
     await app.expectStartScreen();
 
@@ -184,7 +205,9 @@ test.describe("First run", () => {
 
     // Denied: there is no room next to the button, so it is said as a toast.
     await app.press(locate);
-    await expect(app.toast(/^Location is blocked for this site\./)).toBeVisible();
+    await expect(
+      app.toast(geolocationMessage("denied", isPhone ? "android" : "desktop")),
+    ).toBeVisible();
     await expect(app.placeTitle).toHaveText("Open field");
     await expect(locate).toBeEnabled();
 

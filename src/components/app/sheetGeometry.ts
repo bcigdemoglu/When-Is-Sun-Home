@@ -1,8 +1,9 @@
 /**
  * The arithmetic of the phone bottom sheet.
  *
- * The sheet is the content of a vertical scroller laid over the map (see the
- * "Bottom sheet" section of globals.css). Scroll position 0 shows only its
+ * The map and the sheet are the content of one vertical scroller (see the
+ * "Bottom sheet" section of globals.css): the map stays stuck to its top and
+ * the sheet scrolls up over it. Scroll position 0 shows only the sheet's
  * header — the "peek" detent; scrolling raises it to "half" and "full", after
  * which the content keeps scrolling under the handle.
  */
@@ -95,4 +96,41 @@ export function nextDetent(current: Detent, metrics: SheetMetrics): Detent {
 export function visibleSheetHeight(scrollTop: number, metrics: SheetMetrics): number {
   const full = Math.max(0, metrics.viewport - metrics.gap);
   return Math.min(full, Math.max(metrics.peek, metrics.peek + scrollTop));
+}
+
+/**
+ * Is the sheet (about to be) all the way up? True from halfway between the
+ * last stop below "full" and "full" itself — early enough that the strip
+ * behind the search pill is already solid when the sheet arrives under it.
+ */
+export function coveringAt(scrollTop: number, metrics: SheetMetrics): boolean {
+  const offsets = detentOffsets(metrics);
+  if (offsets.full <= 0) return false;
+  const below = availableDetents(metrics).includes("half") ? offsets.half : 0;
+  return scrollTop >= below + (offsets.full - below) / 2;
+}
+
+/** How close to a stop counts as being on it, px. */
+const AT_REST_TOLERANCE = 2;
+
+/**
+ * Where a sheet that came to rest BETWEEN two stops should go: the nearest
+ * one. `null` when it is on a stop, or at / beyond "full" (reading the
+ * content). The browser's scroll snapping normally leaves nothing to
+ * correct; this is the net under it.
+ */
+export function restingCorrection(scrollTop: number, metrics: SheetMetrics): number | null {
+  if (metrics.viewport <= 0) return null;
+  const offsets = detentOffsets(metrics);
+  if (scrollTop >= offsets.full - AT_REST_TOLERANCE) return null;
+  let best = 0;
+  let bestDistance = Infinity;
+  for (const detent of availableDetents(metrics)) {
+    const distance = Math.abs(scrollTop - offsets[detent]);
+    if (distance < bestDistance) {
+      best = offsets[detent];
+      bestDistance = distance;
+    }
+  }
+  return bestDistance <= AT_REST_TOLERANCE ? null : best;
 }

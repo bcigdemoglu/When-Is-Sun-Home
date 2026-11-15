@@ -10,7 +10,7 @@ const eslintConfig = defineConfig([
   {
     // Playwright fixtures receive a callback named `use`, which the React
     // hooks rule mistakes for React's `use()`. There is no React in here.
-    files: ["tests/e2e/**"],
+    files: ["tests/**"],
     rules: { "react-hooks/rules-of-hooks": "off" },
   },
   globalIgnores([
@@ -21,6 +21,7 @@ const eslintConfig = defineConfig([
     "playwright-report/**",
     "test-results/**",
     "tests/e2e/_scratch/**",
+    ".hook-build/**",
   ]),
 ]);
 
