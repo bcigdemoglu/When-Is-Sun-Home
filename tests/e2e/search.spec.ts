@@ -3,13 +3,7 @@
  * desktop), suggestions, keyboard, the empty / failed states, coordinates,
  * "Choose on the map" and clearing the place.
  */
-import {
-  FIXTURE_BUILDING_COUNT,
-  FIXTURE_PIN_LABEL,
-  FIXTURE_QUERY,
-  expect,
-  test,
-} from "./fixtures";
+import { FIXTURE_BUILDING_COUNT, FIXTURE_QUERY, MOCK_ADDRESS, expect, test } from "./fixtures";
 
 const SF = "2140 Pacific Avenue, San Francisco, California, United States";
 
@@ -44,6 +38,7 @@ test.describe("Search", () => {
   test("desktop: “/” focuses the inline field and the list drops down in place", async ({
     app,
     search,
+    places,
     page,
     isPhone,
   }) => {
@@ -70,7 +65,7 @@ test.describe("Search", () => {
 
     // A click elsewhere closes it too.
     await search.open();
-    await app.startHeading.click();
+    await places.emptyMessage.click();
     await search.expectClosed();
   });
 
@@ -196,7 +191,9 @@ test.describe("Search", () => {
     await search.open();
     await search.type("37.7912, -122.4301");
 
-    const row = search.option("37.79120, -122.43010, Coordinates");
+    const row = search.list
+      .getByRole("group", { name: "Coordinates" })
+      .getByRole("option", { name: "37.7912° N, 122.4301° W, Go to these coordinates" });
     await expect(row).toBeVisible();
     await app.press(row);
 
@@ -231,7 +228,7 @@ test.describe("Search", () => {
     await app.waitForAnswer();
     await expect(page).toHaveURL(/lat=-?\d+\.\d+&lng=-?\d+\.\d+/);
     // The dropped pin gets its address looked up.
-    await expect(app.placeTitle).toHaveText("2200 Sacramento Street, San Francisco");
+    await expect(app.placeTitle).toHaveText(MOCK_ADDRESS);
   });
 
   test("ⓧ forgets the place and returns to the start screen", async ({
@@ -241,8 +238,9 @@ test.describe("Search", () => {
     isPhone,
   }) => {
     await app.openPlace(FIXTURE_QUERY);
-    if (isPhone) await expect(search.pill).toContainText(FIXTURE_PIN_LABEL);
-    else await expect(search.field).toHaveValue(FIXTURE_PIN_LABEL);
+    // A link without a name: the address was looked up for it.
+    if (isPhone) await expect(search.pill).toContainText(MOCK_ADDRESS);
+    else await expect(search.field).toHaveValue(MOCK_ADDRESS);
 
     await app.press(search.clearPlace);
 
@@ -259,7 +257,7 @@ test.describe("Search", () => {
     await app.openPlace(FIXTURE_QUERY);
     await search.open();
     // The field starts with the current place selected, so typing replaces it.
-    await page_type(search, "pacific");
+    await search.type("pacific");
     await app.press(search.option(/Tacoma/));
 
     await search.expectClosed();
@@ -268,8 +266,3 @@ test.describe("Search", () => {
     await expect(app.includedNote).toContainText("no buildings were found nearby");
   });
 });
-
-/** Type over the selected text of the focused search field. */
-async function page_type(search: { field: import("@playwright/test").Locator }, text: string) {
-  await search.field.pressSequentially(text);
-}

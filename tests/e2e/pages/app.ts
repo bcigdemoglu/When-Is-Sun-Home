@@ -42,7 +42,7 @@ export class AppPage extends PageObject {
   /** The report's first card: the average day, the verdict, the building note. */
   readonly hero = this.page.getByRole("region", { name: /average day$/ });
   /** "6.4" + "h" — the average day. */
-  readonly heroFigure = this.hero.locator("p").first();
+  readonly heroFigure = this.hero.locator(":scope > p").first();
   /** "Estimate: includes shade from 3,632 nearby buildings, …" — present once shading is in. */
   readonly includedNote = this.hero.getByText(/^Estimate: /);
 
@@ -112,24 +112,32 @@ export class AppPage extends PageObject {
     });
   }
 
-  /** The sheet has come to rest at `detent` (attribute AND position, so mid-animation does not count). */
-  async expectSheetAt(detent: Detent): Promise<void> {
-    await expect(this.sheetScroller).toHaveAttribute("data-detent", detent);
+  /** The sheet has come to rest at the detent it reports (mid-animation does not count). */
+  async expectSheetSettled(): Promise<void> {
     await expect
       .poll(async () => {
+        const detent = (await this.sheetScroller.getAttribute("data-detent")) as Detent;
         const geometry = await this.sheetGeometry();
         return Math.abs(geometry.top - geometry[detent]);
       })
       .toBeLessThanOrEqual(2);
   }
 
-  /** Step the sheet with its handle until it rests at `detent`. */
+  /** The sheet rests at `detent`. */
+  async expectSheetAt(detent: Detent): Promise<void> {
+    await expect(this.sheetScroller).toHaveAttribute("data-detent", detent);
+    await this.expectSheetSettled();
+    await expect(this.sheetScroller).toHaveAttribute("data-detent", detent);
+  }
+
+  /** Step the sheet with its handle (peek → half → full → peek) until it rests at `detent`. */
   async moveSheetTo(detent: Detent): Promise<void> {
     for (let step = 0; step < 3; step++) {
-      if ((await this.sheetScroller.getAttribute("data-detent")) === detent) break;
-      const before = await this.sheetScroller.getAttribute("data-detent");
+      await this.expectSheetSettled();
+      const current = await this.sheetScroller.getAttribute("data-detent");
+      if (current === detent) break;
       await this.press(this.sheetHandle);
-      await expect(this.sheetScroller).not.toHaveAttribute("data-detent", before ?? "");
+      await expect(this.sheetScroller).not.toHaveAttribute("data-detent", current ?? "");
     }
     await this.expectSheetAt(detent);
   }

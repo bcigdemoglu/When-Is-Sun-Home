@@ -2,7 +2,7 @@
  * Journey 1 — first run: the start screen, "Use my location" (granted,
  * imprecise, denied, late) and the example place.
  */
-import { FIXTURE_BUILDING_COUNT, FIXTURE_PIN, expect, test } from "./fixtures";
+import { FIXTURE_BUILDING_COUNT, FIXTURE_PIN, MOCK_ADDRESS, expect, test } from "./fixtures";
 
 interface GeolocationSpy {
   __locationRequests: number;
@@ -90,7 +90,7 @@ test.describe("First run", () => {
     }
 
     // The spot gets its address in the background, and the link carries both.
-    await expect(app.placeTitle).toHaveText("2200 Sacramento Street, San Francisco");
+    await expect(app.placeTitle).toHaveText(MOCK_ADDRESS);
     await expect(page).toHaveURL(/lat=37\.79120&lng=-122\.43010&n=2200\+Sacramento/);
     // The lookup is sent rounded (about 11 m), never the exact fix.
     expect(mocks.photon.reverseLookups).toEqual(["37.7912,-122.4301"]);

@@ -19,7 +19,8 @@ export class SearchPage extends PageObject {
   readonly clearText = this.page.getByRole("button", { name: "Clear search text" });
   /** The ⓧ that forgets the pinned place. */
   readonly clearPlace = this.page.getByRole("button", { name: "Clear this place" });
-  readonly noResults = this.page.getByText(/^No address matches/);
+  /** The visible message (a screen-reader copy of it lives in a status region). */
+  readonly noResults = this.page.locator("p").filter({ hasText: /^No address matches “/ });
   readonly searchFailed = this.page.getByText("Couldn’t search — check your connection.");
   readonly tryAgain = this.page.getByRole("button", { name: "Try again" });
 

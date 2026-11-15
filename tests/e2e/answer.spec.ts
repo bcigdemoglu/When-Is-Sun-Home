@@ -38,11 +38,25 @@ const PINNED = {
   leastMonthName: "January",
   /** The selected-day card. */
   daylightShare: "85% of the day’s 14 h 37 m of daylight",
-  sunTimes: "Direct sun 6:32 AM – 6:59 PM 12 h 27 m",
-  shadeTimes: "Shaded by buildings 5:53 AM – 6:32 AM, 6:59 PM – 8:30 PM 2 h 10 m",
+  sunTimes: "Direct sun 6:32 AM – 6:59 PM",
+  shadeTimes: "Shaded by buildings 5:53 AM – 6:32 AM, 6:59 PM – 8:30 PM",
+  shadeTotal: "2 h 10 m",
   night: "Night until 5:53 AM, from 8:30 PM",
   /** Average direct sun per day, January to December, hours. */
-  monthly: ["0.0", "0.1", "5.5", "11.4", "12.6", "12.5", "12.6", "12.2", "8.0", "1.2", "0.0", "0.0"],
+  monthly: [
+    "0.0",
+    "0.1",
+    "5.5",
+    "11.4",
+    "12.6",
+    "12.5",
+    "12.6",
+    "12.2",
+    "8.0",
+    "1.2",
+    "0.0",
+    "0.0",
+  ],
   /** The skyline card. */
   tallestObstruction: "48° up, to the S",
 } as const;
@@ -100,8 +114,10 @@ test.describe("The answer", () => {
     app,
     report,
     timeBar,
+    mocks,
     isPhone,
   }) => {
+    mocks.photon.noAddresses(); // an unnamed pin stays one: its coordinates are its title
     await app.openPlace(FIXTURE_QUERY);
 
     // The place and the moment.
@@ -135,10 +151,15 @@ test.describe("The answer", () => {
     await expect(report.today).toContainText(`${PINNED.daySun} of direct sun`);
     await expect(report.today).toContainText(PINNED.daylightShare);
     const states = report.today.getByRole("list", { name: "Times of each state" });
-    await expect(states.getByRole("listitem")).toHaveText([
+    await expect(states.getByRole("listitem")).toContainText([
       PINNED.sunTimes,
       PINNED.shadeTimes,
       PINNED.night,
+    ]);
+    await expect(states.getByRole("listitem")).toContainText([
+      PINNED.daySun,
+      PINNED.shadeTotal,
+      "",
     ]);
 
     // Month by month.
@@ -158,9 +179,11 @@ test.describe("The answer", () => {
     share,
     page,
     request,
+    mocks,
     isPhone,
   }) => {
     if (isPhone) await stubNativeShare(page);
+    mocks.photon.noAddresses(); // an unnamed pin: the share text calls it "This spot"
     await app.openPlace(FIXTURE_QUERY);
     // Read what is on screen (not the pinned constant): this test is about agreement.
     const average = ((await app.heroFigure.textContent()) ?? "").replace(/h$/, "").trim();

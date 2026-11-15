@@ -49,6 +49,8 @@ export { expect };
 export const FIXTURE_PIN = { lat: 37.7912, lng: -122.4301 } as const;
 /** How the app writes that pin. */
 export const FIXTURE_PIN_LABEL = "37.7912° N, 122.4301° W";
+/** What the mocked geocoder calls any spot it is asked about (see `PhotonMock`). */
+export const MOCK_ADDRESS = "2200 Sacramento Street, San Francisco";
 /** Buildings the fixture tiles hold around `FIXTURE_PIN` (see `helpers/mockMapData.ts`). */
 export const FIXTURE_BUILDING_COUNT = "3,632";
 /** The summer solstice at 3 pm: the pinned date and time most tests use. */
