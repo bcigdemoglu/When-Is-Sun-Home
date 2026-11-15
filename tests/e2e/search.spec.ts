@@ -316,6 +316,69 @@ test.describe("Search", () => {
     expect(mocks.photon.searches).toEqual([]);
   });
 
+  test("“Use my current location” in search pins the spot, or says why it cannot", async ({
+    app,
+    search,
+    context,
+    page,
+  }) => {
+    // Not allowed (the default in these tests): the row itself explains, and search stays open.
+    await app.open();
+    await search.open();
+    await app.press(search.useCurrentLocation);
+    await expect(search.useCurrentLocation).toContainText("Location is off for this site");
+    await expect(search.useCurrentLocation).toContainText("site settings");
+    await expect(search.list).toBeVisible();
+    await expect(search.chooseOnMap).toBeVisible();
+    await app.expectStartScreen();
+
+    // Allowed: the same row pins the spot and search closes.
+    await context.grantPermissions(["geolocation"]);
+    await context.setGeolocation({ latitude: 37.7912, longitude: -122.4301, accuracy: 15 });
+    await app.press(search.useCurrentLocation);
+    await search.expectClosed();
+    await app.waitForAnswer();
+    await expect(app.placeTitle).toHaveText(MOCK_ADDRESS);
+    await expect(page).toHaveURL(/lat=37\.79120&lng=-122\.43010/);
+  });
+
+  test("a location that arrives after search was closed pins nothing", async ({
+    app,
+    search,
+    page,
+    isPhone,
+  }) => {
+    interface SlowGeolocation {
+      __answerLocation?: (latitude: number, longitude: number) => void;
+    }
+    await page.addInitScript(() => {
+      navigator.geolocation.getCurrentPosition = (onSuccess) => {
+        (window as unknown as SlowGeolocation).__answerLocation = (latitude, longitude) =>
+          onSuccess({
+            coords: { latitude, longitude, accuracy: 10 },
+            timestamp: Date.now(),
+          } as GeolocationPosition);
+      };
+    });
+    await app.open();
+    await search.open();
+    await app.press(search.useCurrentLocation);
+    await expect(search.useCurrentLocation).toContainText("Finding you…");
+
+    // The person gives up waiting and closes search.
+    if (isPhone) await search.back.tap();
+    else {
+      await page.keyboard.press("Escape");
+      await page.keyboard.press("Escape");
+    }
+    await search.expectClosed();
+
+    await page.evaluate(() => (window as unknown as SlowGeolocation).__answerLocation?.(40.7, -74));
+    await app.expectStartScreen();
+    await expect(page).not.toHaveURL(/lat=/);
+    await expect(app.pin).toHaveCount(0);
+  });
+
   test("“Choose on the map” closes search; a tap on the map then drops the pin", async ({
     app,
     search,
