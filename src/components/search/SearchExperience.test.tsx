@@ -49,6 +49,8 @@ const SUGGESTIONS: PlaceSuggestion[] = [
 ];
 
 let searchResult: (query: string) => UsePlaceSearchResult;
+const searchSubmit = vi.fn();
+const searchRetry = vi.fn();
 const searchedFor: string[] = [];
 
 vi.mock("@/lib/geocode/usePlaceSearch", () => ({
@@ -66,6 +68,10 @@ function result(partial: Partial<UsePlaceSearchResult>): UsePlaceSearchResult {
     error: null,
     isFetching: false,
     isStale: false,
+    mode: "live",
+    awaitingSubmit: false,
+    submit: searchSubmit,
+    retry: searchRetry,
     ...partial,
   };
 }
@@ -130,6 +136,8 @@ beforeEach(() => {
   usePlaces.setState({ saved: [], recent: [] });
   useToasts.setState({ toasts: [] });
   searchedFor.length = 0;
+  searchSubmit.mockReset();
+  searchRetry.mockReset();
   searchResult = (query) =>
     query.trim().length < 3 ? result({}) : result({ status: "ready", suggestions: SUGGESTIONS });
   mockGeolocation();
@@ -511,9 +519,8 @@ describe("SearchExperience — overlay (phones)", () => {
     await user.click(pill());
     await user.keyboard("oak");
     expect(screen.getByText("Couldn’t search — check your connection.")).toBeInTheDocument();
-    const invalidate = vi.spyOn(queryClient, "invalidateQueries");
     await user.click(screen.getByRole("button", { name: "Try again" }));
-    expect(invalidate).toHaveBeenCalledWith({ queryKey: ["place-search"] });
+    expect(searchRetry).toHaveBeenCalledTimes(1);
     expect(field()).toHaveFocus();
     await user.click(screen.getByRole("option", { name: /7 oak avenue/i }));
     expect(onSelect).toHaveBeenCalledWith({ place: OAK, observer: YARD, source: "saved" });
@@ -623,6 +630,199 @@ describe("SearchExperience — overlay (phones)", () => {
       act(() => geoCalls[0].success({ coords: { latitude: 1, longitude: 2, accuracy: 10 } }));
       expect(onSelect).not.toHaveBeenCalled();
     });
+  });
+});
+
+describe("SearchExperience — submit mode (live suggestions unavailable)", () => {
+  const NOTE = "Live suggestions are unavailable right now. Press Enter to search.";
+  const awaiting = (query: string) =>
+    query.trim().length < 3
+      ? result({ mode: "submit" })
+      : result({ mode: "submit", awaitingSubmit: true });
+  const searchRow = () => screen.getByRole("option", { name: /^search for /i });
+
+  it("says so under the field and offers a Search row; the two actions stay", async () => {
+    searchResult = awaiting;
+    const { user } = setup();
+    await user.click(pill());
+    expect(screen.queryByText(NOTE)).not.toBeInTheDocument();
+    await user.keyboard("lombard st");
+    expect(screen.getByText(NOTE)).toBeInTheDocument();
+    expect(optionNames()).toEqual([
+      "Use my current locationFind the spot you’re standing on",
+      "Choose on the mapTap the exact spot — a yard, a balcony, a window",
+      "Search for “lombard st”Look this address up",
+    ]);
+    expect(searchRow()).toHaveAccessibleName("Search for lombard st");
+    expect(screen.getByRole("status")).toHaveTextContent(
+      "Suggestions as you type are unavailable. Press Enter to search.",
+    );
+    expect(screen.queryByTestId("search-skeleton")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Try again" })).not.toBeInTheDocument();
+    expect(searchSubmit).not.toHaveBeenCalled();
+  });
+
+  it("is not offered for one or two characters", async () => {
+    searchResult = awaiting;
+    const { user } = setup();
+    await user.click(pill());
+    await user.keyboard("lo");
+    expect(screen.queryByText(NOTE)).not.toBeInTheDocument();
+    expect(screen.getByText("Keep typing to search addresses.")).toBeInTheDocument();
+    await user.keyboard("{Enter}");
+    expect(searchSubmit).not.toHaveBeenCalled();
+  });
+
+  it("Enter searches for the typed text — once — and search stays open", async () => {
+    searchResult = awaiting;
+    const { user, onSelect } = setup();
+    await user.click(pill());
+    await user.keyboard("lombard st{Enter}");
+    expect(searchSubmit).toHaveBeenCalledTimes(1);
+    expect(onSelect).not.toHaveBeenCalled();
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    expect(field()).toHaveFocus();
+  });
+
+  it("Enter searches even when a saved place matches (it says “Press Enter to search”)", async () => {
+    seedPlaces();
+    searchResult = awaiting;
+    const { user, onSelect } = setup();
+    await user.click(pill());
+    await user.keyboard("oak avenue{Enter}");
+    expect(searchSubmit).toHaveBeenCalledTimes(1);
+    expect(onSelect).not.toHaveBeenCalled();
+    // The saved place is still listed, above the Search row, and can be picked.
+    expect(optionNames().slice(2)).toEqual([
+      "7 Oak AvenuePacific Heights—",
+      "Search for “oak avenue”Look this address up",
+    ]);
+    await user.click(screen.getByRole("option", { name: /7 oak avenue/i }));
+    expect(onSelect).toHaveBeenCalledWith({ place: OAK, observer: YARD, source: "saved" });
+  });
+
+  it("tapping the Search row does the same, for phones whose Enter key is easy to miss", async () => {
+    searchResult = awaiting;
+    const { user } = setup();
+    await user.click(pill());
+    await user.keyboard("lombard st");
+    await user.click(searchRow());
+    expect(searchSubmit).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    expect(field()).toHaveFocus();
+  });
+
+  it("the Search row is reachable with the arrow keys", async () => {
+    searchResult = awaiting;
+    const { user } = setup();
+    await user.click(pill());
+    await user.keyboard("lombard st{ArrowUp}");
+    expect(searchRow()).toHaveAttribute("aria-selected", "true");
+    await user.keyboard("{Enter}");
+    expect(searchSubmit).toHaveBeenCalledTimes(1);
+  });
+
+  it("shows skeleton rows while the submitted search runs, then its results like any others", async () => {
+    searchResult = () => result({ mode: "submit", status: "loading", isFetching: true });
+    const first = setup();
+    await first.user.click(pill());
+    await first.user.keyboard("pacific");
+    expect(screen.getByTestId("search-skeleton")).toBeInTheDocument();
+    expect(screen.queryByText(NOTE)).not.toBeInTheDocument();
+    first.view.unmount();
+
+    searchResult = (query) =>
+      query.length < 3
+        ? result({ mode: "submit" })
+        : result({ mode: "submit", status: "ready", suggestions: SUGGESTIONS });
+    const { user, onSelect } = setup();
+    await user.click(pill());
+    await user.keyboard("pacific");
+    expect(screen.queryByText(NOTE)).not.toBeInTheDocument();
+    expect(screen.getByRole("group", { name: "Addresses" })).toBeInTheDocument();
+    // With results on screen, Enter picks the first one again.
+    await user.keyboard("{Enter}");
+    expect(searchSubmit).not.toHaveBeenCalled();
+    expect(onSelect).toHaveBeenCalledExactlyOnceWith({
+      place: { lat: 37.79, lng: -122.43, name: "2550 Pacific Avenue, San Francisco, CA" },
+      source: "search",
+    });
+  });
+
+  it("both services down: the inline error with Try again, and still no dead end", async () => {
+    searchResult = (query) =>
+      query.length < 3
+        ? result({ mode: "submit" })
+        : result({ mode: "submit", status: "error", error: new Error("HTTP 503") });
+    const { user, onChooseOnMap } = setup();
+    await user.click(pill());
+    await user.keyboard("pacific");
+    expect(screen.getByText("Couldn’t search — check your connection.")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Try again" }));
+    expect(searchRetry).toHaveBeenCalledTimes(1);
+    expect(optionNames()).toHaveLength(2);
+    await user.click(screen.getByRole("option", { name: /choose on the map/i }));
+    expect(onChooseOnMap).toHaveBeenCalledTimes(1);
+  });
+
+  it("coordinates need no service in any mode", async () => {
+    searchResult = awaiting;
+    const { user, onSelect } = setup();
+    await user.click(pill());
+    await user.keyboard("37.79, -122.43");
+    expect(screen.queryByText(NOTE)).not.toBeInTheDocument();
+    await user.keyboard("{Enter}");
+    expect(onSelect).toHaveBeenCalledExactlyOnceWith({
+      place: { lat: 37.79, lng: -122.43 },
+      source: "coordinates",
+    });
+    expect(searchSubmit).not.toHaveBeenCalled();
+  });
+
+  it("works the same in the desktop drop-down", async () => {
+    searchResult = awaiting;
+    const { user } = setup({ variant: "panel" });
+    await user.click(field());
+    await user.keyboard("lombard st");
+    expect(screen.getByText(NOTE)).toBeInTheDocument();
+    await user.keyboard("{Enter}");
+    expect(searchSubmit).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole("listbox")).toBeInTheDocument();
+    await user.click(searchRow());
+    expect(searchSubmit).toHaveBeenCalledTimes(2);
+    expect(field()).toHaveFocus();
+  });
+});
+
+describe("SearchExperience — attribution", () => {
+  it("credits the services and OpenStreetMap under address results, with same-tab links", async () => {
+    const { user } = setup();
+    await user.click(pill());
+    expect(screen.queryByTestId("search-attribution")).not.toBeInTheDocument();
+    await user.keyboard("pacific");
+    const line = screen.getByTestId("search-attribution");
+    expect(line).toHaveTextContent("Search by Photon / Nominatim · © OpenStreetMap contributors");
+    const links = within(line).getAllByRole("link");
+    expect(links.map((link) => [link.textContent, link.getAttribute("href")])).toEqual([
+      ["Photon", "https://photon.komoot.io"],
+      ["Nominatim", "https://nominatim.org"],
+      ["OpenStreetMap", "https://www.openstreetmap.org/copyright"],
+    ]);
+    for (const link of links) expect(link).not.toHaveAttribute("target");
+    // The links are part of the dialog's tab order.
+    expect(screen.getByRole("dialog")).toContainElement(line);
+  });
+
+  it("is not shown for saved places, coordinates, or an empty result", async () => {
+    seedPlaces();
+    searchResult = (query) => (query.length < 3 ? result({}) : result({ status: "ready" }));
+    const { user } = setup();
+    await user.click(pill());
+    await user.keyboard("elm st");
+    expect(screen.queryByTestId("search-attribution")).not.toBeInTheDocument();
+    await user.clear(field());
+    await user.keyboard("37.79, -122.43");
+    expect(screen.queryByTestId("search-attribution")).not.toBeInTheDocument();
   });
 });
 

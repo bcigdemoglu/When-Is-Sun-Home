@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { PlaceSuggestion } from "@/lib/geocode/photon";
 import type { PlaceEntry } from "@/state/places";
 import {
+  SUBMIT_MODE_NOTE,
   buildSections,
   coordinatesSuggestion,
   entryMatches,
@@ -161,5 +162,35 @@ describe("resultCountLabel", () => {
     expect(resultCountLabel(none("elm"))).toBe("1 result");
     expect(resultCountLabel(build("pacific"))).toBe("2 results");
     expect(resultCountLabel(none("zzz"))).toBe("0 results");
+  });
+});
+
+describe("submit mode", () => {
+  const build = (query: string, suggestions: PlaceSuggestion[] = []) =>
+    buildSections({ query, saved: SAVED, recent: RECENT, suggestions, awaitingSubmit: true });
+
+  it("offers one “search for …” row, with the explanation, under the matching places", () => {
+    const sections = build("  pacific ");
+    expect(sections.map((section) => section.id)).toEqual(["actions", "recent", "submit"]);
+    const submit = sections.at(-1)!;
+    expect(submit).toMatchObject({ title: "Addresses", note: SUBMIT_MODE_NOTE });
+    expect(submit.rows).toEqual([{ kind: "submit", key: "submit", query: "pacific" }]);
+    expect(SUBMIT_MODE_NOTE).toBe(
+      "Live suggestions are unavailable right now. Press Enter to search.",
+    );
+  });
+
+  it("has nothing to submit below three characters or for coordinates", () => {
+    expect(build("pa").some((section) => section.id === "submit")).toBe(false);
+    expect(build("").some((section) => section.id === "submit")).toBe(false);
+    const coordinates = build("37.79, -122.43");
+    expect(coordinates.at(-1)).toMatchObject({ id: "suggestions", title: "Coordinates" });
+  });
+
+  it("the search row is not a place: Enter's first match and the result count skip it", () => {
+    const sections = build("zzz street");
+    expect(firstMatch(sections, "zzz street")).toBeNull();
+    expect(resultCountLabel(sections)).toBe("0 results");
+    expect(firstMatch(build("oak ave"), "oak ave")).toMatchObject({ kind: "saved" });
   });
 });

@@ -1,6 +1,5 @@
 "use client";
 
-import { useQueryClient } from "@tanstack/react-query";
 import { useId, useState, useSyncExternalStore, type KeyboardEvent } from "react";
 import type { GeolocationState } from "@/hooks/useGeolocation";
 import { parseCoordinates } from "@/lib/geocode/photon";
@@ -9,9 +8,11 @@ import type { Place } from "@/lib/types";
 import { usePlaces, type PlaceEntry } from "@/state/places";
 import { locationSubtitle, type SearchResultsProps } from "./SearchResults";
 import {
+  SUBMIT_MODE_ANNOUNCEMENT,
   buildSections,
   firstMatch,
   flattenRows,
+  isPlaceRow,
   resultCountLabel,
   type SearchRow,
   type SuggestionsState,
@@ -78,7 +79,6 @@ export function useSearchController({
   const removeRecent = usePlaces((state) => state.removeRecent);
   const clearRecents = usePlaces((state) => state.clearRecents);
 
-  const queryClient = useQueryClient();
   const online = useSyncExternalStore(subscribeToOnline, getOnline, getServerOnline);
 
   const q = query.trim();
@@ -86,15 +86,23 @@ export function useSearchController({
   const typedCoordinates = parseCoordinates(q) !== null;
   const search = usePlaceSearch(typedCoordinates ? "" : query, place);
 
-  const sections = buildSections({ query: q, saved, recent, suggestions: search.suggestions });
+  const sections = buildSections({
+    query: q,
+    saved,
+    recent,
+    suggestions: search.suggestions,
+    awaitingSubmit: search.awaitingSubmit,
+  });
   const rows = flattenRows(sections);
-  const hasPlaceRows = rows.some((row) => row.kind !== "location" && row.kind !== "map");
+  const hasPlaceRows = rows.some(isPlaceRow);
   const hasSuggestionRows = rows.some((row) => row.kind === "suggestion");
+  const submitRow = rows.find((row) => row.kind === "submit") ?? null;
 
   let suggestions: SuggestionsState;
   if (q === "") suggestions = "none";
   else if (typedCoordinates) suggestions = "ready";
   else if (q.length < PLACE_SEARCH_MIN_LENGTH) suggestions = "short";
+  else if (submitRow) suggestions = "submit";
   else if (search.status === "error") suggestions = "error";
   else if (search.status === "loading") {
     // Nothing can arrive while offline: say so instead of loading forever.
@@ -115,6 +123,9 @@ export function useSearchController({
         break;
       case "map":
         onChooseOnMap();
+        break;
+      case "submit":
+        search.submit();
         break;
       case "saved":
       case "recent":
@@ -157,7 +168,9 @@ export function useSearchController({
         move(-1);
         return true;
       case "Enter": {
-        const target = active ?? firstMatch(sections, q);
+        // "Press Enter to search": while the typed text waits to be submitted,
+        // Enter searches for it rather than picking a saved place that matches.
+        const target = active ?? submitRow ?? firstMatch(sections, q);
         if (!target) return false;
         event.preventDefault();
         // Without a highlight, never pick an address that belongs to an earlier query.
@@ -186,6 +199,7 @@ export function useSearchController({
     if (suggestions === "loading") announcement = "Searching…";
     else if (suggestions === "empty") announcement = `No address matches ${q}`;
     else if (suggestions === "error") announcement = "Couldn’t search. Check your connection.";
+    else if (suggestions === "submit") announcement = SUBMIT_MODE_ANNOUNCEMENT;
     else if (suggestions === "ready") announcement = resultCountLabel(sections);
   }
 
@@ -206,9 +220,7 @@ export function useSearchController({
       },
       onRemoveRecent: remove,
       onClearRecents: clearRecents,
-      onRetry: () => {
-        void queryClient.invalidateQueries({ queryKey: ["place-search"] });
-      },
+      onRetry: search.retry,
     },
     activeOptionId: active ? optionId(active.key) : undefined,
     announcement,

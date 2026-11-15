@@ -75,6 +75,13 @@ export class AppPage extends PageObject {
     await expect(this.page.getByRole("status", { name: "Loading", exact: true })).toHaveCount(0);
   }
 
+  /** Open a link as it was shared (an absolute URL, or a path with its query). */
+  async openLink(link: string): Promise<void> {
+    const url = new URL(link, "http://localhost");
+    await this.open(url.search.replace(/^\?/, ""));
+    await this.waitForAnswer();
+  }
+
   /** Open a place and wait until the buildings are in the numbers. */
   async openPlace(query: string): Promise<void> {
     await this.open(query);
@@ -95,15 +102,19 @@ export class AppPage extends PageObject {
 
   // ── Sheet geometry (phone) ───────────────────────────────────────────────
 
-  /** Where the sheet's top edge is, and where each detent puts it, px from the top of the screen. */
+  /**
+   * Where the sheet's top edge (its handle) is, and where each detent puts
+   * it, px from the top of the screen. At "full" the handle stays put while
+   * the content scrolls on underneath, so `scrollTop` keeps growing there.
+   */
   async sheetGeometry(): Promise<{ top: number; scrollTop: number } & Record<Detent, number>> {
     return this.sheetScroller.evaluate((scroller) => {
       const style = (scroller as HTMLElement).style;
       const px = (name: string) => Number.parseFloat(style.getPropertyValue(name)) || 0;
-      const sheet = scroller.querySelector(".sheet") as HTMLElement;
+      const handle = scroller.querySelector(".sheet-handle") as HTMLElement;
       const box = scroller.getBoundingClientRect();
       return {
-        top: Math.round(sheet.getBoundingClientRect().top),
+        top: Math.round(handle.getBoundingClientRect().top),
         scrollTop: Math.round(scroller.scrollTop),
         peek: Math.round(box.bottom - px("--sheet-peek")),
         half: Math.round(box.bottom - px("--sheet-half")),
@@ -144,23 +155,55 @@ export class AppPage extends PageObject {
 
   /**
    * A real finger drag (touch events through the DevTools protocol), from
-   * `from` by `dy` pixels (negative = up), in small steps so the browser sees
-   * a pan rather than a jump.
+   * `from` by `dy` pixels (negative = up) and optionally `dx` sideways.
+   *
+   * The events carry their own timestamps: a steady pan of one step per
+   * frame, and — unless `fling` is set — a rest at the end, so the browser
+   * sees a finger that stopped before lifting and adds no momentum. That
+   * makes where the sheet comes to rest a matter of geometry, not of timing.
    */
-  async touchDrag(from: { x: number; y: number }, dy: number, steps = 12): Promise<void> {
+  async touchDrag(
+    from: { x: number; y: number },
+    dy: number,
+    options: { dx?: number; steps?: number; fling?: boolean } = {},
+  ): Promise<void> {
+    const steps = options.steps ?? 16;
+    const dx = options.dx ?? 0;
     const session = await this.page.context().newCDPSession(this.page);
-    const point = (y: number) => [{ x: Math.round(from.x), y: Math.round(y) }];
+    /** The finger's position `progress` (0..1) of the way along the drag. */
+    const at = (progress: number) => [
+      { x: Math.round(from.x + dx * progress), y: Math.round(from.y + dy * progress) },
+    ];
+    let timestamp = Date.now() / 1000;
     await session.send("Input.dispatchTouchEvent", {
       type: "touchStart",
-      touchPoints: point(from.y),
+      touchPoints: at(0),
+      timestamp,
     });
     for (let step = 1; step <= steps; step++) {
+      timestamp += 0.016;
       await session.send("Input.dispatchTouchEvent", {
         type: "touchMove",
-        touchPoints: point(from.y + (dy * step) / steps),
+        touchPoints: at(step / steps),
+        timestamp,
       });
     }
-    await session.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+    if (!options.fling) {
+      for (let rest = 0; rest < 4; rest++) {
+        timestamp += 0.1;
+        await session.send("Input.dispatchTouchEvent", {
+          type: "touchMove",
+          touchPoints: at(1),
+          timestamp,
+        });
+      }
+    }
+    timestamp += 0.016;
+    await session.send("Input.dispatchTouchEvent", {
+      type: "touchEnd",
+      touchPoints: [],
+      timestamp,
+    });
     await session.detach();
   }
 

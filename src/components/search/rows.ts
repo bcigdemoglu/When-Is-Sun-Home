@@ -14,12 +14,16 @@ export type SearchRow =
   | { kind: "location"; key: string }
   | { kind: "map"; key: string }
   | { kind: "saved" | "recent"; key: string; entry: PlaceEntry }
-  | { kind: "suggestion"; key: string; suggestion: PlaceSuggestion; coordinates: boolean };
+  | { kind: "suggestion"; key: string; suggestion: PlaceSuggestion; coordinates: boolean }
+  /** "Search for …": runs one search for the typed text (live suggestions are unavailable). */
+  | { kind: "submit"; key: string; query: string };
 
 export interface SearchSection {
-  id: "actions" | "saved" | "recent" | "suggestions";
+  id: "actions" | "saved" | "recent" | "suggestions" | "submit";
   /** Heading shown above the rows; null for the two actions at the top. */
   title: string | null;
+  /** A line of explanation between the heading and the rows. */
+  note?: string;
   rows: SearchRow[];
 }
 
@@ -32,12 +36,32 @@ export type SuggestionsState =
   /** First results for this query are on their way. */
   | "loading"
   | "ready"
+  /** Live suggestions are unavailable: the typed text waits to be submitted. */
+  | "submit"
   /** The geocoder knows no such address. */
   | "empty"
   | "error";
 
 export const LOCATION_ROW: SearchRow = { kind: "location", key: "location" };
 export const MAP_ROW: SearchRow = { kind: "map", key: "map" };
+
+/** Shown above the "Search for …" row while suggestions cannot arrive as the user types. */
+export const SUBMIT_MODE_NOTE =
+  "Live suggestions are unavailable right now. Press Enter to search.";
+
+/**
+ * The same, for the screen-reader announcement — worded differently so the
+ * visible line stays the only element with its text.
+ */
+export const SUBMIT_MODE_ANNOUNCEMENT =
+  "Suggestions as you type are unavailable. Press Enter to search.";
+
+/** A row that IS a place (not an action such as "choose on the map" or "search for …"). */
+export function isPlaceRow(
+  row: SearchRow,
+): row is Extract<SearchRow, { kind: "saved" | "recent" | "suggestion" }> {
+  return row.kind === "saved" || row.kind === "recent" || row.kind === "suggestion";
+}
 
 function normalize(text: string): string {
   return text.trim().toLowerCase();
@@ -71,6 +95,11 @@ export interface BuildSectionsInput {
   recent: readonly PlaceEntry[];
   /** Geocoder results for `query` (ignored while it is too short). */
   suggestions: readonly PlaceSuggestion[];
+  /**
+   * Live suggestions are unavailable and `query` has not been searched for
+   * yet: offer a "Search for …" row instead of addresses.
+   */
+  awaitingSubmit?: boolean;
 }
 
 export function buildSections({
@@ -78,6 +107,7 @@ export function buildSections({
   saved,
   recent,
   suggestions,
+  awaitingSubmit = false,
 }: BuildSectionsInput): SearchSection[] {
   const q = query.trim();
   const sections: SearchSection[] = [{ id: "actions", title: null, rows: [LOCATION_ROW, MAP_ROW] }];
@@ -122,6 +152,13 @@ export function buildSections({
       title: typed ? "Coordinates" : "Addresses",
       rows: suggestionRows,
     });
+  } else if (awaitingSubmit && !typed && q.length >= PLACE_SEARCH_MIN_LENGTH) {
+    sections.push({
+      id: "submit",
+      title: "Addresses",
+      note: SUBMIT_MODE_NOTE,
+      rows: [{ kind: "submit", key: "submit", query: q }],
+    });
   }
   return sections;
 }
@@ -136,10 +173,7 @@ export function flattenRows(sections: readonly SearchSection[]): SearchRow[] {
  */
 export function firstMatch(sections: readonly SearchSection[], query: string): SearchRow | null {
   if (query.trim() === "") return null;
-  for (const row of flattenRows(sections)) {
-    if (row.kind !== "location" && row.kind !== "map") return row;
-  }
-  return null;
+  return flattenRows(sections).find(isPlaceRow) ?? null;
 }
 
 export interface TextPart {
@@ -181,8 +215,6 @@ export function highlightParts(text: string, query: string): TextPart[] {
 
 /** "1 result" / "4 results" — places matching what was typed. */
 export function resultCountLabel(sections: readonly SearchSection[]): string {
-  const count = flattenRows(sections).filter(
-    (row) => row.kind !== "location" && row.kind !== "map",
-  ).length;
+  const count = flattenRows(sections).filter(isPlaceRow).length;
   return `${count} ${count === 1 ? "result" : "results"}`;
 }

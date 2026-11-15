@@ -1,0 +1,28 @@
+{
+  "place_id": 319877774,
+  "licence": "Data \u00a9 OpenStreetMap contributors, ODbL 1.0. http://osm.org/copyright",
+  "osm_type": "way",
+  "osm_id": 262106873,
+  "lat": "37.7929911",
+  "lon": "-122.4395109",
+  "category": "building",
+  "type": "house",
+  "place_rank": 30,
+  "importance": 8.251392385743523e-5,
+  "addresstype": "building",
+  "name": "",
+  "display_name": "2698, Pacific Avenue, Cow Hollow, Pacific Heights, San Francisco, California, 94115, United States",
+  "address": {
+    "house_number": "2698",
+    "road": "Pacific Avenue",
+    "neighbourhood": "Cow Hollow",
+    "quarter": "Pacific Heights",
+    "city": "San Francisco",
+    "state": "California",
+    "ISO3166-2-lvl4": "US-CA",
+    "postcode": "94115",
+    "country": "United States",
+    "country_code": "us"
+  },
+  "boundingbox": ["37.7928840", "37.7930887", "-122.4396378", "-122.4393840"]
+}

@@ -10,6 +10,7 @@ import {
   LocationArrowIcon,
   MapPinPlusIcon,
   PinIcon,
+  SearchIcon,
   SpinnerIcon,
 } from "@/components/places/icons";
 import type { GeolocationState } from "@/hooks/useGeolocation";
@@ -190,6 +191,29 @@ function SectionTitle({ id, children }: { id: string; children: ReactNode }) {
   );
 }
 
+const ATTRIBUTION_LINK = "underline decoration-line underline-offset-2 hover:text-ink-2";
+
+/** Who found the addresses, and whose data they are. Required by both services. */
+function SearchAttribution() {
+  return (
+    <p className="type-footnote px-4 pt-4 pb-1 text-ink-3" data-testid="search-attribution">
+      Search by{" "}
+      <a className={ATTRIBUTION_LINK} href="https://photon.komoot.io">
+        Photon
+      </a>{" "}
+      /{" "}
+      <a className={ATTRIBUTION_LINK} href="https://nominatim.org">
+        Nominatim
+      </a>{" "}
+      · ©{" "}
+      <a className={ATTRIBUTION_LINK} href="https://www.openstreetmap.org/copyright">
+        OpenStreetMap
+      </a>{" "}
+      contributors
+    </p>
+  );
+}
+
 /**
  * The list under the search field, the same in the phone overlay and the
  * desktop drop-down: an ARIA listbox whose options are driven from the text
@@ -212,6 +236,12 @@ export function SearchResults({
 }: SearchResultsProps) {
   const location = locationSubtitle(geo);
   const hasSuggestionSection = sections.some((section) => section.id === "suggestions");
+  // Addresses come from OpenStreetMap, whichever service looked them up: say so.
+  const showAttribution = sections.some(
+    (section) =>
+      section.id === "suggestions" &&
+      section.rows.some((row) => row.kind === "suggestion" && !row.coordinates),
+  );
 
   const renderRow = (row: SearchRow) => {
     const shared = {
@@ -309,6 +339,25 @@ export function SearchResults({
           </div>
         );
       }
+      case "submit":
+        return (
+          <Option
+            key={row.key}
+            {...shared}
+            name={`Search for ${row.query}`}
+            icon={
+              <RowIcon accent>
+                <SearchIcon />
+              </RowIcon>
+            }
+            primary={
+              <span className="font-medium">
+                Search for “<span className="font-semibold">{row.query}</span>”
+              </span>
+            }
+            secondary="Look this address up"
+          />
+        );
       case "suggestion": {
         const { suggestion } = row;
         return (
@@ -367,6 +416,11 @@ export function SearchResults({
                   )}
                 </div>
               )}
+              {section.note && (
+                <p role="presentation" className="px-4 pb-1 text-[13px] leading-[18px] text-ink-2">
+                  {section.note}
+                </p>
+              )}
               {section.rows.map(renderRow)}
             </div>
           );
@@ -405,6 +459,7 @@ export function SearchResults({
           </button>
         </div>
       )}
+      {showAttribution && <SearchAttribution />}
     </>
   );
 }

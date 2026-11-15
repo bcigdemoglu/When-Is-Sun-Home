@@ -8,6 +8,12 @@
  *   view    "all" (default) | "search" | "panel" | "saved" — which parts to mount
  *   seed    "1" seeds the store on load (5 saved places, 4 recents)
  *   place   "1" starts with a place set (a saved one), "2" with an unsaved one
+ *   photon  "down" makes every request to Photon fail, as when the public
+ *           service throttles this client: search switches to submit mode
+ *   nominatim  "fixture" answers Nominatim from canned data (the default when
+ *           photon=down, so trying submit mode never touches the real
+ *           service; a query containing "nowhere" finds nothing) | "down" |
+ *           "live"
  */
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { use, useEffect, useState, type ReactNode } from "react";
@@ -19,6 +25,7 @@ import { useToasts } from "@/components/ui/toast";
 import type { Observer, Place } from "@/lib/types";
 import { placeEntryId, useHydratePlaces, usePlaces } from "@/state/places";
 import { SEED_SAVED, clearPlaces, seedPlaces } from "./seed";
+import { geocoderMode, simulateGeocoders } from "./simulateGeocoders";
 
 type Query = Record<string, string | string[] | undefined>;
 
@@ -103,6 +110,10 @@ function Harness({ query }: { query: Query }) {
     if (shouldSeed) seedPlaces();
   }, [shouldSeed]);
 
+  const photon = geocoderMode(first(query.photon), "live");
+  const nominatim = geocoderMode(first(query.nominatim), photon === "down" ? "fixture" : "live");
+  useEffect(() => simulateGeocoders(photon, nominatim), [photon, nominatim]);
+
   const note = (line: string) => setLog((lines) => [line, ...lines].slice(0, 12));
 
   const onSelect = (selection: PlaceSelection) => {
@@ -138,6 +149,11 @@ function Harness({ query }: { query: Query }) {
             <span className="text-[13px] text-ink-2 tabular-nums">
               {savedCount} saved · {recentCount} recent
             </span>
+            {(photon !== "live" || nominatim !== "live") && (
+              <span className="text-[13px] text-ink-2">
+                Simulating: Photon {photon} · Nominatim {nominatim}
+              </span>
+            )}
           </div>
         </Section>
       )}

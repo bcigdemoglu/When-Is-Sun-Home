@@ -1,6 +1,24 @@
 import { readFileSync } from "node:fs";
-import { describe, expect, test, vi } from "vitest";
-import { parseCoordinates, reverseGeocode, searchPlaces } from "./photon";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import { GeocoderTimeoutError } from "./net";
+import { resetNominatimLimiter } from "./nominatim";
+import {
+  PHOTON_REVERSE_TIMEOUT_MS,
+  PHOTON_SEARCH_TIMEOUT_MS,
+  parseCoordinates,
+  reverseGeocode,
+  searchPlaces,
+} from "./photon";
+import { PHOTON_COOL_DOWN_MS, getPhotonHealth, resetPhotonHealth } from "./photonHealth";
+
+beforeEach(() => {
+  resetPhotonHealth();
+  resetNominatimLimiter();
+});
+
+afterEach(() => {
+  vi.useRealTimers();
+});
 
 /** Responses captured from photon.komoot.io. */
 function captured(name: string): string {
@@ -98,7 +116,9 @@ describe("searchPlaces", () => {
     });
     expect(input).toContain("q=2140+Pacific+Ave+%26+Co");
     // A plain GET with no custom headers (no forbidden User-Agent, no preflight).
-    expect(init).toEqual({ signal: undefined });
+    // Nothing but a signal (for the deadline): no headers, so it stays a CORS "simple request".
+    expect(Object.keys(init ?? {})).toEqual(["signal"]);
+    expect(init?.signal?.aborted).toBe(false);
   });
 
   test("passes limit, bias and the abort signal", async () => {
@@ -115,7 +135,51 @@ describe("searchPlaces", () => {
     expect(params.get("limit")).toBe("3");
     expect(params.get("lat")).toBe("37.8");
     expect(params.get("lon")).toBe("-122.4");
-    expect(init?.signal).toBe(controller.signal);
+    expect(init?.signal?.aborted).toBe(false);
+  });
+
+  test("gives up after the deadline with a timeout error, and aborts the request", async () => {
+    vi.useFakeTimers();
+    let requestSignal: AbortSignal | undefined;
+    const fetchImpl = vi.fn<typeof fetch>(
+      (_input, init) =>
+        new Promise<Response>((_resolve, reject) => {
+          requestSignal = init?.signal ?? undefined;
+          requestSignal?.addEventListener("abort", () =>
+            reject(new DOMException("Aborted", "AbortError")),
+          );
+        }),
+    );
+    const pending = searchPlaces("pacific", { fetchImpl });
+    const outcome = expect(pending).rejects.toBeInstanceOf(GeocoderTimeoutError);
+    await vi.advanceTimersByTimeAsync(PHOTON_SEARCH_TIMEOUT_MS);
+    await outcome;
+    expect(requestSignal?.aborted).toBe(true);
+  });
+
+  test("an abort by the caller is an abort, not a timeout", async () => {
+    const controller = new AbortController();
+    const fetchImpl = vi.fn<typeof fetch>(
+      (_input, init) =>
+        new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener("abort", () =>
+            reject(new DOMException("Aborted", "AbortError")),
+          );
+        }),
+    );
+    const pending = searchPlaces("pacific", { fetchImpl, signal: controller.signal });
+    const requestSignal = fetchImpl.mock.calls[0][1]?.signal;
+    expect(requestSignal?.aborted).toBe(false);
+    controller.abort();
+    await expect(pending).rejects.toMatchObject({ name: "AbortError" });
+    // The request itself was cancelled, not just abandoned.
+    expect(requestSignal?.aborted).toBe(true);
+    // Already aborted: no request at all.
+    fetchImpl.mockClear();
+    await expect(
+      searchPlaces("pacific", { fetchImpl, signal: controller.signal }),
+    ).rejects.toMatchObject({ name: "AbortError" });
+    expect(fetchImpl).not.toHaveBeenCalled();
   });
 
   test("parses a captured address search", async () => {
@@ -327,7 +391,7 @@ describe("reverseGeocode", () => {
       lon: "-122.4294",
       lang: "en",
     });
-    expect(init).toEqual({ signal: controller.signal });
+    expect(Object.keys(init ?? {})).toEqual(["signal"]);
   });
 
   test("sends the position rounded to four decimals (about 11 m), never the exact fix", async () => {
@@ -394,6 +458,8 @@ describe("reverseGeocode", () => {
       }),
     ];
     for (const fetchImpl of failures) {
+      resetPhotonHealth();
+      resetNominatimLimiter();
       await expect(reverseGeocode({ lat: 1, lng: 2 }, { fetchImpl })).resolves.toBeNull();
     }
   });
@@ -402,5 +468,151 @@ describe("reverseGeocode", () => {
     const fetchImpl = fetchReturning(collectionOf());
     expect(await reverseGeocode({ lat: Number.NaN, lng: 2 }, { fetchImpl })).toBeNull();
     expect(fetchImpl).not.toHaveBeenCalled();
+  });
+});
+
+describe("reverseGeocode — the second path", () => {
+  const PLACE = { lat: 37.793012, lng: -122.439387 };
+  const NOMINATIM_REVERSE = readFileSync(
+    new URL("./__fixtures__/nominatim-reverse.json", import.meta.url),
+    "utf8",
+  );
+
+  /** A fetch that answers per host, and remembers which hosts were asked, in order. */
+  function hosts(handlers: {
+    photon: () => Promise<Response>;
+    nominatim?: () => Promise<Response>;
+  }) {
+    const asked: string[] = [];
+    const fetchImpl = vi.fn<typeof fetch>(async (input) => {
+      const host = new URL(input as string).hostname;
+      asked.push(host);
+      if (host === "photon.komoot.io") return handlers.photon();
+      if (host === "nominatim.openstreetmap.org" && handlers.nominatim) return handlers.nominatim();
+      throw new Error(`unexpected request to ${host}`);
+    });
+    return { fetchImpl, asked };
+  }
+  const ok = (body: string) => async () => new Response(body);
+  const status = (code: number) => async () => new Response("no", { status: code });
+  const networkError = async (): Promise<Response> => {
+    throw new TypeError("Failed to fetch");
+  };
+
+  test.each([
+    ["a network / CORS failure", networkError],
+    ["HTTP 429 (throttled)", status(429)],
+    ["HTTP 503", status(503)],
+    ["a response that is not JSON", ok("<html>blocked</html>")],
+    ["a response of the wrong shape", ok('{"message":"rate limited"}')],
+  ])("after %s from Photon, Nominatim is asked — once", async (_, photon) => {
+    const { fetchImpl, asked } = hosts({ photon, nominatim: ok(NOMINATIM_REVERSE) });
+    expect(await reverseGeocode(PLACE, { fetchImpl })).toBe("2698 Pacific Avenue, San Francisco");
+    expect(asked).toEqual(["photon.komoot.io", "nominatim.openstreetmap.org"]);
+    const params = new URL(fetchImpl.mock.calls[1][0] as string).searchParams;
+    // The same rounding as for Photon: about 11 m, never the exact pin.
+    expect(params.get("lat")).toBe("37.7930");
+    expect(params.get("lon")).toBe("-122.4394");
+    expect(getPhotonHealth()).toBe("down");
+  });
+
+  test("a Photon that does not answer in time counts as failed", async () => {
+    vi.useFakeTimers();
+    const { fetchImpl, asked } = hosts({
+      photon: () => new Promise<Response>(() => {}),
+      nominatim: ok(NOMINATIM_REVERSE),
+    });
+    const pending = reverseGeocode(PLACE, { fetchImpl });
+    await vi.advanceTimersByTimeAsync(PHOTON_REVERSE_TIMEOUT_MS - 1);
+    expect(asked).toEqual(["photon.komoot.io"]);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(await pending).toBe("2698 Pacific Avenue, San Francisco");
+    expect(asked).toEqual(["photon.komoot.io", "nominatim.openstreetmap.org"]);
+  });
+
+  test("a clean “nothing here” from Photon is an answer: no second request", async () => {
+    const { fetchImpl, asked } = hosts({ photon: ok(collectionOf()) });
+    expect(await reverseGeocode(PLACE, { fetchImpl })).toBeNull();
+    expect(asked).toEqual(["photon.komoot.io"]);
+    expect(getPhotonHealth()).toBe("up");
+  });
+
+  test("a Photon answer is used as is: Nominatim is never asked", async () => {
+    const { fetchImpl, asked } = hosts({ photon: ok(captured("photon-reverse.json")) });
+    expect(await reverseGeocode(PLACE, { fetchImpl })).toBe(
+      "2200 Sacramento Street, San Francisco",
+    );
+    expect(asked).toEqual(["photon.komoot.io"]);
+  });
+
+  test("an aborted lookup does not fall back", async () => {
+    const controller = new AbortController();
+    const { fetchImpl, asked } = hosts({
+      photon: () =>
+        new Promise<Response>((_resolve, reject) => {
+          controller.signal.addEventListener("abort", () =>
+            reject(new DOMException("Aborted", "AbortError")),
+          );
+        }),
+      nominatim: ok(NOMINATIM_REVERSE),
+    });
+    const pending = reverseGeocode(PLACE, { fetchImpl, signal: controller.signal });
+    controller.abort();
+    expect(await pending).toBeNull();
+    expect(asked).toEqual(["photon.komoot.io"]);
+    expect(getPhotonHealth()).toBe("up");
+
+    // Aborted before it began: nobody is asked.
+    asked.length = 0;
+    expect(await reverseGeocode(PLACE, { fetchImpl, signal: controller.signal })).toBeNull();
+    expect(asked).toEqual([]);
+  });
+
+  test("aborting while the second service is being asked ends quietly", async () => {
+    const controller = new AbortController();
+    const { fetchImpl, asked } = hosts({
+      photon: networkError,
+      nominatim: () =>
+        new Promise<Response>((_resolve, reject) => {
+          controller.signal.addEventListener("abort", () =>
+            reject(new DOMException("Aborted", "AbortError")),
+          );
+        }),
+    });
+    const pending = reverseGeocode(PLACE, { fetchImpl, signal: controller.signal });
+    await vi.waitFor(() => expect(asked).toHaveLength(2));
+    controller.abort();
+    expect(await pending).toBeNull();
+  });
+
+  test("both down: null, never a rejection", async () => {
+    const { fetchImpl, asked } = hosts({ photon: networkError, nominatim: status(503) });
+    expect(await reverseGeocode(PLACE, { fetchImpl })).toBeNull();
+    expect(asked).toEqual(["photon.komoot.io", "nominatim.openstreetmap.org"]);
+  });
+
+  test("while Photon is known to be down it is left alone; after the cool-down it is tried again", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    const first = hosts({ photon: networkError, nominatim: ok(NOMINATIM_REVERSE) });
+    await reverseGeocode(PLACE, { fetchImpl: first.fetchImpl });
+    expect(getPhotonHealth()).toBe("down");
+
+    vi.setSystemTime(Date.now() + 5000);
+    const during = hosts({
+      photon: ok(captured("photon-reverse.json")),
+      nominatim: ok(NOMINATIM_REVERSE),
+    });
+    expect(await reverseGeocode(PLACE, { fetchImpl: during.fetchImpl })).toBe(
+      "2698 Pacific Avenue, San Francisco",
+    );
+    expect(during.asked).toEqual(["nominatim.openstreetmap.org"]);
+
+    vi.setSystemTime(Date.now() + PHOTON_COOL_DOWN_MS);
+    const after = hosts({ photon: ok(captured("photon-reverse.json")) });
+    expect(await reverseGeocode(PLACE, { fetchImpl: after.fetchImpl })).toBe(
+      "2200 Sacramento Street, San Francisco",
+    );
+    expect(after.asked).toEqual(["photon.komoot.io"]);
+    expect(getPhotonHealth()).toBe("up");
   });
 });
