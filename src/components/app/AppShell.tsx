@@ -51,7 +51,7 @@ import {
   usePlaces,
   type PlaceEntry,
 } from "@/state/places";
-import { BottomSheet, type BottomSheetHandle } from "./BottomSheet";
+import { BottomSheet, type BottomSheetHandle, type SheetContent } from "./BottomSheet";
 import { ErrorBoundary } from "./ErrorBoundary";
 import { HomeScreenHint } from "./HomeScreenHint";
 import { REPORT_TABS_HEIGHT, ReportTabs } from "./ReportTabs";
@@ -333,7 +333,8 @@ function Workspace() {
       const timeBar = timeBarRef.current ? timeBarRef.current.offsetHeight : 0;
       // Beyond half the screen the map is mostly hidden: no point chasing the sheet further.
       const covered = Math.min(visibleHeight, Math.round(window.innerHeight * 0.55));
-      useMapUi.getState().setInsets({ top: topInset, bottom: timeBar + covered });
+      // (The map ends at the time bar's top edge, so only the sheet covers it.)
+      useMapUi.getState().setInsets({ top: topInset, bottom: covered });
       // The toasts rest just above the sheet's edge (see `toastPlacement`).
       const height = Math.round(visibleHeight);
       const roomAbove = Math.round(window.innerHeight - topInset - timeBar - visibleHeight);
@@ -362,7 +363,8 @@ function Workspace() {
         "--report-anchor-offset": `${anchorOffset}px`,
         "--timebar": hasTimeBar ? "calc(64px + var(--safe-bottom))" : "0px",
         "--map-inset-top": `${topInset}px`,
-        "--map-inset-bottom": `calc(var(--timebar) + ${peek}px)`,
+        // The map ends where the time bar begins: only the sheet covers it.
+        "--map-inset-bottom": `${peek}px`,
       };
   const rootStyle = cssVariables as CSSProperties;
   // The toasts can be rendered outside this tree (inside an open dialog), so
@@ -395,7 +397,7 @@ function Workspace() {
   const timeBar = analysis && (
     <TimeBar
       variant={isDesktop ? "floating" : "docked"}
-      className={isDesktop ? "pointer-events-auto w-full max-w-[720px]" : ""}
+      className={isDesktop ? "w-full" : ""}
       zoneLabel={zoneText}
       zone={zone}
       date={analysis.date}
@@ -455,36 +457,103 @@ function Workspace() {
       </>
     );
 
+  const map = (
+    <>
+      <MapPanel
+        place={place}
+        buildings={analysis ? analysis.buildings.buildings : null}
+        buildingStatus={analysis ? analysis.buildings.status : "idle"}
+        buildingCount={analysis && analysis.buildings.stats ? analysis.buildings.stats.total : null}
+        buildingsFetching={analysis ? analysis.buildings.isFetching : false}
+        onRetryBuildings={analysis ? analysis.buildings.refetch : null}
+        sunPath={sunPath}
+        instant={analysis ? analysis.instant : null}
+        blockerBuildingId={analysis ? analysis.blockerBuildingId : null}
+        pinBuildingId={analysis ? analysis.pinBuildingId : null}
+      />
+      {isDesktop && (
+        <>
+          {/* Exactly as wide as the card: nothing invisible lies over the map. */}
+          <div className="absolute inset-x-4 bottom-4 z-10 mx-auto max-w-[720px]">{timeBar}</div>
+          <MapControls
+            variant="full"
+            hasPlace={place !== null}
+            className="absolute right-4 bottom-[calc(var(--map-inset-bottom,0px)+16px)] z-10"
+          />
+        </>
+      )}
+    </>
+  );
+
+  // Phones: what rides over the map. (Desktop has the side panel instead.)
+  const sheet: SheetContent | null = isDesktop
+    ? null
+    : analysis
+      ? {
+          key: "place",
+          label: "Sun report",
+          halfRatio: 0.5,
+          fabs: <MapControls variant="fabs" hasPlace />,
+          header: (
+            <div className="px-4 pb-3">
+              <h1 className="sr-only">{placeLabel}</h1>
+              {summaryHeader}
+              <div className="-mx-4 mt-3 flex gap-2 overflow-x-auto px-4 [scrollbar-width:none]">
+                {actions("pill")}
+                <Button
+                  variant="tonal"
+                  aria-haspopup="dialog"
+                  aria-label={`Viewpoint: ${viewpointLabel(liveObserver)}. Change`}
+                  onClick={() => setViewpointOpen(true)}
+                >
+                  <ViewpointIcon />
+                  {viewpointLabel(liveObserver)}
+                </Button>
+              </div>
+            </div>
+          ),
+          content: (
+            <>
+              <ReportTabs
+                stickyTop={tabsTop}
+                anchorOffset={anchorOffset}
+                resetKey={activeId ?? ""}
+                className="bg-surface px-1"
+              />
+              <main className="space-y-3 px-3 pt-3 pb-6">{sunReport}</main>
+            </>
+          ),
+        }
+      : {
+          key: "start",
+          label: "Get started",
+          halfRatio: null,
+          header: (
+            <main className="px-5 pt-1 pb-[calc(1.25rem+var(--safe-bottom))]">
+              <StartIntro onEnterAddress={focusSearch} />
+            </main>
+          ),
+          content: (
+            <div className="px-5 pb-8">
+              <StartExtras onOpen={onOpenEntry} />
+            </div>
+          ),
+        };
+
   return (
     <div className={ROOT} style={rootStyle}>
-      <div className={MAP_AREA}>
-        <MapPanel
-          place={place}
-          buildings={analysis ? analysis.buildings.buildings : null}
-          buildingStatus={analysis ? analysis.buildings.status : "idle"}
-          buildingCount={
-            analysis && analysis.buildings.stats ? analysis.buildings.stats.total : null
-          }
-          buildingsFetching={analysis ? analysis.buildings.isFetching : false}
-          onRetryBuildings={analysis ? analysis.buildings.refetch : null}
-          sunPath={sunPath}
-          instant={analysis ? analysis.instant : null}
-          blockerBuildingId={analysis ? analysis.blockerBuildingId : null}
-          pinBuildingId={analysis ? analysis.pinBuildingId : null}
-        />
-        {isDesktop && (
-          <>
-            <div className="pointer-events-none absolute inset-x-4 bottom-4 z-10 flex justify-center">
-              {timeBar}
-            </div>
-            <MapControls
-              variant="full"
-              hasPlace={place !== null}
-              className="absolute right-4 bottom-[calc(var(--map-inset-bottom,0px)+16px)] z-10"
-            />
-          </>
-        )}
-      </div>
+      {/*
+        The map — and, on phones, the sheet that scrolls over it. One element
+        in one place for every layout, so the map is created exactly once.
+      */}
+      <BottomSheet
+        ref={sheetRef}
+        map={map}
+        sheet={sheet}
+        topInset={topInset}
+        onSettle={onSheetSettle}
+        onPeekChange={setPeek}
+      />
 
       {/*
         One toaster for everything. It lives in the top layer (and inside the
@@ -547,75 +616,20 @@ function Workspace() {
         </aside>
       ) : (
         <>
+          {/*
+            The search pill's strip. It takes input itself (no pass-through to
+            the map around the pill) and turns solid once the sheet is up: see
+            `.sheet-topbar`.
+          */}
           <header
             ref={topBarRef}
-            className="pointer-events-none fixed inset-x-0 top-0 z-40 flex items-start gap-2 pt-[calc(var(--safe-top)+12px)] pr-[calc(var(--safe-right)+12px)] pl-[calc(var(--safe-left)+12px)]"
+            className="sheet-topbar fixed inset-x-0 top-0 z-40 flex items-start gap-2 pt-[calc(var(--safe-top)+12px)] pr-[calc(var(--safe-right)+12px)] pb-2 pl-[calc(var(--safe-left)+12px)]"
           >
-            <div ref={searchRef} className="pointer-events-auto min-w-0 flex-1">
+            <div ref={searchRef} className="min-w-0 flex-1">
               {search}
             </div>
-            <div className="pointer-events-auto">
-              <PlacesButton expanded={placesOpen} onClick={() => setPlacesOpen(true)} />
-            </div>
+            <PlacesButton expanded={placesOpen} onClick={() => setPlacesOpen(true)} />
           </header>
-
-          {analysis ? (
-            <BottomSheet
-              key="place"
-              ref={sheetRef}
-              label="Sun report"
-              topInset={topInset}
-              halfRatio={0.5}
-              onSettle={onSheetSettle}
-              onPeekChange={setPeek}
-              fabs={<MapControls variant="fabs" hasPlace />}
-              header={
-                <div className="px-4 pb-3">
-                  <h1 className="sr-only">{placeLabel}</h1>
-                  {summaryHeader}
-                  <div className="-mx-4 mt-3 flex gap-2 overflow-x-auto px-4 [scrollbar-width:none]">
-                    {actions("pill")}
-                    <Button
-                      variant="tonal"
-                      aria-haspopup="dialog"
-                      aria-label={`Viewpoint: ${viewpointLabel(liveObserver)}. Change`}
-                      onClick={() => setViewpointOpen(true)}
-                    >
-                      <ViewpointIcon />
-                      {viewpointLabel(liveObserver)}
-                    </Button>
-                  </div>
-                </div>
-              }
-            >
-              <ReportTabs
-                stickyTop={tabsTop}
-                anchorOffset={anchorOffset}
-                resetKey={activeId ?? ""}
-                className="bg-surface px-1"
-              />
-              <main className="space-y-3 px-3 pt-3 pb-6">{sunReport}</main>
-            </BottomSheet>
-          ) : (
-            <BottomSheet
-              key="start"
-              ref={sheetRef}
-              label="Get started"
-              topInset={topInset}
-              halfRatio={null}
-              onSettle={onSheetSettle}
-              onPeekChange={setPeek}
-              header={
-                <main className="px-5 pt-1 pb-[calc(1.25rem+var(--safe-bottom))]">
-                  <StartIntro onEnterAddress={focusSearch} />
-                </main>
-              }
-            >
-              <div className="px-5 pb-8">
-                <StartExtras onOpen={onOpenEntry} />
-              </div>
-            </BottomSheet>
-          )}
 
           {timeBar && (
             <div ref={timeBarRef} className="fixed inset-x-0 bottom-0 z-30">

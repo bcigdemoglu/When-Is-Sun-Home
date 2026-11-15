@@ -181,15 +181,14 @@ export function MapPanel({
         </ErrorBoundary>
       )}
 
-      <div className="pointer-events-none absolute top-[calc(var(--map-inset-top,0px)+8px)] right-3 left-3 z-10 flex justify-center lg:justify-start">
-        <div className="pointer-events-auto">
-          <BuildingNotice
-            status={buildingStatus}
-            count={buildingCount}
-            fetching={buildingsFetching}
-            onRetry={onRetryBuildings}
-          />
-        </div>
+      {/* Only as large as the notice itself: nothing invisible lies over the map. */}
+      <div className="absolute top-[calc(var(--map-inset-top,0px)+8px)] right-3 left-3 z-10 mx-auto w-fit lg:mx-0">
+        <BuildingNotice
+          status={buildingStatus}
+          count={buildingCount}
+          fetching={buildingsFetching}
+          onRetry={onRetryBuildings}
+        />
       </div>
     </div>
   );

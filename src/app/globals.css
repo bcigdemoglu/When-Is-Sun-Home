@@ -311,17 +311,28 @@ body {
 /* ─── Bottom sheet (phones) ───────────────────────────────────────────────── */
 
 /*
- * The sheet is a native scroller laid over the map:
+ * ONE native scroll container holds both the map and the sheet:
  *
- *   .sheet-scroller   fixed, scrolls vertically with snap points, and lets
- *                     pointer events through to the map …
- *     .sheet-spacer   … across this transparent spacer.
- *     .sheet          The sheet itself takes input and drags the scroller.
+ *   .sheet-scroller   fixed above the time bar; scrolls vertically.
+ *     .sheet-map      The map: first, stuck to the top, as tall as the
+ *                     scroller. It never moves; it handles its own touches
+ *                     (touch-action: none), so they never scroll anything.
+ *     .sheet-snap     1 px markers for the "peek" and "half" stops.
+ *     .sheet          The sheet: next in the flow, pulled up over the map's
+ *                     bottom edge by its peek height. Dragging it scrolls the
+ *                     container — real momentum, real hand-off into its
+ *                     content once it is fully up.
  *
- * Scroll position 0 is the "peek" detent; scrolling up raises the sheet to
- * "half" and "full", after which its content simply keeps scrolling. Real
- * momentum and scroll hand-off come for free. JS only sets the three
- * measurements (--sheet-peek, --sheet-half, --sheet-gap) and reads the result.
+ * Scroll position 0 is "peek"; scrolling raises the sheet to "half" and
+ * "full", after which its content simply keeps scrolling. JS only sets the
+ * three measurements (--sheet-peek, --sheet-half, --sheet-gap), reads the
+ * result, and tidies up a sheet left between two stops.
+ *
+ * NEVER put `pointer-events: none` on the scroller, on anything around it, or
+ * on anything a touch has to start on: Safari on iOS will not touch-scroll a
+ * container that has it, even from a child that takes input (WebKit bug
+ * 183870). Everything here takes input itself; nothing is reached "through"
+ * something else. (`sheetContract.test.ts` holds this file to that.)
  */
 .sheet-scroller {
   position: fixed;
@@ -332,38 +343,58 @@ body {
   bottom: var(--timebar);
   overflow-x: hidden;
   overflow-y: auto;
-  overscroll-behavior: contain;
-  scroll-snap-type: y mandatory;
+  /* No chaining to the page and no rubber band that would pull the map down. */
+  overscroll-behavior: none;
+  /*
+   * Proximity, not mandatory: below "full" every position is close to a stop,
+   * so it snaps all the same; beyond it, reading the content can never be
+   * pulled back, whatever an engine makes of a snap area taller than the
+   * scroller.
+   */
+  scroll-snap-type: y proximity;
   scrollbar-width: none;
-  pointer-events: none;
-  /* Nothing is ever drawn above the "full" line, even once the content scrolls. */
-  clip-path: inset(var(--sheet-gap, 0px) 0 0 0 round var(--radius-sheet) var(--radius-sheet) 0 0);
   -webkit-overflow-scrolling: touch;
 }
 .sheet-scroller::-webkit-scrollbar {
   display: none;
 }
-.sheet-spacer {
-  height: calc(100% - var(--sheet-peek, 180px));
-  scroll-snap-align: start;
+.sheet-map {
+  position: sticky;
+  z-index: 0;
+  top: 0;
+  height: 100%;
+  /* The map's own gestures only: a touch that starts here scrolls nothing. */
+  touch-action: none;
 }
-.sheet-snap-half {
+.sheet-snap {
   position: absolute;
-  top: calc(var(--sheet-half, 50%) - var(--sheet-peek, 180px));
-  right: 0;
+  /* Under the map: never in the way of a touch. */
+  z-index: -1;
   left: 0;
+  width: 1px;
   height: 1px;
   scroll-snap-align: start;
-  pointer-events: none;
+  scroll-snap-stop: normal;
+}
+.sheet-snap-peek {
+  top: 0;
+}
+.sheet-snap-half {
+  top: calc(var(--sheet-half, 50%) - var(--sheet-peek, 180px));
 }
 .sheet {
   position: relative;
+  z-index: 1;
+  /* Overlap the bottom of the map by the peek height. */
+  margin-top: calc(-1 * var(--sheet-peek, 180px));
   min-height: calc(100% - var(--sheet-gap, 0px));
   border-radius: var(--radius-sheet) var(--radius-sheet) 0 0;
   background: var(--surface);
   box-shadow: var(--shadow-sheet-value);
-  pointer-events: auto;
+  /* "Full": its top edge just below the search pill. Taller than the scroller,
+     so every position inside it is a valid place to stop. */
   scroll-snap-align: start;
+  scroll-snap-stop: normal;
   scroll-margin-top: var(--sheet-gap, 0px);
   /* Landscape: keep the content out from under the notch. */
   padding-right: var(--safe-right);
@@ -385,7 +416,46 @@ body {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  transition: opacity 0.2s ease-out;
+  transition:
+    opacity 0.2s ease-out,
+    visibility 0.2s;
+}
+/* At full they would sit behind the search pill. */
+.sheet-fabs-away {
+  visibility: hidden;
+  opacity: 0;
+}
+/*
+ * The strip behind the search pill. Once the sheet is (nearly) all the way up
+ * it turns solid, so the content that scrolls on past "full" disappears under
+ * it instead of showing around the pill.
+ */
+.sheet-topbar {
+  transition: background-color 0.15s ease-out;
+}
+.sheet-scroller[data-covering] ~ .sheet-topbar {
+  background-color: var(--page);
+}
+
+/* Desktop: no sheet. The same element is just the frame the map sits in. */
+@media (min-width: 1024px) {
+  .sheet-scroller {
+    position: relative;
+    z-index: auto;
+    top: auto;
+    right: auto;
+    bottom: auto;
+    left: auto;
+    grid-column-start: 2;
+    grid-row-start: 1;
+    height: 100dvh;
+    overflow: visible;
+    scroll-snap-type: none;
+  }
+  .sheet-map {
+    position: relative;
+    z-index: auto;
+  }
 }
 
 /* ─── Dialogs (bottom sheets on phones, cards on desktop) ─────────────────── */

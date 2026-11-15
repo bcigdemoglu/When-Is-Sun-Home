@@ -28,13 +28,26 @@ test("the stylesheet matches the app: the layout is laid out, not unstyled", asy
     // The bottom sheet is a fixed scroller; without its CSS it is a tall static box.
     const sheet = await page.locator(".sheet-scroller").evaluate((element) => {
       const style = getComputedStyle(element);
+      let takesTouches = true;
+      for (let node: Element | null = element; node; node = node.parentElement) {
+        if (getComputedStyle(node).pointerEvents === "none") takesTouches = false;
+      }
       return {
         position: style.position,
         overflowY: style.overflowY,
         scrolls: element.scrollHeight > element.clientHeight,
+        // iOS Safari cannot touch-scroll under `pointer-events: none` (WebKit bug 183870).
+        takesTouches,
+        holdsTheMap: element.contains(document.querySelector(".maplibregl-map")),
       };
     });
-    expect(sheet).toEqual({ position: "fixed", overflowY: "auto", scrolls: true });
+    expect(sheet).toEqual({
+      position: "fixed",
+      overflowY: "auto",
+      scrolls: true,
+      takesTouches: true,
+      holdsTheMap: true,
+    });
   }
 
   // The button must be the thing under its own centre (nothing covers it, it is not clipped away).

@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
   availableDetents,
+  coveringAt,
   detentAt,
   detentOffsets,
   nextDetent,
+  restingCorrection,
   sheetMetrics,
   visibleSheetHeight,
 } from "./sheetGeometry";
@@ -73,5 +75,60 @@ describe("detents", () => {
     expect(visibleSheetHeight(532, PHONE)).toBe(704);
     expect(visibleSheetHeight(3000, PHONE)).toBe(704);
     expect(visibleSheetHeight(-20, PHONE)).toBe(172);
+  });
+});
+
+describe("coveringAt", () => {
+  it("is true from halfway between half and full, so the top strip is solid in time", () => {
+    // half at 218, full at 532.
+    expect(coveringAt(0, PHONE)).toBe(false);
+    expect(coveringAt(218, PHONE)).toBe(false);
+    expect(coveringAt(374, PHONE)).toBe(false);
+    expect(coveringAt(375, PHONE)).toBe(true);
+    expect(coveringAt(532, PHONE)).toBe(true);
+    expect(coveringAt(4000, PHONE)).toBe(true);
+  });
+
+  it("counts from peek when there is no half stop", () => {
+    const start = sheetMetrics({ viewport: 780, header: 320, gap: 76, halfRatio: null });
+    // full at 384.
+    expect(coveringAt(191, start)).toBe(false);
+    expect(coveringAt(192, start)).toBe(true);
+  });
+
+  it("is never true for a sheet that cannot rise", () => {
+    const tiny = sheetMetrics({ viewport: 200, header: 400, gap: 60, halfRatio: 0.5 });
+    expect(coveringAt(0, tiny)).toBe(false);
+    expect(coveringAt(0, sheetMetrics({ viewport: 0, header: 0, gap: 76, halfRatio: 0.5 }))).toBe(
+      false,
+    );
+  });
+});
+
+describe("restingCorrection", () => {
+  it("leaves a sheet on a stop alone", () => {
+    expect(restingCorrection(0, PHONE)).toBeNull();
+    expect(restingCorrection(218, PHONE)).toBeNull();
+    expect(restingCorrection(219.4, PHONE)).toBeNull();
+    expect(restingCorrection(532, PHONE)).toBeNull();
+  });
+
+  it("sends a sheet between two stops to the nearest one", () => {
+    expect(restingCorrection(60, PHONE)).toBe(0);
+    expect(restingCorrection(150, PHONE)).toBe(218);
+    expect(restingCorrection(300, PHONE)).toBe(218);
+    expect(restingCorrection(400, PHONE)).toBe(532);
+  });
+
+  it("never touches the content once the sheet is at or beyond full", () => {
+    expect(restingCorrection(531, PHONE)).toBeNull();
+    expect(restingCorrection(700, PHONE)).toBeNull();
+    expect(restingCorrection(9000, PHONE)).toBeNull();
+  });
+
+  it("has nothing to say before the sheet is measured", () => {
+    expect(
+      restingCorrection(40, sheetMetrics({ viewport: 0, header: 0, gap: 76, halfRatio: 0.5 })),
+    ).toBeNull();
   });
 });

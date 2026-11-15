@@ -35,6 +35,19 @@ test.describe("Bottom sheet (phone)", () => {
         position: style.position,
         overflowY: style.overflowY,
         snap: style.scrollSnapType,
+        // iOS Safari cannot touch-scroll a container (or anything inside one)
+        // that has `pointer-events: none` (WebKit bug 183870), so the sheet's
+        // scroller and all its ancestors must take pointer events…
+        takesTouches: (() => {
+          for (let node: Element | null = scroller; node; node = node.parentElement) {
+            if (getComputedStyle(node).pointerEvents === "none") return false;
+          }
+          return true;
+        })(),
+        // …and the map must live INSIDE the scroller, not underneath it.
+        holdsTheMap: scroller.firstElementChild?.classList.contains("sheet-map") === true,
+        mapIsSticky:
+          getComputedStyle(scroller.firstElementChild as HTMLElement).position === "sticky",
         scrollable: scroller.scrollHeight > scroller.clientHeight,
         coversTheWidth: scroller.clientWidth === window.innerWidth,
         sheetBackground: sheet.backgroundColor,
@@ -44,7 +57,10 @@ test.describe("Bottom sheet (phone)", () => {
     expect(layout).toEqual({
       position: "fixed",
       overflowY: "auto",
-      snap: "y mandatory",
+      snap: "y proximity",
+      takesTouches: true,
+      holdsTheMap: true,
+      mapIsSticky: true,
       scrollable: true,
       coversTheWidth: true,
       sheetBackground: "rgb(255, 253, 248)",

@@ -66,12 +66,14 @@ export function Toaster({ className = "" }: { className?: string }) {
       aria-live="polite"
       data-toaster=""
       data-in-modal={host ? "" : undefined}
-      className={`toaster pointer-events-none z-[2000] flex flex-col items-center gap-2 lg:items-start ${className}`}
+      // Exactly as large as the toasts in it (nothing when there are none), so
+      // it never lies over anything else: no `pointer-events` tricks needed.
+      className={`toaster z-[2000] mx-auto flex w-fit flex-col items-center gap-2 lg:mx-0 lg:items-start ${className}`}
     >
       {toasts.map((toast) => (
         <div
           key={toast.id}
-          className="pointer-events-auto flex min-h-12 max-w-[min(26rem,calc(100vw-2rem))] items-center gap-2 rounded-[26px] bg-ink py-0.5 pr-1 pl-4 text-sm text-surface opacity-100 shadow-float motion-safe:animate-[toast-in_0.2s_ease-out]"
+          className="flex min-h-12 max-w-[min(26rem,calc(100vw-2rem))] items-center gap-2 rounded-[26px] bg-ink py-0.5 pr-1 pl-4 text-sm text-surface opacity-100 shadow-float motion-safe:animate-[toast-in_0.2s_ease-out]"
         >
           <span className="min-w-0 py-2">{toast.message}</span>
           {toast.action ? (
