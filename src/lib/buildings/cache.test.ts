@@ -7,9 +7,11 @@ import {
   BUILDING_CACHE_MAX_AREAS,
   BUILDING_CACHE_STORE,
   BUILDING_CACHE_TTL_MS,
+  FALLBACK_CACHE_TTL_MS,
   clearBuildingCache,
   deleteCachedBuildings,
   getCachedBuildings,
+  getCachedBuildingsEntry,
   pruneBuildingCache,
   setCachedBuildings,
 } from "./cache";
@@ -162,6 +164,63 @@ describe("building cache", () => {
     await set("meta:v1:b", "yesterday", rawStore);
     await set("data:v1:b", collection("b"), rawStore);
     expect(await getCachedBuildings("v1:b")).toBeNull();
+  });
+
+  test("remembers where the data came from", async () => {
+    await setCachedBuildings("v1:a", collection("a"), "tiles");
+    await setCachedBuildings("v1:b", collection("b"), "overpass");
+    await setCachedBuildings("v1:c", collection("c"));
+    expect(await getCachedBuildingsEntry("v1:a")).toEqual({
+      data: collection("a"),
+      source: "tiles",
+      savedAt: T0,
+    });
+    expect((await getCachedBuildingsEntry("v1:b"))?.source).toBe("overpass");
+    expect((await getCachedBuildingsEntry("v1:c"))?.source).toBeNull();
+    expect(await getCachedBuildingsEntry("v1:missing")).toBeNull();
+  });
+
+  test("data from a fallback source is kept for a day, from the tiles for two weeks", async () => {
+    expect(FALLBACK_CACHE_TTL_MS).toBe(24 * 60 * 60 * 1000);
+    await setCachedBuildings("v1:tiles", collection("t"), "tiles");
+    await setCachedBuildings("v1:api", collection("a"), "api");
+    await setCachedBuildings("v1:overpass", collection("o"), "overpass");
+
+    now = T0 + FALLBACK_CACHE_TTL_MS - 1;
+    expect(await getCachedBuildings("v1:api")).not.toBeNull();
+    expect(await getCachedBuildings("v1:overpass")).not.toBeNull();
+
+    now = T0 + FALLBACK_CACHE_TTL_MS;
+    expect(await getCachedBuildings("v1:api")).toBeNull();
+    expect(await getCachedBuildings("v1:overpass")).toBeNull();
+    expect(await getCachedBuildings("v1:tiles")).not.toBeNull();
+    expect(await storedKeys()).toEqual(["data:v1:tiles", "meta:v1:tiles"]);
+
+    now = T0 + BUILDING_CACHE_TTL_MS;
+    expect(await getCachedBuildings("v1:tiles")).toBeNull();
+  });
+
+  test("pruning drops fallback data that has had its day", async () => {
+    await setCachedBuildings("v1:api", collection("a"), "api");
+    now = T0 + FALLBACK_CACHE_TTL_MS + 1;
+    await setCachedBuildings("v1:tiles", collection("t"), "tiles");
+    expect(await storedKeys()).toEqual(["data:v1:tiles", "meta:v1:tiles"]);
+  });
+
+  test("entries from before sources were recorded (a bare timestamp) still read", async () => {
+    await set("meta:v1:old", T0, rawStore);
+    await set("data:v1:old", collection("old"), rawStore);
+    expect(await getCachedBuildingsEntry("v1:old")).toEqual({
+      data: collection("old"),
+      source: null,
+      savedAt: T0,
+    });
+    await set("meta:v1:odd", { savedAt: T0, source: "carrier pigeon" }, rawStore);
+    await set("data:v1:odd", collection("odd"), rawStore);
+    expect((await getCachedBuildingsEntry("v1:odd"))?.source).toBeNull();
+    await set("meta:v1:bad", { savedAt: "noon" }, rawStore);
+    await set("data:v1:bad", collection("bad"), rawStore);
+    expect(await getCachedBuildingsEntry("v1:bad")).toBeNull();
   });
 
   test("deleteCachedBuildings removes one area", async () => {

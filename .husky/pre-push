@@ -1,0 +1,2 @@
+# Lint, typecheck and unit tests before anything leaves this machine.
+pnpm check

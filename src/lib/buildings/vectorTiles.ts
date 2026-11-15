@@ -323,7 +323,10 @@ interface Piece {
 interface DecodedTile {
   /** Null when the tile has no building layer at all. */
   extent: number | null;
+  /** In tile-local units until `placePieces` has run. */
   pieces: Piece[];
+  /** How far the layer's geometry reaches beyond the tile's own square, in units. */
+  overshoot: number;
 }
 
 function ringArea2(ring: Ring): number {
@@ -358,18 +361,11 @@ function decodeTile(
       cause,
     });
   }
-  if (!layer) return { extent: null, pieces: [] };
+  if (!layer) return { extent: null, pieces: [], overshoot: 0 };
 
   const extent = layer.extent;
-  const offsetX = tile.col * extent;
-  const offsetY = tile.y * extent;
   const candidates: Piece[] = [];
-  // How far the layer's geometry reaches beyond the tile on each side: that
-  // is where the tile generator's clipping cut things off.
-  let limitW = 0;
-  let limitN = 0;
-  let limitE = extent;
-  let limitS = extent;
+  let overshoot = 0;
 
   try {
     for (let f = 0; f < layer.length; f++) {
@@ -393,10 +389,7 @@ function decodeTile(
           if (y < minY) minY = y;
           if (y > maxY) maxY = y;
         }
-        if (minX < limitW) limitW = minX;
-        if (minY < limitN) limitN = minY;
-        if (maxX > limitE) limitE = maxX;
-        if (maxY > limitS) limitS = maxY;
+        overshoot = Math.max(overshoot, -minX, -minY, maxX - extent, maxY - extent);
 
         if (hidden) return;
         // Wholly inside the buffer: the neighbouring tile has it too, and in full.
@@ -428,7 +421,7 @@ function decodeTile(
           attributes,
           renderHeight,
           rings,
-          // Tile-local for now; shifted to world units below.
+          // Tile-local for now; `placePieces` shifts them to world units.
           minX,
           minY,
           maxX,
@@ -444,11 +437,30 @@ function decodeTile(
     });
   }
 
-  for (const piece of candidates) {
-    const cutW = limitW < 0 && piece.minX === limitW;
-    const cutN = limitN < 0 && piece.minY === limitN;
-    const cutE = limitE > extent && piece.maxX === limitE;
-    const cutS = limitS > extent && piece.maxY === limitS;
+  return { extent, pieces: candidates, overshoot };
+}
+
+/**
+ * Second pass over a decoded tile: find the edges its clipping left behind
+ * and move the pieces from tile-local to world units.
+ *
+ * `buffer` is the width of the tile set's buffer: geometry is clipped
+ * exactly that far outside each tile, so an edge lying on that line is
+ * where a building was cut off.
+ */
+function placePieces(decoded: DecodedTile, tile: TileRef, extent: number, buffer: number): void {
+  const offsetX = tile.col * extent;
+  const offsetY = tile.y * extent;
+  const limitW = -buffer;
+  const limitN = -buffer;
+  const limitE = extent + buffer;
+  const limitS = extent + buffer;
+
+  for (const piece of decoded.pieces) {
+    const cutW = buffer > 0 && piece.minX === limitW;
+    const cutN = buffer > 0 && piece.minY === limitN;
+    const cutE = buffer > 0 && piece.maxX === limitE;
+    const cutS = buffer > 0 && piece.maxY === limitS;
     if (cutW || cutN || cutE || cutS) {
       for (const ring of piece.rings) {
         for (let i = 0; i + 1 < ring.length; i++) {
@@ -473,7 +485,6 @@ function decodeTile(
     piece.minY += offsetY;
     piece.maxY += offsetY;
   }
-  return { extent, pieces: candidates };
 }
 
 function isCut(piece: Piece): boolean {
@@ -673,6 +684,11 @@ export function decodeBuildingTiles(
       "Tiles of different zooms or extents cannot be mixed",
     );
   }
+  // The buffer is a property of the tile set, not of one tile: wherever a
+  // building was really cut, it was cut exactly this far outside its tile.
+  const buffer = Math.max(...decoded.map((tile) => tile.overshoot));
+  for (const tile of decoded) placePieces(tile, tile.tile, extent, buffer);
+
   const worldSize = extent * 2 ** zoom;
   const toPosition = ([x, y]: [number, number]): Position => [
     roundCoordinate(wrapLng((x / worldSize) * 360 - 180)),

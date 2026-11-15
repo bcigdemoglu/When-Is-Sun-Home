@@ -14,7 +14,8 @@
     "test:watch": "vitest",
     "test:playwright": "playwright test",
     "check": "pnpm lint && pnpm typecheck && pnpm test",
-    "fetch-fixture": "tsx scripts/fetch-fixture.ts"
+    "fetch-fixture": "tsx scripts/fetch-fixture.ts",
+    "prepare": "husky || true"
   },
   "dependencies": {
     "@date-fns/tz": "^1.5.0",
@@ -52,6 +53,7 @@
     "eslint-config-prettier": "^10.1.8",
     "fake-indexeddb": "^6.2.8",
     "fast-check": "^4.10.2",
+    "husky": "^9.1.7",
     "jsdom": "^31.0.1",
     "prettier": "^3.10.1",
     "tailwindcss": "^4",

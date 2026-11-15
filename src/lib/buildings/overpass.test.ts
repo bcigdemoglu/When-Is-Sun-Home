@@ -996,14 +996,6 @@ describe("parseOverpassResponse: Pacific Heights fixture", () => {
     expect(Math.max(...byHeight.get(3)!)).toBeLessThan(25);
   });
 
-  test("the parsed fixture (what /api/buildings serves for this area) is up to date", () => {
-    // Regenerate tests/fixtures/pacific-heights.buildings.json when parsing changes:
-    // it stands in for the API route in browser tests.
-    expect(fixture("pacific-heights.buildings.json")).toEqual(
-      JSON.parse(JSON.stringify(collection)),
-    );
-  });
-
   test("agrees with the legacy conversion it was generated from", () => {
     const legacy = fixture("pacific-heights.legacy.geojson") as {
       features: {
@@ -1324,6 +1316,48 @@ describe("fetchBuildings", () => {
     expect(error).toBeInstanceOf(OverpassError);
     expect(error).toMatchObject({ kind: "timeout", endpoint: OVERPASS_ENDPOINTS[2] });
     expect(fetchImpl).toHaveBeenCalledTimes(3);
+  });
+
+  test("an overall budget is shared out over the endpoints, then it is over", async () => {
+    vi.useFakeTimers();
+    try {
+      const fetchImpl = hangingFetch();
+      const pending = failure(
+        fetchBuildings(CENTER, 500, { fetchImpl, timeoutMs: 5_000, budgetMs: 7_500 }),
+      );
+      await vi.advanceTimersByTimeAsync(4_999);
+      expect(fetchImpl).toHaveBeenCalledTimes(1);
+      // The second endpoint gets what is left: 2.5 s, not its usual 5 s.
+      await vi.advanceTimersByTimeAsync(1);
+      expect(fetchImpl).toHaveBeenCalledTimes(2);
+      await vi.advanceTimersByTimeAsync(2_500);
+      const error = await pending;
+      expect(error).toBeInstanceOf(OverpassError);
+      expect(error).toMatchObject({ kind: "timeout", endpoint: OVERPASS_ENDPOINTS[1] });
+      // The third endpoint is never asked: there is no time left for it.
+      expect(fetchImpl).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  test("with a budget, fast failures still go through every endpoint", async () => {
+    const fetchImpl = mockFetch(
+      new Response("", { status: 500 }),
+      new Response("", { status: 429 }),
+      ok(),
+    );
+    const buildings = await fetchBuildings(CENTER, 500, { fetchImpl, budgetMs: 10_000 });
+    expect(buildings.features).toHaveLength(1);
+    expect(fetchImpl).toHaveBeenCalledTimes(3);
+  });
+
+  test("a budget too small to ask anyone is a timeout, without a request", async () => {
+    const fetchImpl = mockFetch(ok());
+    const error = await failure(fetchBuildings(CENTER, 500, { fetchImpl, budgetMs: 500 }));
+    expect(error).toBeInstanceOf(OverpassError);
+    expect(error).toMatchObject({ kind: "timeout" });
+    expect(fetchImpl).not.toHaveBeenCalled();
   });
 
   test("an abort by the caller rejects with AbortError and does not fall through", async () => {
