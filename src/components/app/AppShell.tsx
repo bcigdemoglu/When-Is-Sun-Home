@@ -255,11 +255,11 @@ function Workspace() {
     setPlacesOpen(false);
     sheetRef.current?.snapTo("peek");
   };
-  // A tap in the report (a day in the heat map, say): go there, and on a
-  // phone get the sheet out of the way so the map shows that moment.
+  // A tap in the report (a day in the heat map, say) goes to that moment. The
+  // sheet stays where it is: someone exploring the charts keeps their place,
+  // and the report's own cards update around the selection.
   const onSelectDateTime = useCallback((date: string, minuteOfDay?: number) => {
     selectDateTime(date, minuteOfDay);
-    sheetRef.current?.snapTo("peek");
   }, []);
 
   // ── Keyboard: ← → move the time, / focuses the search ───────────────────

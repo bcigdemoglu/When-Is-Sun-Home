@@ -8,6 +8,9 @@ import type {
   YearAnalysis,
 } from "@/lib/types";
 
+/** Which part of the report a date/time selection came from. */
+export type SelectionOrigin = "heatmap" | "today" | "days" | "months" | "table";
+
 export interface BuildingDataStatus {
   status: "idle" | "loading" | "ready" | "error";
   /** How many buildings were used and where their heights came from. */
@@ -46,7 +49,7 @@ export interface SunReportProps {
   /** True when the pin sits inside a building footprint. */
   pinOnBuilding: boolean;
   /** Jump the app to a date (and optionally a time) — e.g. clicking the heatmap. */
-  onSelectDateTime: (date: string, minuteOfDay?: number) => void;
+  onSelectDateTime: (date: string, minuteOfDay?: number, origin?: SelectionOrigin) => void;
 }
 
 /**
