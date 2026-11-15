@@ -66,6 +66,8 @@ export const OVERPASS_ENDPOINTS: readonly string[] = [
 export const OVERPASS_QUERY_TIMEOUT_S = 25;
 /** Client-side limit per endpoint, covering connect + download. */
 export const OVERPASS_FETCH_TIMEOUT_MS = 12_000;
+/** With an overall budget, an endpoint is only tried with at least this much time left. */
+const MIN_ENDPOINT_TIME_MS = 1_000;
 
 /**
  * Overpass QL for every building outline within `radiusM` of `center`.
@@ -197,7 +199,10 @@ const MIN_RING_AREA_DEG2 = 1e-12;
  * Turn a list of points into a valid closed GeoJSON linear ring with the
  * requested winding, or null if it is degenerate.
  */
-export function normalizeRing(points: readonly Position[], winding: "ccw" | "cw"): Position[] | null {
+export function normalizeRing(
+  points: readonly Position[],
+  winding: "ccw" | "cw",
+): Position[] | null {
   const ring: Position[] = [];
   for (const p of points) {
     if (ring.length === 0 || !samePosition(ring[ring.length - 1], p)) ring.push([p[0], p[1]]);
@@ -564,9 +569,16 @@ export interface FetchBuildingsOptions {
   fetchImpl?: typeof fetch;
   /** Per-endpoint limit, milliseconds. */
   timeoutMs?: number;
+  /**
+   * Limit for all endpoints together, milliseconds. Each endpoint gets what
+   * is left (at most `timeoutMs`); endpoints that would have less than a
+   * second are not tried. Default: no overall limit.
+   */
+  budgetMs?: number;
 }
 
-function abortErrorFrom(signal: AbortSignal): unknown {
+/** The AbortError to reject with when `signal` has aborted. */
+export function abortErrorFrom(signal: AbortSignal): unknown {
   return isAbortError(signal.reason)
     ? signal.reason
     : new DOMException("The operation was aborted.", "AbortError");
@@ -719,16 +731,29 @@ export async function fetchOverpassJson(
     timeoutMs = OVERPASS_FETCH_TIMEOUT_MS,
   } = options;
 
-  let lastError = new OverpassError("network", "No Overpass endpoint configured");
+  const deadline = options.budgetMs === undefined ? Infinity : Date.now() + options.budgetMs;
+  let lastError: OverpassError | null = null;
   for (const endpoint of endpoints) {
     if (signal?.aborted) throw abortErrorFrom(signal);
+    const remainingMs = deadline - Date.now();
+    if (remainingMs < MIN_ENDPOINT_TIME_MS) {
+      lastError ??= new OverpassError("timeout", "No time left to ask Overpass");
+      break;
+    }
     try {
-      return await queryEndpoint(endpoint, query, fetchImpl, timeoutMs, signal);
+      return await queryEndpoint(
+        endpoint,
+        query,
+        fetchImpl,
+        Math.min(timeoutMs, remainingMs),
+        signal,
+      );
     } catch (error) {
       if (!(error instanceof OverpassError)) throw error;
       lastError = error;
     }
   }
+  lastError ??= new OverpassError("network", "No Overpass endpoint configured");
   throw lastError;
 }
 

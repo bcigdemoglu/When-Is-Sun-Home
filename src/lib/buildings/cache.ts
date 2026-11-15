@@ -4,10 +4,11 @@
  * Each area is stored as two small-keyed entries in its own object store:
  *
  *   "data:<areaKey>"  the BuildingCollection (structured clone, no JSON)
- *   "meta:<areaKey>"  the time it was saved (a number)
+ *   "meta:<areaKey>"  { savedAt, source }: when it was saved and where the
+ *                     data came from (older entries: just the time, a number)
  *
- * Keeping the timestamps apart means expiry and pruning never have to load
- * the footprints themselves.
+ * Keeping the metadata apart means expiry and pruning never have to load the
+ * footprints themselves.
  *
  * Every function here is safe to call when IndexedDB is missing or broken
  * (server rendering, private browsing, quota exceeded): reads resolve to
@@ -22,6 +23,23 @@ import type { BuildingCollection } from "@/lib/types";
 export const BUILDING_CACHE_DB = "sun-home";
 export const BUILDING_CACHE_STORE = "buildings";
 export const BUILDING_CACHE_TTL_MS = 14 * 24 * 60 * 60 * 1000;
+/**
+ * Data from a fallback source is kept for a day only. The primary source
+ * (vector tiles) should supply the numbers again as soon as it is back, so
+ * that results do not differ between visits for longer than necessary.
+ */
+export const FALLBACK_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+
+/** Where a set of buildings was fetched from. */
+export type BuildingDataSource = "tiles" | "api" | "overpass";
+const PRIMARY_SOURCE: BuildingDataSource = "tiles";
+
+export interface CachedBuildings {
+  data: BuildingCollection;
+  /** Null for entries written before sources were recorded. */
+  source: BuildingDataSource | null;
+  savedAt: number;
+}
 export const BUILDING_CACHE_MAX_AREAS = 40;
 
 const DATA_PREFIX = "data:";
@@ -44,19 +62,41 @@ function isBuildingCollection(value: unknown): value is BuildingCollection {
   );
 }
 
-function isFresh(savedAt: unknown, now: number): savedAt is number {
-  return typeof savedAt === "number" && savedAt <= now && now - savedAt < BUILDING_CACHE_TTL_MS;
+interface Meta {
+  savedAt: number;
+  source: BuildingDataSource | null;
 }
 
-/** The cached buildings for an area, or null if absent, expired or unreadable. */
-export async function getCachedBuildings(key: string): Promise<BuildingCollection | null> {
+function readMeta(value: unknown): Meta | null {
+  if (typeof value === "number") return { savedAt: value, source: null };
+  if (typeof value !== "object" || value === null) return null;
+  const { savedAt, source } = value as { savedAt?: unknown; source?: unknown };
+  if (typeof savedAt !== "number") return null;
+  const known = source === "tiles" || source === "api" || source === "overpass";
+  return { savedAt, source: known ? source : null };
+}
+
+/** The entry's metadata if it is still within its time to live, else null. */
+function freshMeta(value: unknown, now: number): Meta | null {
+  const meta = readMeta(value);
+  if (!meta) return null;
+  const ttl =
+    meta.source === null || meta.source === PRIMARY_SOURCE
+      ? BUILDING_CACHE_TTL_MS
+      : FALLBACK_CACHE_TTL_MS;
+  return meta.savedAt <= now && now - meta.savedAt < ttl ? meta : null;
+}
+
+/** The cached entry for an area, or null if absent, expired or unreadable. */
+export async function getCachedBuildingsEntry(key: string): Promise<CachedBuildings | null> {
   try {
-    const [savedAt, data] = await getMany<unknown>(
+    const [rawMeta, data] = await getMany<unknown>(
       [META_PREFIX + key, DATA_PREFIX + key],
       getStore(),
     );
-    if (savedAt === undefined && data === undefined) return null;
-    if (isFresh(savedAt, Date.now()) && isBuildingCollection(data)) return data;
+    if (rawMeta === undefined && data === undefined) return null;
+    const meta = freshMeta(rawMeta, Date.now());
+    if (meta && isBuildingCollection(data)) return { data, ...meta };
     await deleteCachedBuildings(key);
     return null;
   } catch {
@@ -64,13 +104,26 @@ export async function getCachedBuildings(key: string): Promise<BuildingCollectio
   }
 }
 
-/** Store the buildings for an area and evict the oldest areas beyond the limit. Never throws. */
-export async function setCachedBuildings(key: string, data: BuildingCollection): Promise<void> {
+/** The cached buildings for an area, or null if absent, expired or unreadable. */
+export async function getCachedBuildings(key: string): Promise<BuildingCollection | null> {
+  return (await getCachedBuildingsEntry(key))?.data ?? null;
+}
+
+/**
+ * Store the buildings for an area, with the source they came from, and evict
+ * the oldest areas beyond the limit. Never throws.
+ */
+export async function setCachedBuildings(
+  key: string,
+  data: BuildingCollection,
+  source: BuildingDataSource | null = null,
+): Promise<void> {
   try {
+    const meta: Meta = { savedAt: Date.now(), source };
     await setMany(
       [
         [DATA_PREFIX + key, data],
-        [META_PREFIX + key, Date.now()],
+        [META_PREFIX + key, meta],
       ],
       getStore(),
     );
@@ -108,14 +161,14 @@ export async function pruneBuildingCache(): Promise<void> {
       (key): key is string => typeof key === "string",
     );
     const metaKeys = allKeys.filter((key) => key.startsWith(META_PREFIX));
-    const savedAts = await getMany<unknown>(metaKeys, getStore());
+    const metas = await getMany<unknown>(metaKeys, getStore());
     const now = Date.now();
 
     const fresh: { areaKey: string; savedAt: number }[] = [];
     for (let i = 0; i < metaKeys.length; i++) {
-      const savedAt = savedAts[i];
-      if (isFresh(savedAt, now)) {
-        fresh.push({ areaKey: metaKeys[i].slice(META_PREFIX.length), savedAt });
+      const meta = freshMeta(metas[i], now);
+      if (meta) {
+        fresh.push({ areaKey: metaKeys[i].slice(META_PREFIX.length), savedAt: meta.savedAt });
       }
     }
     fresh.sort((a, b) => b.savedAt - a.savedAt);

@@ -15,8 +15,10 @@ import type { LatLng } from "@/lib/types";
  *
  *  1 → 2: columns tile each row exactly (no cut-off cell at the antimeridian);
  *         neighbourhood-aware default heights; coordinates rounded to 7 places.
+ *  2 → 3: buildings come from OpenFreeMap vector tiles (other ids, heights
+ *         and feature count than the Overpass-derived data).
  */
-export const AREA_SCHEMA_VERSION = 2;
+export const AREA_SCHEMA_VERSION = 3;
 
 /** Cell height in degrees of latitude (~222 m). */
 export const AREA_LAT_STEP_DEG = 0.002;
@@ -33,7 +35,7 @@ const MIN_COS_LAT = 0.01;
 const ROWS = Math.round(180 / AREA_LAT_STEP_DEG);
 
 export interface FetchArea {
-  /** Stable identifier, e.g. "v2:37.791:-122.4300". Also the cache key. */
+  /** Stable identifier, e.g. "v3:37.791:-122.4300". Also the cache key. */
   key: string;
   center: LatLng;
   radiusM: number;

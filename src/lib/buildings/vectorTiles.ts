@@ -30,7 +30,7 @@ import { PbfReader } from "pbf";
 import { z } from "zod";
 import type { BuildingCollection, BuildingFeature, HeightSource, LatLng } from "@/lib/types";
 import { FALLBACK_HEIGHT_M } from "./height";
-import { isAbortError, normalizeRing, refineDefaultHeights } from "./overpass";
+import { abortErrorFrom, isAbortError, normalizeRing, refineDefaultHeights } from "./overpass";
 
 // ─── Constants ─────────────────────────────────────────────────────────────
 
@@ -82,12 +82,6 @@ export class BuildingTilesError extends Error {
     this.status = details.status;
     this.url = details.url;
   }
-}
-
-function abortErrorFrom(signal: AbortSignal): unknown {
-  return isAbortError(signal.reason)
-    ? signal.reason
-    : new DOMException("The operation was aborted.", "AbortError");
 }
 
 // ─── Tile maths ────────────────────────────────────────────────────────────
@@ -350,7 +344,12 @@ function ringArea2(ring: Ring): number {
  * polygons lying wholly in the tile's buffer (the neighbouring tile owns
  * those).
  */
-function decodeTile(data: ArrayBuffer | Uint8Array, tile: TileRef): DecodedTile {
+function decodeTile(
+  data: ArrayBuffer | Uint8Array,
+  tile: TileRef,
+  /** The area of interest in tile-local units of a 1 × 1 tile (0..1), if any. */
+  window: { minX: number; minY: number; maxX: number; maxY: number } | null,
+): DecodedTile {
   let layer;
   try {
     layer = new VectorTile(new PbfReader(data)).layers[BUILDING_TILE_LAYER];
@@ -382,14 +381,13 @@ function decodeTile(data: ArrayBuffer | Uint8Array, tile: TileRef): DecodedTile 
       const attributes = `${feature.properties.render_height}|${feature.properties.render_min_height}`;
 
       polygons.forEach((polygon, p) => {
-        const rings: Ring[] = polygon.map((ring) => ring.map((point) => [point.x, point.y]));
-        const outer = rings[0];
-        if (!outer || outer.length < 4) return;
+        const outline = polygon[0];
+        if (!outline || outline.length < 4) return;
         let minX = Infinity;
         let minY = Infinity;
         let maxX = -Infinity;
         let maxY = -Infinity;
-        for (const [x, y] of outer) {
+        for (const { x, y } of outline) {
           if (x < minX) minX = x;
           if (x > maxX) maxX = x;
           if (y < minY) minY = y;
@@ -401,9 +399,27 @@ function decodeTile(data: ArrayBuffer | Uint8Array, tile: TileRef): DecodedTile 
         if (maxY > limitS) limitS = maxY;
 
         if (hidden) return;
-        if (Math.abs(ringArea2(outer)) < 2 * MIN_PIECE_AREA_UNITS2) return;
         // Wholly inside the buffer: the neighbouring tile has it too, and in full.
         if (!(maxX > 0 && minX < extent && maxY > 0 && minY < extent)) return;
+        // Far from the area of interest. (Anything reaching into the buffer
+        // is kept regardless: it may be half of a building that is near.)
+        const reachesBuffer = minX < 0 || minY < 0 || maxX > extent || maxY > extent;
+        if (
+          window &&
+          !reachesBuffer &&
+          !(
+            maxX >= window.minX * extent &&
+            minX <= window.maxX * extent &&
+            maxY >= window.minY * extent &&
+            minY <= window.maxY * extent
+          )
+        ) {
+          return;
+        }
+
+        const rings: Ring[] = polygon.map((ring) => ring.map((point) => [point.x, point.y]));
+        const outer = rings[0];
+        if (Math.abs(ringArea2(outer)) < 2 * MIN_PIECE_AREA_UNITS2) return;
 
         candidates.push({
           id: `tile/${tile.z}/${tile.x}/${tile.y}/${f}.${p}`,
@@ -630,11 +646,23 @@ export function decodeBuildingTiles(
   tiles: readonly { tile: TileRef; data: ArrayBuffer | Uint8Array }[],
   options: DecodeBuildingTilesOptions = {},
 ): BuildingCollection {
+  const { bounds } = options;
   const decoded = tiles
     // An empty body is an empty tile (open water, or a 204 from the server).
     .filter(({ data }) => data.byteLength > 0)
-    .map(({ tile, data }) => ({ tile, ...decodeTile(data, tile) }))
-    .filter((tile): tile is typeof tile & { extent: number } => tile.extent !== null);
+    .map(({ tile, data }) => {
+      const local = bounds && {
+        minX: lngToTileX(bounds.west, tile.z) - tile.col,
+        maxX: lngToTileX(bounds.east, tile.z) - tile.col,
+        minY: latToTileY(bounds.north, tile.z) - tile.y,
+        maxY: latToTileY(bounds.south, tile.z) - tile.y,
+      };
+      return { tile, ...decodeTile(data, tile, local ?? null) };
+    })
+    .filter((tile): tile is typeof tile & { extent: number } => tile.extent !== null)
+    // A fixed order (west to east, north to south), whatever order the tiles
+    // arrived in, so that ids and feature order are reproducible.
+    .sort((a, b) => a.tile.y - b.tile.y || a.tile.col - b.tile.col);
   if (decoded.length === 0) return { type: "FeatureCollection", features: [] };
 
   const extent = decoded[0].extent;
@@ -652,7 +680,6 @@ export function decodeBuildingTiles(
   ];
 
   // The requested bounds in world units, for the "is it near enough" test.
-  const { bounds } = options;
   const window = bounds && {
     minX: lngToTileX(bounds.west, zoom) * extent,
     maxX: lngToTileX(bounds.east, zoom) * extent,

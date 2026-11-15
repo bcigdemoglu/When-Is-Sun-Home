@@ -31,7 +31,7 @@ describe("fetchAreaFor", () => {
   test("Pacific Heights", () => {
     const area = fetchAreaFor({ lat: 37.7906, lng: -122.4294 });
     expect(area.radiusM).toBe(500);
-    expect(area.key).toBe("v2:37.791:-122.4300");
+    expect(area.key).toBe("v3:37.791:-122.4300");
     expect(area.center.lat).toBeCloseTo(37.791, 9);
     expect(distanceM(area.center, { lat: 37.7906, lng: -122.4294 })).toBeLessThan(160);
   });
@@ -106,7 +106,7 @@ describe("fetchAreaFor", () => {
         const area = fetchAreaFor(place);
         expect(fetchAreaFor(place)).toEqual(area);
         expect(fetchAreaFor(area.center).key).toBe(area.key);
-        expect(area.key).toMatch(/^v2:-?\d{1,2}\.\d{3}:-?\d{1,3}\.\d{4}$/);
+        expect(area.key).toMatch(/^v3:-?\d{1,2}\.\d{3}:-?\d{1,3}\.\d{4}$/);
         expect(area.radiusM).toBe(AREA_RADIUS_M);
         expect(Math.abs(area.center.lat)).toBeLessThanOrEqual(90);
         expect(area.center.lng).toBeGreaterThanOrEqual(-180);
@@ -146,8 +146,8 @@ describe("fetchAreaFor", () => {
       fetchAreaFor({ lat: -e, lng: -e }),
     ].map((area) => area.key);
     expect(new Set(keys).size).toBe(4);
-    expect(keys).toContain("v2:0.001:0.0010");
-    expect(keys).toContain("v2:-0.001:-0.0010");
+    expect(keys).toContain("v3:0.001:0.0010");
+    expect(keys).toContain("v3:-0.001:-0.0010");
   });
 
   test("negative coordinates", () => {
@@ -249,23 +249,23 @@ describe("areaFromKey", () => {
     ["an older schema version", "v1:37.791:-122.4300"],
     ["a future schema version", `v${AREA_SCHEMA_VERSION + 1}:37.791:-122.4300`],
     ["no version", "37.791:-122.4300"],
-    ["a point that is not a cell centre", "v2:37.790:-122.4300"],
-    ["a longitude that is not a cell centre", "v2:37.791:-122.4290"],
-    ["extra precision", "v2:37.7910:-122.4300"],
-    ["too little precision", "v2:37.791:-122.43"],
-    ["arbitrary coordinates", "v2:37.7906:-122.4294"],
-    ["a leading plus", "v2:+37.791:-122.4300"],
-    ["leading zeros", "v2:037.791:-122.4300"],
-    ["surrounding whitespace", " v2:37.791:-122.4300"],
-    ["a trailing newline", "v2:37.791:-122.4300\n"],
-    ["latitude out of range", "v2:91.001:0.0010"],
-    ["longitude out of range", "v2:0.001:181.0010"],
-    ["negative zero", "v2:-0.001:-0.0000"],
-    ["exponent notation", "v2:3e1:1e1"],
-    ["text", "v2:abc:def"],
+    ["a point that is not a cell centre", "v3:37.790:-122.4300"],
+    ["a longitude that is not a cell centre", "v3:37.791:-122.4290"],
+    ["extra precision", "v3:37.7910:-122.4300"],
+    ["too little precision", "v3:37.791:-122.43"],
+    ["arbitrary coordinates", "v3:37.7906:-122.4294"],
+    ["a leading plus", "v3:+37.791:-122.4300"],
+    ["leading zeros", "v3:037.791:-122.4300"],
+    ["surrounding whitespace", " v3:37.791:-122.4300"],
+    ["a trailing newline", "v3:37.791:-122.4300\n"],
+    ["latitude out of range", "v3:91.001:0.0010"],
+    ["longitude out of range", "v3:0.001:181.0010"],
+    ["negative zero", "v3:-0.001:-0.0000"],
+    ["exponent notation", "v3:3e1:1e1"],
+    ["text", "v3:abc:def"],
     ["the placeholder key", "none"],
     ["nothing", ""],
-    ["something enormous", `v2:${"1".repeat(500)}:0.0010`],
+    ["something enormous", `v3:${"1".repeat(500)}:0.0010`],
   ])("rejects %s", (_, key) => {
     expect(areaFromKey(key)).toBeNull();
   });
