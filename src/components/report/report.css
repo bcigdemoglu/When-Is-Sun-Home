@@ -1,0 +1,81 @@
+/*
+ * Sun report: palette and chart tokens.
+ *
+ * The four sun-state colours are re-declared here (scoped to the report) with
+ * values that pass the data-viz palette validator; see the note in
+ * SunReport.tsx. Everything else is chart furniture that only the report uses.
+ */
+.sun-report {
+  /* Sun states. */
+  --state-sun: #eda100;
+  --state-blocked: #5f82c6;
+  --state-out: #cfcdc5;
+  --state-night: #23283a;
+
+  /* Thin sun-coloured strokes on the card surface (>= 3:1). */
+  --report-sun-line: #b97a00;
+  /* Hatch ink over out-of-view fills. */
+  --report-hatch: #b7b5ad;
+  /* Gridlines / axes on the card surface. */
+  --report-grid: #e7e6df;
+  --report-axis: #c3c2b7;
+  /* Gridlines drawn over the heat map itself. */
+  --report-heat-grid: rgb(255 255 255 / 0.2);
+  /* Selection marker drawn over the heat map / timeline. */
+  --report-marker: #0b0b0b;
+  --report-marker-halo: #ffffff;
+  /* Skyline panorama. */
+  --report-sky: #f1f3f6;
+  --report-skyline: #56627a;
+  --report-terrain: #7c8a68;
+  --report-hidden-path: rgb(255 255 255 / 0.8);
+}
+
+@media (prefers-color-scheme: dark) {
+  .sun-report {
+    --state-sun: #c98500;
+    --state-blocked: #5878bd;
+    --state-out: #4a4a45;
+    --state-night: #0c0e16;
+
+    --report-sun-line: #c98500;
+    --report-hatch: #5e5e58;
+    --report-grid: #2c2c2a;
+    --report-axis: #45453f;
+    --report-heat-grid: rgb(255 255 255 / 0.1);
+    --report-marker: #ffffff;
+    --report-marker-halo: #0b0b0b;
+    --report-sky: #20222a;
+    --report-skyline: #4f5a73;
+    --report-terrain: #5d6b4e;
+    --report-hidden-path: rgb(255 255 255 / 0.6);
+  }
+}
+
+/* Out-of-view texture for HTML swatches (SVG fills use the shared pattern). */
+.sun-report .report-hatch {
+  background-image: repeating-linear-gradient(
+    135deg,
+    var(--report-hatch) 0 1px,
+    transparent 1px 5px
+  );
+}
+
+/* Chart text. */
+.sun-report svg text {
+  font-family: inherit;
+  font-variant-numeric: tabular-nums;
+}
+
+.sun-report .report-halo {
+  paint-order: stroke;
+  stroke: var(--surface);
+  stroke-width: 3px;
+  stroke-linejoin: round;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sun-report .animate-pulse {
+    animation: none;
+  }
+}

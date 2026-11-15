@@ -1,0 +1,171 @@
+"use client";
+
+import dynamic from "next/dynamic";
+import { useState } from "react";
+import { ErrorBoundary } from "@/components/app/ErrorBoundary";
+import { SearchBox } from "@/components/search/SearchBox";
+import { Button } from "@/components/ui/Button";
+import { pinSpot, pinSuggestion } from "@/hooks/placeActions";
+import type { BuildingsStatus } from "@/lib/buildings/useBuildings";
+import type { BuildingCollection, Place, SunInstant } from "@/lib/types";
+import type { SunPathModel } from "./compassGeometry";
+
+function MapLoading() {
+  return (
+    <div
+      role="status"
+      aria-label="Loading the map"
+      className="h-full w-full bg-surface-2 motion-safe:animate-pulse"
+    />
+  );
+}
+
+// MapLibre needs a browser (WebGL, workers): never render it on the server.
+const SunMap = dynamic(() => import("./SunMap"), { ssr: false, loading: MapLoading });
+
+function MapUnavailable({ onRetry }: { onRetry(): void }) {
+  return (
+    <div
+      role="alert"
+      className="flex h-full w-full flex-col items-center justify-center gap-3 bg-surface-2 p-6 pt-20 text-center"
+    >
+      <p className="text-base font-semibold text-ink">The map can’t be shown</p>
+      <p className="max-w-sm text-sm text-ink-2">
+        This browser or device couldn’t start the 3D map (WebGL). You can still search for an
+        address above, and the sun report keeps working.
+      </p>
+      <Button onClick={onRetry}>Try the map again</Button>
+    </div>
+  );
+}
+
+const NOTICE =
+  "mt-1.5 flex w-fit max-w-full items-center gap-2 rounded-lg border bg-surface px-2.5 py-1.5 text-xs leading-snug text-ink shadow-md";
+
+/**
+ * Says, on the map, when the shade is missing: while the buildings load or
+ * after they failed to load, nothing here (and no number in the report)
+ * accounts for them yet.
+ */
+function BuildingNotice({
+  status,
+  count,
+  fetching,
+  onRetry,
+}: {
+  status: BuildingsStatus;
+  count: number | null;
+  fetching: boolean;
+  onRetry: (() => void) | null;
+}) {
+  if (status === "loading") {
+    return (
+      <p role="status" className={`${NOTICE} border-line`}>
+        <span
+          aria-hidden="true"
+          className="h-3 w-3 shrink-0 rounded-full border-2 border-line border-t-accent motion-safe:animate-spin"
+        />
+        <span>
+          <strong className="font-semibold">Loading buildings…</strong> Sun hours are provisional
+          until they arrive.
+        </span>
+      </p>
+    );
+  }
+  if (status === "error") {
+    return (
+      <div role="alert" className={`${NOTICE} border-danger`}>
+        <span>
+          <strong className="font-semibold">Building data couldn’t be loaded.</strong> No shade is
+          shown, and the sun hours assume an open sky.
+        </span>
+        {onRetry && (
+          <Button variant="primary" onClick={onRetry} disabled={fetching}>
+            {fetching ? "Retrying…" : "Retry"}
+          </Button>
+        )}
+      </div>
+    );
+  }
+  if (status === "ready" && count === 0) {
+    return (
+      <p role="status" className={`${NOTICE} border-line`}>
+        No buildings are mapped around this spot: an open sky is assumed.
+      </p>
+    );
+  }
+  return null;
+}
+
+// Deliberately small props: nothing here changes identity on a slider tick
+// except `instant` (three numbers).
+interface MapPanelProps {
+  place: Place | null;
+  /** Buildings to draw; may be a neighbouring area's while the real ones load. */
+  buildings: BuildingCollection | null;
+  buildingStatus: BuildingsStatus;
+  /** How many buildings were found, once known. */
+  buildingCount: number | null;
+  buildingsFetching: boolean;
+  onRetryBuildings: (() => void) | null;
+  sunPath: SunPathModel | null;
+  instant: SunInstant | null;
+  blockerBuildingId: string | null;
+  pinBuildingId: string | null;
+}
+
+/**
+ * The map with the search box floating over it. The map sits behind its own
+ * error boundary: if WebGL is missing or dies, this panel says so and the rest
+ * of the app carries on.
+ */
+export function MapPanel({
+  place,
+  buildings,
+  buildingStatus,
+  buildingCount,
+  buildingsFetching,
+  onRetryBuildings,
+  sunPath,
+  instant,
+  blockerBuildingId,
+  pinBuildingId,
+}: MapPanelProps) {
+  const [failed, setFailed] = useState(false);
+  const [attempt, setAttempt] = useState(0);
+  const retry = () => {
+    setFailed(false);
+    setAttempt((value) => value + 1);
+  };
+
+  return (
+    <div className="relative h-full w-full overflow-hidden bg-surface-2">
+      {failed ? (
+        <MapUnavailable onRetry={retry} />
+      ) : (
+        <ErrorBoundary key={attempt} fallback={() => <MapUnavailable onRetry={retry} />}>
+          <SunMap
+            place={place}
+            buildings={buildings}
+            sunPath={sunPath}
+            instant={instant}
+            blockerBuildingId={blockerBuildingId}
+            pinBuildingId={pinBuildingId}
+            onPlacePin={pinSpot}
+            onFatalError={() => setFailed(true)}
+          />
+        </ErrorBoundary>
+      )}
+
+      <div className="absolute top-2.5 left-2.5 z-20 w-[min(22rem,calc(100%-4.25rem))]">
+        <SearchBox bias={place} onSelect={pinSuggestion} />
+        <BuildingNotice
+          status={buildingStatus}
+          count={buildingCount}
+          fetching={buildingsFetching}
+          onRetry={onRetryBuildings}
+        />
+      </div>
+    </div>
+  );
+}

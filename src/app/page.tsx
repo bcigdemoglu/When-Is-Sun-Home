@@ -1,5 +1,5 @@
-import SunApp from "@/components/SunApp";
+import { App } from "@/components/app/App";
 
 export default function Home() {
-  return <SunApp />;
+  return <App />;
 }

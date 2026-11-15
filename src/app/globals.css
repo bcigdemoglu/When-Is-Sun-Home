@@ -1,155 +1,215 @@
 @import "tailwindcss";
 @import "maplibre-gl/dist/maplibre-gl.css";
 
+/*
+ * Design tokens. Components use the Tailwind names from the @theme block
+ * (bg-page, bg-surface, text-ink, border-line, …) — never raw hex — so light
+ * and dark stay in sync from this one place.
+ */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
+  color-scheme: light;
+  --page: #f4f3ef;
+  --surface: #fcfcfb;
+  --surface-2: #efeee9;
+  --line: #dfddd5;
+  --ink: #0b0b0b;
+  --ink-2: #52514e;
+  --ink-3: #85847d;
+  --accent: #c2570c;
+  --accent-ink: #ffffff;
+  --danger: #c0392b;
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  /* Sun states — the four things the sun can be doing for the observer. */
+  --state-sun: #f2a900;
+  --state-blocked: #7b8fb5;
+  --state-out: #c9c7bf;
+  --state-night: #23283a;
+
+  /* Map overlays (MapLibre needs concrete colours; read via getComputedStyle). */
+  --map-building: #aba89c;
+  --map-building-soft: #c6c3b8;
+  --map-pin-building: #e2a877;
+  --map-shadow: #1b2033;
+  --map-shadow-opacity: 0.28;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+    color-scheme: dark;
+    --page: #111110;
+    --surface: #1a1a19;
+    --surface-2: #242422;
+    --line: #34342f;
+    --ink: #f0efec;
+    --ink-2: #c3c2b7;
+    --ink-3: #8f8e86;
+    --accent: #f08a3c;
+    --accent-ink: #1a1a19;
+    --danger: #e66767;
+
+    --state-sun: #f2b01e;
+    --state-blocked: #5f74a0;
+    --state-out: #4a4a45;
+    --state-night: #0c0e16;
+
+    --map-building: #55544e;
+    --map-building-soft: #42413c;
+    --map-pin-building: #8a5527;
+    --map-shadow: #000000;
+    --map-shadow-opacity: 0.5;
   }
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+@theme inline {
+  --color-page: var(--page);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-line: var(--line);
+  --color-ink: var(--ink);
+  --color-ink-2: var(--ink-2);
+  --color-ink-3: var(--ink-3);
+  --color-accent: var(--accent);
+  --color-accent-ink: var(--accent-ink);
+  --color-danger: var(--danger);
+  --color-state-sun: var(--state-sun);
+  --color-state-blocked: var(--state-blocked);
+  --color-state-out: var(--state-out);
+  --color-state-night: var(--state-night);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
 }
 
-/* Prevent iOS auto-zoom on input focus (requires >=16px) */
+body {
+  background: var(--page);
+  color: var(--ink);
+  font-family: var(--font-geist-sans), system-ui, sans-serif;
+}
+
+/* iOS zooms the page when a focused input is smaller than 16px. */
 @media (max-width: 1023px) {
   select,
   input[type="text"],
   input[type="search"],
   input[type="number"],
-  textarea {
-    font-size: 16px !important;
+  input[type="date"],
+  input[type="time"] {
+    font-size: 16px;
   }
 }
 
-/* MapLibre container */
-.maplibregl-map {
+/* ─── Focus ───────────────────────────────────────────────────────────────── */
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* ─── Range sliders ───────────────────────────────────────────────────────── */
+
+/*
+ * One look for every slider. The input itself is 40px tall (a comfortable
+ * touch target) and transparent; the visible track is drawn by the browser's
+ * track pseudo-element. Set --range-track to paint the track (e.g. with the
+ * day's sun / shade strip).
+ */
+.range {
+  -webkit-appearance: none;
+  appearance: none;
+  display: block;
   width: 100%;
-  height: 100%;
+  height: 40px;
+  margin: 0;
+  background: transparent;
+  cursor: pointer;
+  /* Vertical swipes still scroll the page; horizontal ones move the thumb. */
+  touch-action: pan-y;
 }
-
-/* Sun marker style */
-.sun-marker {
-  background: transparent !important;
-  border: none !important;
+.range:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
 }
-
-/* Custom range slider */
-.sun-slider {
+.range::-webkit-slider-runnable-track {
+  height: 10px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--range-track, var(--surface-2));
+}
+.range::-moz-range-track {
+  height: 8px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--range-track, var(--surface-2));
+}
+.range::-webkit-slider-thumb {
   -webkit-appearance: none;
   appearance: none;
-  height: 6px;
-  border-radius: 3px;
-  background: #e4e4e7;
+  width: 24px;
+  height: 24px;
+  margin-top: -8px;
+  border-radius: 50%;
+  border: 2px solid var(--accent);
+  background: var(--surface);
+  box-shadow: 0 1px 3px rgb(0 0 0 / 0.3);
+}
+.range::-moz-range-thumb {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: 2px solid var(--accent);
+  background: var(--surface);
+  box-shadow: 0 1px 3px rgb(0 0 0 / 0.3);
+}
+.range:focus-visible {
   outline: none;
-  cursor: pointer;
+}
+.range:focus-visible::-webkit-slider-thumb {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.range:focus-visible::-moz-range-thumb {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
-.sun-slider::-webkit-slider-thumb {
-  -webkit-appearance: none;
-  appearance: none;
-  width: 16px;
-  height: 16px;
-  border-radius: 50%;
-  background: #f59e0b;
-  cursor: pointer;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
-}
+/* ─── Map chrome ──────────────────────────────────────────────────────────── */
 
-.sun-slider::-moz-range-thumb {
-  width: 16px;
-  height: 16px;
-  border-radius: 50%;
-  background: #f59e0b;
-  cursor: pointer;
-  border: none;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+.maplibregl-map {
+  font-family: inherit;
 }
-
+.maplibregl-ctrl-group {
+  background: var(--surface);
+  box-shadow: 0 0 0 1px var(--line);
+}
+.maplibregl-ctrl-group button + button {
+  border-top-color: var(--line);
+}
+/* Two classes each, because MapLibre's own rules are that specific. */
+.maplibregl-ctrl.maplibregl-ctrl-attrib {
+  background: color-mix(in srgb, var(--surface) 85%, transparent);
+  color: var(--ink-2);
+}
+.maplibregl-ctrl.maplibregl-ctrl-attrib a {
+  color: var(--ink-2);
+}
+.maplibregl-ctrl.maplibregl-ctrl-attrib.maplibregl-compact {
+  background: var(--surface);
+}
 @media (prefers-color-scheme: dark) {
-  .sun-slider {
-    background: #3f3f46;
+  .maplibregl-ctrl-group button .maplibregl-ctrl-icon,
+  .maplibregl-ctrl-attrib-button {
+    filter: invert(1);
   }
 }
+/* The compass lies on the ground under the pin and never takes input. */
+.sun-compass-marker,
+.sun-compass-marker * {
+  pointer-events: none !important;
+}
 
-/* Mobile sidebar: strip card backgrounds so glass effect shows through.
-   Wrapped in @layer utilities so it's in the same cascade layer as
-   Tailwind's bg-white/90 etc.  The compound selector (.sidebar-glass > *)
-   beats a single utility class on specificity. */
-@layer utilities {
-  @media (max-width: 1023px) {
-    /* Strip card backgrounds for glass effect */
-    .sidebar-glass > * {
-      background: transparent !important;
-      background-color: transparent !important;
-      box-shadow: none !important;
-      backdrop-filter: none !important;
-      -webkit-backdrop-filter: none !important;
-      border: 1px solid rgba(255, 255, 255, 0.25) !important;
-      border-radius: 0.75rem !important;
-    }
-
-    /* ── Text readability on glass ─────────────────────────── */
-
-    /* All text defaults to white */
-    .sidebar-glass * {
-      color: white !important;
-    }
-
-    /* Bold values — bright white */
-    .sidebar-glass .font-mono,
-    .sidebar-glass .font-medium {
-      color: #ffffff !important;
-      text-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
-    }
-
-    /* Section headings — white, slightly muted */
-    .sidebar-glass h3 {
-      color: rgba(255, 255, 255, 0.85) !important;
-    }
-
-    /* Helper / muted text */
-    .sidebar-glass .text-\[10px\] {
-      color: rgba(255, 255, 255, 0.7) !important;
-    }
-
-    /* Labels (text-xs spans) */
-    .sidebar-glass .text-xs {
-      color: rgba(255, 255, 255, 0.9) !important;
-    }
-
-    /* Borders on selects & mode toggles */
-    .sidebar-glass select,
-    .sidebar-glass .flex.rounded-lg,
-    .sidebar-glass .flex.rounded {
-      border-color: rgba(255, 255, 255, 0.3) !important;
-      background: transparent !important;
-    }
-
-    /* Dividers between rows */
-    .sidebar-glass .divide-y > * + * {
-      border-color: rgba(255, 255, 255, 0.2) !important;
-    }
-
-    /* Inner bg panels (building info, sun windows rows) */
-    .sidebar-glass .rounded-lg.bg-zinc-100,
-    .sidebar-glass .rounded-lg[class*="bg-zinc"] {
-      background: rgba(255, 255, 255, 0.15) !important;
-    }
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
   }
 }

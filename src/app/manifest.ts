@@ -4,7 +4,8 @@ export default function manifest(): MetadataRoute.Manifest {
   return {
     name: "When is Sun Home?",
     short_name: "Sun Home",
-    description: "Track the sun's position on an interactive map for any location and time",
+    description:
+      "See how many hours of direct sunlight a backyard, terrace or window gets on every day of the year.",
     start_url: "/",
     display: "standalone",
     background_color: "#ffffff",
