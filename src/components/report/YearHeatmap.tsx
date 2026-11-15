@@ -186,17 +186,26 @@ export function YearHeatmap({
       }
       detail={
         !year ? (
-          <SkeletonText width="14rem" />
+          <>
+            <SkeletonText width="10rem" />
+            <br />
+            <SkeletonText width="13rem" />
+          </>
         ) : shown && shownState !== null ? (
-          <span data-testid="heatmap-readout">
-            <StateSwatch state={shownState as SunStateCode} className="mr-1.5 translate-y-px" />
-            {stateShort(shownState, blockerAt(grid, horizon, shown.dayIndex, shown.slot))}{" "}
-            {"\u00b7"} {formatDuration(year.days[shown.dayIndex].sunMinutes)} of sun that day
-          </span>
+          <>
+            <span className="block truncate" data-testid="heatmap-readout">
+              <StateSwatch state={shownState as SunStateCode} className="mr-1.5 translate-y-px" />
+              {stateShort(shownState, blockerAt(grid, horizon, shown.dayIndex, shown.slot))}
+            </span>
+            <span className="block truncate" data-testid="heatmap-day-total">
+              {formatDuration(year.days[shown.dayIndex].sunMinutes)} of direct sun that day
+            </span>
+          </>
         ) : (
           "Tap the chart to pick a date and time"
         )
       }
+      detailLines={2}
       busy={!ready}
     >
       <div

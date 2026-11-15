@@ -196,7 +196,7 @@ export function Hero({
       </dl>
 
       {/* Always rendered, so the card keeps its height while buildings load. */}
-      <p role={unshaded ? undefined : "status"} className="mt-3 min-h-4 text-xs/4 text-ink-3">
+      <p role={unshaded ? undefined : "status"} className="mt-3 min-h-8 text-xs/4 text-ink-3">
         {!unshaded && (
           <>
             {includedText(buildings, terrain, hasTerrain)}
@@ -208,24 +208,25 @@ export function Hero({
   );
 }
 
-/** "Includes shade from 384 nearby buildings and the hills around." */
+/** "Estimate: includes shade from 384 nearby buildings and the hills around, but not trees, fences or clouds." */
 function includedText(
   buildings: BuildingDataStatus,
   terrain: HeroProps["terrain"],
   hasTerrain: boolean,
 ): string {
   const total = buildings.stats?.total ?? null;
-  const hills = terrain === "ready" || hasTerrain ? " and the hills around" : "";
+  const hills = terrain === "ready" || hasTerrain;
+  const not = "but not trees, fences or clouds";
   if (total === 0) {
     return hills
-      ? "No buildings nearby; shade from the hills around is included."
-      : "No buildings were found nearby, so nothing blocks the sun here.";
+      ? `Estimate: no buildings nearby; includes shade from the hills around, ${not}.`
+      : "Estimate: no buildings were found nearby, so nothing blocks the sun here.";
   }
   const count =
     total === null
       ? "nearby buildings"
       : `${formatCount(total)} nearby ${total === 1 ? "building" : "buildings"}`;
-  return `Includes shade from ${count}${hills}.`;
+  return `Estimate: includes shade from ${count}${hills ? " and the hills around" : ""}, ${not}.`;
 }
 
 function Tile({

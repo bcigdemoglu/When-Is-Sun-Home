@@ -203,7 +203,9 @@ describe("building data states", () => {
   it("quietly says what is included when all is well", () => {
     render(<SunReport {...props()} />);
     const status = screen.getByRole("status");
-    expect(status.textContent).toBe("Includes shade from 384 nearby buildings.");
+    expect(status.textContent).toBe(
+      "Estimate: includes shade from 384 nearby buildings, but not trees, fences or clouds.",
+    );
     expect(screen.queryByRole("alert")).toBeNull();
   });
 
@@ -242,7 +244,7 @@ describe("building data states", () => {
   it("mentions the hills when terrain is ready", () => {
     render(<SunReport {...props({ terrain: "ready" })} />);
     expect(screen.getByRole("status").textContent).toBe(
-      "Includes shade from 384 nearby buildings and the hills around.",
+      "Estimate: includes shade from 384 nearby buildings and the hills around, but not trees, fences or clouds.",
     );
   });
 });
@@ -367,9 +369,8 @@ describe("year heat map", () => {
     render(<SunReport {...props()} />);
     const year = within(card("Through the year"));
     expect(year.getByText("Mon, Jun 15 · 10:00 AM")).toBeTruthy();
-    expect(year.getByTestId("heatmap-readout").textContent).toBe(
-      "In direct sun · 9 h of sun that day",
-    );
+    expect(year.getByTestId("heatmap-readout").textContent).toBe("In direct sun");
+    expect(year.getByTestId("heatmap-day-total").textContent).toBe("9 h of direct sun that day");
   });
 
   it("moves the selection with the arrow keys", () => {
@@ -399,9 +400,8 @@ describe("year heat map", () => {
     // The value line is the reading…
     const year = within(card("Through the year"));
     expect(year.getAllByText("Sat, Apr 11 · 3:00 PM")[0].tagName).toBe("P");
-    expect(year.getByTestId("heatmap-readout").textContent).toBe(
-      "Shaded by a building · 9 h of sun that day",
-    );
+    expect(year.getByTestId("heatmap-readout").textContent).toBe("Shaded by a building");
+    expect(year.getByTestId("heatmap-day-total").textContent).toBe("9 h of direct sun that day");
     // …and with a mouse it also floats beside the pointer.
     const tooltip = screen.getByTestId("chart-tooltip");
     expect(tooltip.textContent).toMatch(/Sat, Apr 11 · 3:00 PM/);
@@ -432,7 +432,7 @@ describe("year heat map", () => {
     const rows = within(table).getAllByRole("row");
     expect(rows).toHaveLength(13);
     expect(within(rows[0]).getAllByRole("columnheader")).toHaveLength(6);
-    expect(within(rows[1]).getByRole("rowheader").textContent).toBe("January");
+    expect(within(rows[1]).getByRole("rowheader", { name: "January" })).toBeTruthy();
     expect(
       within(rows[1])
         .getAllByRole("cell")

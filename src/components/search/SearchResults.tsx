@@ -101,6 +101,8 @@ function RowIcon({ children, accent = false }: { children: ReactNode; accent?: b
 
 interface OptionProps {
   id: string;
+  /** What a screen reader calls the row: its lines, read as one phrase. */
+  name: string;
   active: boolean;
   icon: ReactNode;
   primary: ReactNode;
@@ -117,6 +119,7 @@ interface OptionProps {
 
 function Option({
   id,
+  name,
   active,
   icon,
   primary,
@@ -132,6 +135,7 @@ function Option({
     <div
       id={id}
       role="option"
+      aria-label={name}
       aria-selected={active}
       aria-busy={busy || undefined}
       className={`flex min-h-14 flex-1 cursor-pointer items-center gap-3 py-2 pl-4 ${
@@ -152,7 +156,7 @@ function Option({
       {metric !== undefined && (
         <span
           className="shrink-0 pl-1 text-[15px] leading-[22px] font-semibold text-ink tabular-nums"
-          aria-label={metric === null ? undefined : metricLabel}
+          title={metric === null ? undefined : metricLabel}
         >
           {metric === null ? <span className="font-normal text-ink-3">—</span> : metric}
         </span>
@@ -227,6 +231,7 @@ export function SearchResults({
           <Option
             key={row.key}
             {...shared}
+            name={`Use my current location. ${location.text}`}
             busy={geo.status === "locating"}
             icon={
               <RowIcon accent>
@@ -244,6 +249,7 @@ export function SearchResults({
           <Option
             key={row.key}
             {...shared}
+            name="Choose on the map. Tap the exact spot"
             icon={
               <RowIcon>
                 <MapPinPlusIcon />
@@ -258,9 +264,12 @@ export function SearchResults({
         const { entry } = row;
         const label = entryLabel(entry);
         const hours = entry.summary ? formatHours(entry.summary.avgSunHoursPerDay) : null;
+        const metricLabel =
+          hours === null ? undefined : `${hours} hours of direct sun on an average day`;
         const option = (
           <Option
             {...shared}
+            name={[label, entryAddress(entry), metricLabel].filter(Boolean).join(", ")}
             trailingSlot
             icon={
               <RowIcon>{row.kind === "saved" ? <HeartIcon /> : <ClockIcon />}</RowIcon>
@@ -272,7 +281,7 @@ export function SearchResults({
               </span>
             }
             metric={hours === null ? null : `${hours} h`}
-            metricLabel={hours === null ? undefined : `${hours} hours of direct sun on an average day`}
+            metricLabel={metricLabel}
           />
         );
         if (row.kind === "saved") {
@@ -313,6 +322,7 @@ export function SearchResults({
           <Option
             key={row.key}
             {...shared}
+            name={[suggestion.label, suggestion.detail].filter(Boolean).join(", ")}
             icon={<RowIcon>{row.coordinates ? <CoordinatesIcon /> : <PinIcon />}</RowIcon>}
             primary={
               row.coordinates ? (

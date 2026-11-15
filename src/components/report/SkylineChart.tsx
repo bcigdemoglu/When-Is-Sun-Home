@@ -287,9 +287,11 @@ export function SkylineChart({ grid, horizon, observer, date, instant }: Skyline
       footnoteLines={2}
       footnote={
         <>
-          {horizon
-            ? "Dotted: the sun\u2019s path is hidden behind the skyline."
-            : "Building data is not available."}
+          {!horizon
+            ? "Building data is not available."
+            : model && model.runs.length > 0
+              ? "Dotted: the sun\u2019s path is hidden behind the skyline."
+              : "The curves are the sun\u2019s paths across the sky."}
           {pannable && " Drag sideways to look around."}
         </>
       }
@@ -426,14 +428,16 @@ export function SkylineChart({ grid, horizon, observer, date, instant }: Skyline
           <LineKey color="var(--report-sun-line)" width={1.25} />
           Solstices and equinox
         </li>
-        <li className="flex items-center gap-1.5">
-          <span
-            aria-hidden="true"
-            className="inline-block size-3 rounded-[3px]"
-            style={{ backgroundColor: "var(--report-skyline)" }}
-          />
-          Buildings
-        </li>
+        {(!model || model.runs.some((run) => run.kind === "building")) && (
+          <li className="flex items-center gap-1.5">
+            <span
+              aria-hidden="true"
+              className="inline-block size-3 rounded-[3px]"
+              style={{ backgroundColor: "var(--report-skyline)" }}
+            />
+            Buildings
+          </li>
+        )}
         {model?.hasTerrain && (
           <li className="flex items-center gap-1.5">
             <span

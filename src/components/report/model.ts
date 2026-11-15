@@ -14,10 +14,8 @@ import {
 } from "./heatmap";
 import {
   bestAndWorstMonths,
-  daylightSplit,
   monthDetails,
   summarizeSeasons,
-  type DaylightSplit,
   type MonthDetail,
   type SeasonSummary,
 } from "./summary";
@@ -28,7 +26,6 @@ export interface ReportModel {
   months: MonthSpan[];
   details: MonthDetail[];
   seasons: SeasonSummary[];
-  split: DaylightSplit;
   best: MonthSummary | null;
   worst: MonthSummary | null;
   /** Days on which the clocks change (DST). */
@@ -42,7 +39,6 @@ export function buildReportModel(year: YearAnalysis, lat: number): ReportModel {
     months: monthSpans(year.year),
     details,
     seasons: summarizeSeasons(year, lat, details),
-    split: daylightSplit(year.days),
     ...bestAndWorstMonths(year.months),
     clockShifts: findClockShifts(year.year, year.timeZone, year.dayCount),
   };

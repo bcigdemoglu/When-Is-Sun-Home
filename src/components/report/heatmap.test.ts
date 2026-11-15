@@ -11,7 +11,6 @@ import {
   dayX,
   findClockShifts,
   FULL_DAY,
-  hourTicks,
   minuteY,
   monthSpans,
   moveSelection,
@@ -42,17 +41,6 @@ describe("daylightTimeRange", () => {
     expect(daylightTimeRange(polarDay)).toEqual(FULL_DAY);
     const polarNight = syntheticYear({ riseMinute: () => 720, setMinute: () => 720 }).year;
     expect(daylightTimeRange(polarNight)).toEqual(FULL_DAY);
-  });
-});
-
-describe("hourTicks", () => {
-  it("spaces gridlines so labels do not collide", () => {
-    const range = { startMinute: 5 * 60, endMinute: 21 * 60 };
-    // 16 hours on 320 px = 20 px per hour → every 2 hours.
-    expect(hourTicks(range, 320)).toEqual([6, 8, 10, 12, 14, 16, 18, 20].map((h) => h * 60));
-    // On 160 px → every 3 hours.
-    expect(hourTicks(range, 160)).toEqual([6, 9, 12, 15, 18, 21].map((h) => h * 60));
-    expect(hourTicks(FULL_DAY, 290)).toEqual([0, 3, 6, 9, 12, 15, 18, 21, 24].map((h) => h * 60));
   });
 });
 

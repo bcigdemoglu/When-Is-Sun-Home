@@ -49,9 +49,11 @@ export function SeasonsCard({ model, lat }: SeasonsCardProps) {
         )
       }
       footnote={
-        range
-          ? `Each strip is a typical day of that month, from ${formatHourTick(range.startMinute, hour12)} to ${formatHourTick(range.endMinute, hour12)}.`
-          : "Each strip is a typical day of that month."
+        !range
+          ? "Each strip is a typical day of that month."
+          : range.startMinute <= 0 && range.endMinute >= 1440
+            ? "Each strip is a typical day of that month, midnight to midnight."
+            : `Each strip is a typical day of that month, from ${formatHourTick(range.startMinute, hour12)} to ${formatHourTick(range.endMinute, hour12)}.`
       }
       footnoteLines={2}
       busy={!model}
