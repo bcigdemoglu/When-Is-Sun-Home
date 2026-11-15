@@ -11,6 +11,7 @@ import {
   fetchBuildings,
   footprintAreaM2,
   isAbortError,
+  neighbourhoodHeightM,
   parseOverpassResponse,
   refineDefaultHeights,
   signedRingArea,
@@ -672,6 +673,31 @@ describe("refineDefaultHeights", () => {
       response(...neighbourhood(20, 5), footprint(1, 40, { building: "yes" })),
     );
     expect(heightOf(low, 1)).toBe(5);
+  });
+
+  test("neighbourhoodHeightM is the height a generic building of 50 m² or more is given", () => {
+    const tall = parseOverpassResponse(
+      response(...neighbourhood(20, 18), footprint(3, 51, { building: "yes" })),
+    );
+    expect(neighbourhoodHeightM(tall)).toBe(18);
+    expect(heightOf(tall, 3)).toBe(18);
+    // The same whether asked before the heights were refined or after.
+    expect(neighbourhoodHeightM(refineDefaultHeights(tall))).toBe(18);
+
+    // Clamped to 4–40 m, like the heights it stands for.
+    expect(neighbourhoodHeightM(parseOverpassResponse(response(...neighbourhood(20, 60))))).toBe(
+      40,
+    );
+    expect(neighbourhoodHeightM(parseOverpassResponse(response(...neighbourhood(20, 2))))).toBe(4);
+  });
+
+  test("neighbourhoodHeightM is null with fewer than 10 reference buildings", () => {
+    const few = parseOverpassResponse(
+      response(...neighbourhood(9, 18), footprint(3, 51, { building: "yes" })),
+    );
+    expect(neighbourhoodHeightM(few)).toBeNull();
+    expect(heightOf(few, 3)).toBe(7);
+    expect(neighbourhoodHeightM({ type: "FeatureCollection", features: [] })).toBeNull();
   });
 
   test("does not mutate its input and is idempotent", () => {

@@ -274,7 +274,7 @@ test.describe("Accessibility basics", () => {
     });
 
     const stops: string[] = [];
-    for (let stop = 0; stop < 11; stop++) {
+    for (let stop = 0; stop < 15; stop++) {
       await page.keyboard.press("Tab");
       stops.push(await focused(page));
       // Whatever has the focus can be seen: on screen, and not underneath something else.
@@ -296,6 +296,12 @@ test.describe("Accessibility basics", () => {
       "Saved places",
       "Map",
       expect.stringMatching(/^Pin\. Drag it/),
+      // The map's credits: open over the map until it is first touched. (The
+      // basemap's own two come before these; the test basemap has none.)
+      "Toggle attribution",
+      "OpenFreeMap",
+      "© OpenMapTiles",
+      "© OpenStreetMap",
       "Use my location",
       expect.stringMatching(/Switch to (tilted 3D|flat 2D)$/),
       "Expand the sheet",

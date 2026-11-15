@@ -131,7 +131,7 @@ test.describe("Time bar", () => {
     await timeBar.chooseDay("Today");
     await expect(timeBar.dayButton).toHaveAccessibleName("Today, 9:00 AM PDT. Change the day");
     await expect(app.summaryCaption).toContainText("on Sun, Jun 21");
-    await expect(page).toHaveURL(/lng=-122\.43010(&n=[^&]+)?&t=0900$/);
+    await expect(page).toHaveURL(/lng=-122\.43010(&n=[^&]+)?&t=0900(&s=[^&]+)?$/);
 
     // Pick a date: the menu stays open, the current row is marked.
     await timeBar.openMenu();

@@ -87,7 +87,13 @@ test.describe("Bottom sheet (phone)", () => {
     await expect(app.sheetHandle).toHaveAccessibleName("Collapse the sheet to show the map");
     // The map's floating buttons step aside at full: faded out and out of reach.
     const locate = app.sheet.getByRole("button", { name: "Use my location" });
-    const outOfReach = () => locate.evaluate((button) => button.closest("[inert]") !== null);
+    // (Looked up hidden or not: once faded out, the button is no longer a
+    // button to `getByRole`, and asking it anything would wait for ever. That
+    // used to go well only when this line ran within the 0.2 s of the fade.)
+    const outOfReach = () =>
+      app.sheet
+        .getByRole("button", { name: "Use my location", includeHidden: true })
+        .evaluate((button) => button.closest("[inert]") !== null);
     await expect.poll(outOfReach).toBe(true);
 
     await app.sheetHandle.tap();

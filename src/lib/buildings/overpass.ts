@@ -521,6 +521,26 @@ function median(values: number[]): number {
 }
 
 /**
+ * What the buildings of one response say about the ones around them: the
+ * median of all tagged and level-based heights, clamped to 4–40 m and rounded
+ * to 10 cm. Null when fewer than 10 buildings have such a height.
+ *
+ * This is the height `refineDefaultHeights` gives a generic building of 50 m²
+ * or more. Refining does not touch the reference buildings, so the function
+ * answers the same before and after it — which is how the map finds out what
+ * height the analysis assumed (see `components/map/mapData.ts`).
+ */
+export function neighbourhoodHeightM(collection: BuildingCollection): number | null {
+  const reference: number[] = [];
+  for (const { properties } of collection.features) {
+    if (properties.heightSource !== "default") reference.push(properties.heightM);
+  }
+  if (reference.length < MIN_REFERENCE_BUILDINGS) return null;
+  const [minM, maxM] = NEIGHBOURHOOD_HEIGHT_RANGE_M;
+  return Math.round(Math.min(maxM, Math.max(minM, median(reference))) * 10) / 10;
+}
+
+/**
  * Replace the global 7 m guess for buildings that are tagged only as "a
  * building" (`building=yes` or an unknown value, no height, no levels) with
  * something informed by their surroundings and their size:
@@ -535,15 +555,7 @@ function median(values: number[]): number {
  * house, church, …) keep their table value. Returns a new collection.
  */
 export function refineDefaultHeights(collection: BuildingCollection): BuildingCollection {
-  const reference: number[] = [];
-  for (const { properties } of collection.features) {
-    if (properties.heightSource !== "default") reference.push(properties.heightM);
-  }
-  const [minM, maxM] = NEIGHBOURHOOD_HEIGHT_RANGE_M;
-  const neighbourhoodM =
-    reference.length >= MIN_REFERENCE_BUILDINGS
-      ? Math.round(Math.min(maxM, Math.max(minM, median(reference))) * 10) / 10
-      : null;
+  const neighbourhoodM = neighbourhoodHeightM(collection);
 
   const features = collection.features.map((feature) => {
     const { properties } = feature;

@@ -16,11 +16,26 @@ import { useIsDesktop, usePrefersDark, usePrefersReducedMotion } from "@/hooks/u
 import { settleAfterTwoFrames, type Settle } from "@/hooks/pacer";
 import { usePacedValue } from "@/hooks/usePacedValue";
 import { computeShadowPolygons } from "@/lib/analysis";
+import { BUILDING_DATA_ATTRIBUTION } from "@/lib/buildings/attribution";
+import { fetchAreaFor } from "@/lib/buildings/tiles";
+import { useTileTemplate } from "@/lib/buildings/useTileTemplate";
+import { BUILDING_TILE_LAYER, BUILDING_TILE_ZOOM } from "@/lib/buildings/vectorTiles";
 import type { BuildingCollection, LatLng, Place, SunInstant } from "@/lib/types";
 import { selectLayers, selectObserver, useSettings } from "@/state";
 import type { SunPathModel } from "./compassGeometry";
 import { createContextLossWatch } from "./contextLoss";
-import { EMPTY_BUILDINGS, SHADOW_RADIUS_M, buildingsNear } from "./mapData";
+import {
+  CITY_BUILDING_FILTER,
+  CITY_MIN_ZOOM,
+  CITY_SOURCE_ID,
+  SHADOW_RADIUS_M,
+  buildingsNear,
+  cityColorExpression,
+  cityHeightExpression,
+  highlightFeatures,
+  labelAnchorId,
+  untaggedHeightM,
+} from "./mapData";
 import { useMapUi } from "./mapUi";
 import {
   PLACE_PITCH,
@@ -31,6 +46,7 @@ import {
   wrapLng,
 } from "./pinMove";
 import { SunCompass } from "./SunCompass";
+import { createTileRefreshWatch, type TileRefreshWatch } from "./tileRefresh";
 import { useMapTheme } from "./useMapTheme";
 
 const LIGHT_STYLE = "https://basemaps.cartocdn.com/gl/positron-gl-style/style.json";
@@ -47,18 +63,31 @@ const WORLD_VIEW = { longitude: 10, latitude: 28, zoom: 1.3, pitch: 0, bearing: 
 const GL_SUN_PACING = { minIntervalMs: 33, loadFactor: 4, allowanceMs: 45 };
 /** Give up waiting for the map to finish a redraw after this long, ms. */
 const MAP_SETTLE_TIMEOUT_MS = 800;
-/** Paint changes apply at once; a 300 ms cross-fade would only blur fast scrubbing. */
-const NO_TRANSITION = { duration: 0, delay: 0 };
 /** A WebGL context that stays lost this long — with the page visible — is treated as gone. */
 const CONTEXT_LOSS_GRACE_MS = 4000;
+/** Failed building tiles are asked for again this long after the page woke up (see tileRefresh.ts). */
+const TILE_REFRESH_DELAY_MS = 1000;
+/**
+ * How many tiles that have left the view each source keeps ready. MapLibre's
+ * own limit is five screens' worth (about 30 on a phone); one building tile of
+ * a dense city is some 10 MB of geometry, and phones take the map's WebGL
+ * context away when memory runs short. Six covers panning back and forth and
+ * a zoom step or two; anything older is read again from the browser's cache.
+ */
+const MAX_CACHED_TILES = 6;
 
 const EMPTY_SHADOWS = { type: "FeatureCollection" as const, features: [] };
+const PIN_BUILDING_FILTER = ["==", ["get", "pin"], true];
 const MAP_STYLE = { width: "100%", height: "100%" };
 const COMPASS_MARKER_STYLE = { pointerEvents: "none" as const };
 
 export interface SunMapProps {
   place: Place | null;
-  /** Buildings to draw (may be a neighbouring area's while the real ones load). */
+  /**
+   * The analysed buildings around the pin (may be a neighbouring area's while
+   * the real ones load): shadows and highlights are drawn from them. Every
+   * other building on the map comes from the tiles directly.
+   */
   buildings: BuildingCollection | null;
   /** Today's sun path for the compass. */
   sunPath: SunPathModel | null;
@@ -100,6 +129,7 @@ export default function SunMap({
   const mapRef = useRef<MapRef>(null);
   const pinMarkerRef = useRef<MapLibreMarker>(null);
   const compassMarkerRef = useRef<MapLibreMarker>(null);
+  const tileRefresh = useRef<TileRefreshWatch | null>(null);
 
   const lat = place ? place.lat : null;
   const lng = place ? place.lng : null;
@@ -126,7 +156,7 @@ export default function SunMap({
   // the pin centred in what is left.
   const insets = useMapUi((state) => state.insets);
   const commandSeq = useMapUi((state) => state.commandSeq);
-  /** Id of the basemap's first label layer: our layers go right below it. */
+  /** Id of the first of the basemap's closing label layers: our layers go right below it. */
   const [labelLayerId, setLabelLayerId] = useState<string | undefined>(undefined);
   /** Where the pin is while it is being dragged. */
   const [dragSpot, setDragSpot] = useState<LatLng | null>(null);
@@ -261,7 +291,29 @@ export default function SunMap({
   }, [ready, hasPlace]);
 
   // ── Data for the layers ─────────────────────────────────────────────────
-  const buildingData = buildings ?? EMPTY_BUILDINGS;
+  // Every building in view: MapLibre loads these tiles as the map moves.
+  const tileTemplate = useTileTemplate();
+  const cityTiles = useMemo(() => (tileTemplate ? [tileTemplate] : null), [tileTemplate]);
+  // Where buildings were analysed, untagged ones are drawn as tall as the
+  // analysis took them to be; elsewhere, as the tiles have them.
+  const untaggedM = useMemo(() => untaggedHeightM(buildings), [buildings]);
+  const hasBuildings = buildings !== null;
+  const areaCenter = lat !== null && lng !== null ? fetchAreaFor({ lat, lng }).center : null;
+  const areaLat = areaCenter ? areaCenter.lat : null;
+  const areaLng = areaCenter ? areaCenter.lng : null;
+  const cityHeight = useMemo(
+    () =>
+      cityHeightExpression(
+        hasBuildings && areaLat !== null && areaLng !== null
+          ? { center: { lat: areaLat, lng: areaLng }, untaggedM }
+          : null,
+      ),
+    [hasBuildings, areaLat, areaLng, untaggedM],
+  );
+  const cityColor = useMemo(
+    () => cityColorExpression(theme.building, theme.buildingSoft),
+    [theme.building, theme.buildingSoft],
+  );
 
   const nearby = useMemo(
     () =>
@@ -331,18 +383,21 @@ export default function SunMap({
     });
   }, [showShadows, nearby, lat, lng, sunAzimuth, sunAltitude]);
 
-  const buildingColor = useMemo(
-    () => [
-      "case",
-      ["==", ["get", "id"], shownBlockerId ?? ""],
-      theme.blocked,
-      ["==", ["get", "id"], pinBuildingId ?? ""],
-      theme.pinBuilding,
-      ["==", ["get", "heightSource"], "default"],
-      theme.buildingSoft,
-      theme.building,
-    ],
-    [shownBlockerId, pinBuildingId, theme],
+  // Analysed buildings have just arrived: if the map's own tiles failed
+  // earlier (the same host, the same outage), now is the time to ask again.
+  useEffect(() => {
+    if (buildings) tileRefresh.current?.woke();
+  }, [buildings]);
+
+  // The building hiding the sun and the one under the pin, drawn over the tile layer.
+  const highlightData = useMemo(
+    () =>
+      highlightFeatures(buildings, { blockerId: shownBlockerId, pinId: pinBuildingId }, untaggedM),
+    [buildings, shownBlockerId, pinBuildingId, untaggedM],
+  );
+  const highlightColor = useMemo(
+    () => ["case", ["==", ["get", "blocker"], true], theme.blocked, theme.pinBuilding],
+    [theme.blocked, theme.pinBuilding],
   );
   const extruded = layers.buildings3d;
 
@@ -393,7 +448,11 @@ export default function SunMap({
   const onError = (event: ErrorEvent) => {
     // No map instance: MapLibre could not start at all (typically no WebGL).
     // Anything later (a tile that failed to load, …) is not worth a crash.
-    if (!(event as { target?: unknown }).target) onFatalError(event.error);
+    const { target, sourceId } = event as { target?: unknown; sourceId?: string };
+    if (!target) onFatalError(event.error);
+    // Missing building tiles are not worth a word either: they get one more
+    // try when the page is next looked at (see tileRefresh.ts).
+    else if (sourceId === CITY_SOURCE_ID) tileRefresh.current?.failed();
   };
 
   const pin = dragSpot ?? (hasPlace ? { lat, lng } : null);
@@ -409,6 +468,7 @@ export default function SunMap({
         style={MAP_STYLE}
         attributionControl={false}
         maxPitch={70}
+        maxTileCacheSize={MAX_CACHED_TILES}
         onClick={onClick}
         onDblClick={clickGate.cancel}
         onPitchEnd={(event) => useMapUi.getState().report({ tilted: event.viewState.pitch > 5 })}
@@ -417,7 +477,11 @@ export default function SunMap({
         }
         onStyleData={(event) => {
           const map = event.target;
-          setLabelLayerId(map.getLayersOrder().find((id) => map.getLayer(id)?.type === "symbol"));
+          setLabelLayerId(
+            labelAnchorId(
+              map.getLayersOrder().map((id) => ({ id, type: map.getLayer(id)?.type ?? "" })),
+            ),
+          );
         }}
         onMoveEnd={() => {
           // The journey is over (arrived, or the user took the map elsewhere).
@@ -438,13 +502,31 @@ export default function SunMap({
             isVisible: () => document.visibilityState === "visible",
             onGone: () => onFatalError(new Error("WebGL context lost")),
           });
-          const onVisibility = () => watch.visibilityChanged();
+          // Building tiles that failed while the page was away, or offline,
+          // are asked for once more on return.
+          const tiles = createTileRefreshWatch({
+            delayMs: TILE_REFRESH_DELAY_MS,
+            isVisible: () => document.visibilityState === "visible",
+            isOnline: () => navigator.onLine !== false,
+            refresh: () => {
+              if (map.getSource(CITY_SOURCE_ID)) map.refreshTiles(CITY_SOURCE_ID);
+            },
+          });
+          tileRefresh.current = tiles;
+          const onVisibility = () => {
+            watch.visibilityChanged();
+            if (document.visibilityState === "visible") tiles.woke();
+          };
+          const onOnline = () => tiles.woke();
           document.addEventListener("visibilitychange", onVisibility);
+          window.addEventListener("online", onOnline);
           map.on("webglcontextlost", () => watch.lost());
           map.on("webglcontextrestored", () => watch.restored());
           map.on("remove", () => {
             watch.dispose();
+            tiles.dispose();
             document.removeEventListener("visibilitychange", onVisibility);
+            window.removeEventListener("online", onOnline);
           });
         }}
         onError={onError}
@@ -453,13 +535,19 @@ export default function SunMap({
         <AttributionControl
           position={isDesktop ? "top-right" : "bottom-left"}
           compact={!isDesktop}
+          customAttribution={BUILDING_DATA_ATTRIBUTION.html}
         />
 
         {/*
-          Both sources are cut into few, large tiles (zoom 14 / 15: 25 / 12 cm
-          precision, plenty at street level) rather than the default zoom-18
-          tiles. An update then re-tiles and redraws once or twice, not once
-          per visible tile.
+          Layers stack in the order they are created (each goes right below
+          the basemap's labels): shadows, then every building in view, then
+          the highlights.
+        */}
+
+        {/*
+          Cut into few, large tiles (zoom 14: 25 cm precision, plenty at
+          street level) rather than the default zoom-18 tiles. An update then
+          re-tiles and redraws once or twice, not once per visible tile.
         */}
         <Source id="sun-shadows" type="geojson" data={shadowData} maxzoom={14} tolerance={0}>
           {/*
@@ -481,33 +569,81 @@ export default function SunMap({
           />
         </Source>
 
-        <Source id="sun-buildings" type="geojson" data={buildingData} maxzoom={15} tolerance={0}>
+        {/*
+          Every building in view, straight from the tiles the sun computation
+          reads (zoom 14 is the only level that has them all, and MapLibre
+          stretches it for closer views). Only `tiles` may ever change here:
+          it is the one thing react-map-gl can update on a vector source.
+        */}
+        {cityTiles && (
+          <Source
+            id={CITY_SOURCE_ID}
+            type="vector"
+            tiles={cityTiles}
+            minzoom={BUILDING_TILE_ZOOM}
+            maxzoom={BUILDING_TILE_ZOOM}
+          >
+            <Layer
+              id="sun-city-flat"
+              type="fill"
+              source-layer={BUILDING_TILE_LAYER}
+              minzoom={CITY_MIN_ZOOM}
+              beforeId={labelLayerId}
+              filter={CITY_BUILDING_FILTER}
+              layout={{ visibility: flatVisibility }}
+              paint={{
+                "fill-color": cityColor,
+                "fill-opacity": 0.75,
+                "fill-outline-color": theme.line,
+              }}
+            />
+            <Layer
+              id="sun-city-3d"
+              type="fill-extrusion"
+              source-layer={BUILDING_TILE_LAYER}
+              minzoom={CITY_MIN_ZOOM}
+              beforeId={labelLayerId}
+              filter={CITY_BUILDING_FILTER}
+              layout={{ visibility: extrudedVisibility }}
+              paint={{
+                "fill-extrusion-color": cityColor,
+                "fill-extrusion-height": cityHeight,
+                "fill-extrusion-base": 0,
+                "fill-extrusion-opacity": 0.8,
+              }}
+            />
+          </Source>
+        )}
+
+        {/*
+          The one or two buildings the analysis singles out. A new `key` once
+          the city layers exist creates these anew, and so above them (the
+          tile address arrives a moment after the map). Cut finely (zoom 17:
+          3 cm), or the quarter metre they stand proud of the building below
+          would be rounded away.
+        */}
+        <Source
+          key={cityTiles ? "over-city" : "alone"}
+          id="sun-highlights"
+          type="geojson"
+          data={highlightData}
+          maxzoom={17}
+          tolerance={0}
+        >
           <Layer
-            id="sun-buildings-flat"
+            id="sun-highlight-flat"
             type="fill"
             beforeId={labelLayerId}
             layout={{ visibility: flatVisibility }}
-            paint={{
-              "fill-color": buildingColor as never,
-              "fill-color-transition": NO_TRANSITION,
-              "fill-opacity": 0.75,
-            }}
+            paint={{ "fill-color": highlightColor as never, "fill-opacity": 0.9 }}
           />
           <Layer
-            id="sun-buildings-outline"
-            type="line"
-            beforeId={labelLayerId}
-            layout={{ visibility: flatVisibility }}
-            paint={{ "line-color": theme.line, "line-width": 1 }}
-          />
-          <Layer
-            id="sun-buildings-3d"
+            id="sun-highlight-3d"
             type="fill-extrusion"
             beforeId={labelLayerId}
             layout={{ visibility: extrudedVisibility }}
             paint={{
-              "fill-extrusion-color": buildingColor as never,
-              "fill-extrusion-color-transition": NO_TRANSITION,
+              "fill-extrusion-color": highlightColor as never,
               "fill-extrusion-height": ["get", "heightM"],
               "fill-extrusion-base": 0,
               "fill-extrusion-opacity": 0.8,
@@ -517,7 +653,7 @@ export default function SunMap({
             id="sun-pin-building"
             type="line"
             beforeId={labelLayerId}
-            filter={["==", ["get", "id"], pinBuildingId ?? ""]}
+            filter={PIN_BUILDING_FILTER as never}
             paint={{ "line-color": theme.accent, "line-width": 2.5 }}
           />
         </Source>
