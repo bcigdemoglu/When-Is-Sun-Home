@@ -273,7 +273,7 @@ function MonthBars({
               type="button"
               className="group flex min-w-0 flex-1 cursor-pointer flex-col items-center rounded-md px-px focus-visible:outline-2 focus-visible:outline-accent"
               aria-pressed={selected}
-              aria-label={`${month.longLabel}: ${formatHours(month.avgSunHours)} hours of direct sun per day and ${formatHours(month.avgShadedHours)} hours of shade, out of ${formatHours(month.avgDaylightHours)} hours of daylight`}
+              aria-label={`${month.longLabel}: ${formatHours(month.avgSunHours)} hours of direct sun per day, out of ${formatHours(month.avgDaylightHours)} hours of daylight; ${formatHours(month.avgShadedHours)} hours in shade`}
               onClick={() =>
                 onSelectDateTime(dateInMonth(date, year.year, month.month), undefined, "months")
               }
