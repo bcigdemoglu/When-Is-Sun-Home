@@ -154,6 +154,12 @@ describe("year summaries", () => {
     expect(details[0].avgSunHours).toBeCloseTo(9, 5);
     expect(details[0].avgDaylightHours).toBeCloseTo(12, 5);
     expect(details[0].sunFraction).toBeCloseTo(0.75, 5);
+    // The wall takes 15:00–18:00: three hours of shade a day, nothing out of view (a yard).
+    expect(details[0].avgShadedHours).toBeCloseTo(3, 5);
+    expect(details[0].avgOutOfViewHours).toBe(0);
+    expect(
+      details[0].avgSunHours + details[0].avgShadedHours + details[0].avgOutOfViewHours,
+    ).toBeCloseTo(details[0].avgDaylightHours, 5);
     // June: 14 h of daylight; the wall sits at azimuth 225° = 3/4 of the way.
     expect(details[5].firstMinute).toBe(4 * 60);
     expect(details[5].avgDaylightHours).toBeCloseTo(14, 5);
