@@ -1,0 +1,83 @@
+{
+  "displayFieldName": "Owner_name",
+  "fieldAliases": {
+    "COMMON": "Common Name",
+    "SCIENTIFIC": "Scientific Name",
+    "HEIGHT": "Height",
+    "SPREAD": "Spread",
+    "DIAMETER": "Diameter",
+    "SITE_ADDRESS": "Site Address",
+    "YEAR_Designated": "Year Designated"
+  },
+  "geometryType": "esriGeometryPoint",
+  "spatialReference": { "wkid": 4326, "latestWkid": 4326 },
+  "fields": [
+    { "name": "COMMON", "type": "esriFieldTypeString", "alias": "Common Name", "length": 30 },
+    {
+      "name": "SCIENTIFIC",
+      "type": "esriFieldTypeString",
+      "alias": "Scientific Name",
+      "length": 45
+    },
+    { "name": "HEIGHT", "type": "esriFieldTypeSmallInteger", "alias": "Height" },
+    { "name": "SPREAD", "type": "esriFieldTypeSmallInteger", "alias": "Spread" },
+    { "name": "DIAMETER", "type": "esriFieldTypeInteger", "alias": "Diameter" },
+    {
+      "name": "SITE_ADDRESS",
+      "type": "esriFieldTypeString",
+      "alias": "Site Address",
+      "length": 31
+    },
+    { "name": "YEAR_Designated", "type": "esriFieldTypeSmallInteger", "alias": "Year Designated" }
+  ],
+  "features": [
+    {
+      "attributes": {
+        "COMMON": "European white elm",
+        "SCIENTIFIC": "Ulmus glaevis",
+        "HEIGHT": 89,
+        "SPREAD": 98,
+        "DIAMETER": 61,
+        "SITE_ADDRESS": "3331 NE HANCOCK ST",
+        "YEAR_Designated": 2002
+      },
+      "geometry": { "x": -122.62998939557546, "y": 45.53649537259987 }
+    },
+    {
+      "attributes": {
+        "COMMON": "European beech",
+        "SCIENTIFIC": "Fagus sylvatica",
+        "HEIGHT": 71,
+        "SPREAD": 86,
+        "DIAMETER": 84,
+        "SITE_ADDRESS": "3310 NE 36th Ave",
+        "YEAR_Designated": 2020
+      },
+      "geometry": { "x": -122.62644406494928, "y": 45.54720465010867 }
+    },
+    {
+      "attributes": {
+        "COMMON": "American sycamore",
+        "SCIENTIFIC": "Platanus occidentalis",
+        "HEIGHT": 73,
+        "SPREAD": 85,
+        "DIAMETER": 49,
+        "SITE_ADDRESS": "2524 NE 25TH AVE",
+        "YEAR_Designated": 1999
+      },
+      "geometry": { "x": -122.64005438861501, "y": 45.54092081574251 }
+    },
+    {
+      "attributes": {
+        "COMMON": "Port Orford cedar",
+        "SCIENTIFIC": "Chamaecyparis lawsoniana",
+        "HEIGHT": 70,
+        "SPREAD": 24,
+        "DIAMETER": 36,
+        "SITE_ADDRESS": "5210 NE 52nd Ave",
+        "YEAR_Designated": 2022
+      },
+      "geometry": { "x": -122.60985091682369, "y": 45.538835286581175 }
+    }
+  ]
+}

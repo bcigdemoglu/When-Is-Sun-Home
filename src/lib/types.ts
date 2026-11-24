@@ -344,3 +344,58 @@ export interface PlaceSummary {
   bestMonth: number;
   worstMonth: number;
 }
+
+// ─── Trees (information only) ──────────────────────────────────────────────
+
+/**
+ * One street tree of the City of Portland's inventory (Parks & Recreation
+ * Urban Forestry, 2022–2024), as the Trees section of the report shows it.
+ * Trees are NEVER part of a sun-hours number: this is information only.
+ * Lengths here are as the city records them: inches and feet.
+ */
+export interface StreetTree extends LatLng {
+  id: number;
+  /** "2124 NE 36TH AVE" — the address the tree is recorded at (the lot it fronts). */
+  address: string;
+  /** "Acer platanoides" (empty when the city does not know). */
+  scientific: string;
+  /** "Norway maple" (or "Unknown"). */
+  common: string;
+  /** Trunk diameter at breast height, inches, or null. */
+  diameterIn: number | null;
+  /** "Good", "Fair", "Poor", "Dead", "Excellent", or "" when not recorded. */
+  condition: string;
+  /** "Small" | "Medium" | "Large" at maturity, or "". */
+  matureSize: string;
+  /** "Broadleaf deciduous", "Coniferous evergreen", … or "". */
+  functionalType: string;
+  /** "None", "High voltage", "Other", or "". */
+  wires: string;
+  /** "Strip", "Cutout", "Median", … or "". */
+  siteType: string;
+  /** Width of the planting site, feet, or null. */
+  siteWidthFt: number | null;
+  /** "GRANT PARK" (as recorded), or "". */
+  neighborhood: string;
+  /** When the tree was inventoried: "YYYY-MM-DD" (a calendar date), or null. */
+  inventoried: string | null;
+}
+
+/**
+ * Street trees that share species, size, type and condition, with their
+ * count — what a statistics query returns for an area, and what a list of
+ * trees boils down to — so one summary serves the block and the area.
+ */
+export interface StreetTreeGroup {
+  /** The inventory's species text: "Acer platanoides - Norway maple". */
+  species: string;
+  matureSize: string;
+  functionalType: string;
+  condition: string;
+  count: number;
+  /** Trees with a trunk of 0–6, 6–12, 12–24 and 24+ inches (4 entries). */
+  diameterClasses: [number, number, number, number];
+  /** Sum and largest of the trunk diameters, inches. */
+  diameterSumIn: number;
+  diameterMaxIn: number;
+}

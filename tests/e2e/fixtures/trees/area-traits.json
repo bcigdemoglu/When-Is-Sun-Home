@@ -1,0 +1,190 @@
+{
+  "displayFieldName": "",
+  "fieldAliases": {
+    "MATURE_SIZE": "MATURE SIZE",
+    "FUNCTIONAL_TYPE": "FUNCTIONAL TYPE",
+    "Condition": "CONDITION",
+    "n": "n"
+  },
+  "fields": [
+    { "name": "MATURE_SIZE", "type": "esriFieldTypeString", "alias": "MATURE SIZE", "length": 255 },
+    {
+      "name": "FUNCTIONAL_TYPE",
+      "type": "esriFieldTypeString",
+      "alias": "FUNCTIONAL TYPE",
+      "length": 25
+    },
+    { "name": "Condition", "type": "esriFieldTypeString", "alias": "CONDITION", "length": 25 },
+    { "name": "n", "type": "esriFieldTypeInteger", "alias": "n" }
+  ],
+  "features": [
+    {
+      "attributes": {
+        "MATURE_SIZE": "Medium",
+        "FUNCTIONAL_TYPE": "Broadleaf deciduous",
+        "Condition": "Good",
+        "n": 257
+      }
+    },
+    {
+      "attributes": {
+        "MATURE_SIZE": "Small",
+        "FUNCTIONAL_TYPE": "Broadleaf deciduous",
+        "Condition": "Good",
+        "n": 257
+      }
+    },
+    {
+      "attributes": {
+        "MATURE_SIZE": "Large",
+        "FUNCTIONAL_TYPE": "Broadleaf deciduous",
+        "Condition": "Good",
+        "n": 96
+      }
+    },
+    {
+      "attributes": {
+        "MATURE_SIZE": "Small",
+        "FUNCTIONAL_TYPE": "Broadleaf deciduous",
+        "Condition": "Fair",
+        "n": 82
+      }
+    },
+    {
+      "attributes": {
+        "MATURE_SIZE": "Large",
+        "FUNCTIONAL_TYPE": "Broadleaf deciduous",
+        "Condition": "Fair",
+        "n": 38
+      }
+    },
+    {
+      "attributes": {
+        "MATURE_SIZE": "Medium",
+        "FUNCTIONAL_TYPE": "Broadleaf deciduous",
+        "Condition": "Poor",
+        "n": 29
+      }
+    },
+    {
+      "attributes": {
+        "MATURE_SIZE": "Medium",
+        "FUNCTIONAL_TYPE": "Broadleaf deciduous",
+        "Condition": "Fair",
+        "n": 141
+      }
+    },
+    {
+      "attributes": {
+        "MATURE_SIZE": "Small",
+        "FUNCTIONAL_TYPE": "Broadleaf deciduous",
+        "Condition": "Poor",
+        "n": 16
+      }
+    },
+    {
+      "attributes": {
+        "MATURE_SIZE": "Large",
+        "FUNCTIONAL_TYPE": "Coniferous evergreen",
+        "Condition": "Excellent",
+        "n": 1
+      }
+    },
+    {
+      "attributes": {
+        "MATURE_SIZE": "Large",
+        "FUNCTIONAL_TYPE": "Broadleaf deciduous",
+        "Condition": "Poor",
+        "n": 7
+      }
+    },
+    {
+      "attributes": {
+        "MATURE_SIZE": "Medium",
+        "FUNCTIONAL_TYPE": "Broadleaf deciduous",
+        "Condition": "Excellent",
+        "n": 3
+      }
+    },
+    {
+      "attributes": {
+        "MATURE_SIZE": "Medium",
+        "FUNCTIONAL_TYPE": "Broadleaf evergreen",
+        "Condition": "Good",
+        "n": 6
+      }
+    },
+    {
+      "attributes": {
+        "MATURE_SIZE": "Large",
+        "FUNCTIONAL_TYPE": "Coniferous evergreen",
+        "Condition": "Good",
+        "n": 16
+      }
+    },
+    {
+      "attributes": {
+        "MATURE_SIZE": "Large",
+        "FUNCTIONAL_TYPE": "Coniferous evergreen",
+        "Condition": "Fair",
+        "n": 3
+      }
+    },
+    {
+      "attributes": {
+        "MATURE_SIZE": "Small",
+        "FUNCTIONAL_TYPE": "Broadleaf deciduous",
+        "Condition": "Excellent",
+        "n": 2
+      }
+    },
+    {
+      "attributes": {
+        "MATURE_SIZE": "Large",
+        "FUNCTIONAL_TYPE": "Broadleaf deciduous",
+        "Condition": "Excellent",
+        "n": 2
+      }
+    },
+    {
+      "attributes": {
+        "MATURE_SIZE": "Unknown",
+        "FUNCTIONAL_TYPE": null,
+        "Condition": "Dead",
+        "n": 6
+      }
+    },
+    {
+      "attributes": {
+        "MATURE_SIZE": "Large",
+        "FUNCTIONAL_TYPE": "Broadleaf evergreen",
+        "Condition": "Good",
+        "n": 2
+      }
+    },
+    {
+      "attributes": {
+        "MATURE_SIZE": "Medium",
+        "FUNCTIONAL_TYPE": "Broadleaf evergreen",
+        "Condition": "Poor",
+        "n": 1
+      }
+    },
+    {
+      "attributes": {
+        "MATURE_SIZE": "Large",
+        "FUNCTIONAL_TYPE": "Coniferous evergreen",
+        "Condition": "Poor",
+        "n": 1
+      }
+    },
+    {
+      "attributes": {
+        "MATURE_SIZE": "Large",
+        "FUNCTIONAL_TYPE": "Broadleaf evergreen",
+        "Condition": "Fair",
+        "n": 1
+      }
+    }
+  ]
+}

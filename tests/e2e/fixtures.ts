@@ -4,7 +4,8 @@
  *
  * What a test gets without asking:
  *
- *  - NO third-party network. Building tiles, terrain, aerial photos, tree heights, both
+ *  - NO third-party network. Building tiles, terrain, aerial photos, tree heights, the
+ *    city's tree and lot records (the report's Trees section), both
  *    geocoders and the basemap are all answered from fixtures (see `mocks`); any other request
  *    that leaves localhost is aborted AND fails the test, so nothing can pass
  *    by quietly reaching a real service.
@@ -22,11 +23,14 @@ import path from "node:path";
 import { test as base, expect, type BrowserContext, type Page, type Route } from "@playwright/test";
 import {
   BUILDING_TILE_URL,
+  CANOPY_WINDOW_URL,
+  CITY_TREE_URLS,
   TERRAIN_TILE_URL,
   TILEJSON_URL,
   mockBuildingData,
   mockFlatTerrain,
   mockImagery,
+  mockTreeRecords,
   mockTrees,
 } from "./helpers/mockMapData";
 import { AppPage } from "./pages/app";
@@ -355,6 +359,36 @@ export class TerrainMock {
   }
 }
 
+/**
+ * Switches for the Trees section's services (the city's records and the
+ * report's canopy windows). By default they answer from the fixtures (see
+ * `mockTreeRecords`).
+ */
+export class TreeRecordsMock {
+  private failing = false;
+
+  constructor(
+    private readonly page: Page,
+    private readonly guard: ErrorGuard,
+  ) {}
+
+  /** Installed once, in front of the fixtures. */
+  async install(): Promise<void> {
+    const gate = (route: Route) => (this.failing ? route.abort("failed") : route.fallback());
+    for (const pattern of [...CITY_TREE_URLS, CANOPY_WINDOW_URL])
+      await this.page.route(pattern, gate);
+  }
+
+  /** Every request of the Trees section fails (the city's server and the canopy heights). */
+  fail(): void {
+    this.failing = true;
+    this.guard.allow(failedRequestTo(/www\.portlandmaps\.com/, /gis\.dogami\.oregon\.gov/));
+  }
+  recover(): void {
+    this.failing = false;
+  }
+}
+
 /** The basemap's hosts. Nothing the app computes comes from there: it is decoration. */
 const BASEMAP_URL = /^https:\/\/([a-z0-9-]+\.)*basemaps\.cartocdn\.com\//;
 const BASEMAP_STYLE_URL = /^https:\/\/basemaps\.cartocdn\.com\/gl\/[^/]+\/style\.json/;
@@ -381,6 +415,7 @@ export interface Mocks {
   nominatim: NominatimMock;
   buildings: BuildingDataMock;
   terrain: TerrainMock;
+  trees: TreeRecordsMock;
 }
 
 interface InstallOptions {
@@ -424,6 +459,9 @@ async function prepare(page: Page, options: InstallOptions): Promise<Mocks> {
   await mockFlatTerrain(page);
   await mockImagery(page);
   await mockTrees(page);
+  await mockTreeRecords(page);
+  const trees = new TreeRecordsMock(page, guard);
+  await trees.install();
   const terrain = new TerrainMock(page, guard);
   await terrain.install();
   await mockBuildingData(page);
@@ -437,7 +475,7 @@ async function prepare(page: Page, options: InstallOptions): Promise<Mocks> {
   guard.watch(page);
   await hideDevIndicator(page);
   if (options.now !== null) await page.clock.install({ time: new Date(options.now) });
-  return { photon, nominatim, buildings, terrain };
+  return { photon, nominatim, buildings, terrain, trees };
 }
 
 /** A second person: a fresh browser context (no storage, no cache) with the same mocks. */

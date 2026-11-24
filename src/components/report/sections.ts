@@ -12,6 +12,7 @@ export const REPORT_SECTION_IDS = {
   year: "report-year",
   sunHours: "report-sun-hours",
   skyline: "report-skyline",
+  trees: "report-trees",
   about: "report-about",
 } as const;
 
@@ -29,5 +30,7 @@ export const REPORT_SECTIONS: readonly ReportSection[] = [
   { id: REPORT_SECTION_IDS.today, label: "Today" },
   { id: REPORT_SECTION_IDS.year, label: "Year" },
   { id: REPORT_SECTION_IDS.skyline, label: "Skyline" },
+  // Information only: trees are never part of the sun hours.
+  { id: REPORT_SECTION_IDS.trees, label: "Trees" },
   { id: REPORT_SECTION_IDS.about, label: "About" },
 ];

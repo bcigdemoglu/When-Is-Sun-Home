@@ -11,6 +11,7 @@
  */
 import fs from "node:fs";
 import path from "node:path";
+import zlib from "node:zlib";
 import type { Page, Route } from "@playwright/test";
 
 const OPENFREEMAP_FIXTURES = path.join(__dirname, "..", "..", "fixtures", "openfreemap");
@@ -217,6 +218,187 @@ export function watchListingSites(page: Page): string[] {
       return;
     }
     if (LISTING_SITE_HOST.test(host)) requests.push(request.url());
+  });
+  return requests;
+}
+
+// ─── The report's Trees section ────────────────────────────────────────────
+
+const TREE_FIXTURES = path.join(__dirname, "..", "fixtures", "trees");
+const treeFixture = (name: string) => path.join(TREE_FIXTURES, name);
+
+/** The City of Portland's host: street trees, heritage trees, neighborhoods and lot lines. */
+export const CITY_HOST = "www.portlandmaps.com";
+/** Street trees (Parks & Recreation's inventory): `…/COP_OpenData_Environment/MapServer/1415/query?…`. */
+export const STREET_TREES_URL =
+  /^https:\/\/www\.portlandmaps\.com\/od\/rest\/services\/COP_OpenData_Environment\/MapServer\/1415\/query\?/;
+/** Heritage trees: `…/COP_OpenData_Environment/MapServer/26/query?…`. */
+export const HERITAGE_TREES_URL =
+  /^https:\/\/www\.portlandmaps\.com\/od\/rest\/services\/COP_OpenData_Environment\/MapServer\/26\/query\?/;
+/** Neighborhood boundaries: `…/COP_OpenData_Boundary/MapServer/3/query?…`. */
+export const NEIGHBORHOODS_URL =
+  /^https:\/\/www\.portlandmaps\.com\/od\/rest\/services\/COP_OpenData_Boundary\/MapServer\/3\/query\?/;
+/** Lot lines (address and area only): `…/Public/Taxlots/MapServer/0/query?…`. */
+export const TAXLOTS_URL =
+  /^https:\/\/www\.portlandmaps\.com\/arcgis\/rest\/services\/Public\/Taxlots\/MapServer\/0\/query\?/;
+/** Every city address the Trees section asks. */
+export const CITY_TREE_URLS = [
+  STREET_TREES_URL,
+  HERITAGE_TREES_URL,
+  NEIGHBORHOODS_URL,
+  TAXLOTS_URL,
+];
+/** A canopy window of the report (any square size): `…/CANOPY_HEIGHT_MODEL_MOSAIC/ImageServer/exportImage?…&size=N,N…`. */
+export const CANOPY_WINDOW_URL =
+  /^https:\/\/gis\.dogami\.oregon\.gov\/arcgis\/rest\/services\/lidar\/CANOPY_HEIGHT_MODEL_MOSAIC\/ImageServer\/exportImage\?bbox=[-\d.,]+&bboxSR=3857&imageSR=3857&size=(\d+),\1&format=png32&pixelType=U8&interpolation=RSP_NearestNeighbor&f=image$/;
+/** The fixtures' house: 2124 NE 36th Ave, Portland (its lot, its block, its street trees). */
+export const TREES_HOUSE = { lat: 45.5382208, lng: -122.6257477 } as const;
+/** The size of the canopy window around a house (`nearWindow`): served from the real survey. */
+const NEAR_WINDOW_SIZE = 384;
+
+/** A PNG of RGBA pixels (no filtering): enough for the app's decoder. */
+function encodeRgbaPng(size: number, pixel: (x: number, y: number) => [number, number]): Buffer {
+  const raw = Buffer.alloc((size * 4 + 1) * size);
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      const [feet, alpha] = pixel(x, y);
+      const at = y * (size * 4 + 1) + 1 + x * 4;
+      raw[at] = feet;
+      raw[at + 3] = alpha;
+    }
+  }
+  const chunk = (type: string, body: Buffer) => {
+    const head = Buffer.alloc(8);
+    head.writeUInt32BE(body.length, 0);
+    head.write(type, 4, "ascii");
+    const tail = Buffer.alloc(4);
+    tail.writeUInt32BE(zlib.crc32(Buffer.concat([head.subarray(4), body])) >>> 0, 0);
+    return Buffer.concat([head, body, tail]);
+  };
+  const header = Buffer.alloc(13);
+  header.writeUInt32BE(size, 0);
+  header.writeUInt32BE(size, 4);
+  header[8] = 8;
+  header[9] = 6;
+  return Buffer.concat([
+    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+    chunk("IHDR", header),
+    chunk("IDAT", zlib.deflateSync(raw)),
+    chunk("IEND", Buffer.alloc(0)),
+  ]);
+}
+
+/**
+ * Heights for any other window: a quarter of it under square crowns 8 px
+ * across, a third of them 30 ft, a third 60 ft, a third 90 ft — so the
+ * area's canopy cover is 25% where no building stands, split evenly by height.
+ */
+function patternHeights(size: number): Buffer {
+  return encodeRgbaPng(size, (x, y) => {
+    const cx = Math.floor(x / 8);
+    const cy = Math.floor(y / 8);
+    if (cx % 2 !== 0 || cy % 2 !== 0) return [0, 255];
+    return [[30, 60, 90][(cx / 2 + cy / 2) % 3], 255];
+  });
+}
+
+const json = (route: Route, file: string) =>
+  route.fulfill({ path: treeFixture(file), contentType: "application/json", headers: CORS });
+const noFeatures = (route: Route) =>
+  route.fulfill({
+    contentType: "application/json",
+    headers: CORS,
+    body: JSON.stringify({ features: [] }),
+  });
+
+/** Is the query's point (`geometry=lng,lat`) at the fixtures' house? */
+function atHouse(url: URL): boolean {
+  const [lng, lat] = (url.searchParams.get("geometry") ?? "").split(",").map(Number);
+  return Math.abs(lat - TREES_HOUSE.lat) < 3e-4 && Math.abs(lng - TREES_HOUSE.lng) < 4e-4;
+}
+
+/**
+ * The Trees section's services (see `src/lib/trees/portland.ts` and
+ * `src/components/map/canopyWindow.ts`) answer from `tests/e2e/fixtures/trees`,
+ * real answers taken at 2124 NE 36th Ave, Portland:
+ *
+ *  - the lot under the pin: that house's (address and area only), anywhere
+ *    within a few tens of metres of it; no lot elsewhere;
+ *  - its block (2100–2199 NE 36th Ave): two Norway maples recorded at the
+ *    address, under wires; any other block has none;
+ *  - the area: 967 street trees; the nearest heritage trees; Grant Park;
+ *  - canopy heights: the real 2014 survey around the house for the house's
+ *    window, and a regular pattern for every other window.
+ *
+ * The building tiles of the house are served by `mockTreesHouseBuildings`,
+ * for the tests that want them.
+ */
+export async function mockTreeRecords(page: Page): Promise<void> {
+  await page.route(STREET_TREES_URL, (route) => {
+    const url = new URL(route.request().url());
+    const params = url.searchParams;
+    const groups = params.get("groupByFieldsForStatistics");
+    if (groups === "SPECIES") return json(route, "area-species.json");
+    if (groups) return json(route, "area-traits.json");
+    const where = params.get("where");
+    if (where)
+      return where.includes("21__ NE 36TH AVE")
+        ? json(route, "block-trees.json")
+        : noFeatures(route);
+    return atHouse(url) ? json(route, "nearby-trees.json") : noFeatures(route);
+  });
+  await page.route(HERITAGE_TREES_URL, (route) => json(route, "heritage.json"));
+  await page.route(NEIGHBORHOODS_URL, (route) => json(route, "neighborhood.json"));
+  await page.route(TAXLOTS_URL, (route) => {
+    const url = new URL(route.request().url());
+    const where = url.searchParams.get("where");
+    if (where)
+      return where.includes("21__ NE 36TH AVE")
+        ? json(route, "block-lots.json")
+        : noFeatures(route);
+    return atHouse(url) ? json(route, "taxlot.json") : noFeatures(route);
+  });
+  await page.route(CANOPY_WINDOW_URL, (route) => {
+    const size = Number(CANOPY_WINDOW_URL.exec(route.request().url())?.[1]);
+    if (size === NEAR_WINDOW_SIZE) {
+      return route.fulfill({
+        path: treeFixture("heights-near.png"),
+        contentType: "image/png",
+        headers: CORS,
+      });
+    }
+    return route.fulfill({ body: patternHeights(size), contentType: "image/png", headers: CORS });
+  });
+}
+
+/**
+ * The two building tiles around the fixtures' house, cut down to the houses
+ * near it (real OpenFreeMap footprints): the backyard can then be told from
+ * the house. Elsewhere in Portland the tests have no buildings.
+ */
+export async function mockTreesHouseBuildings(page: Page): Promise<void> {
+  await page.route(BUILDING_TILE_URL, (route) => {
+    const match = BUILDING_TILE_URL.exec(route.request().url());
+    const file = match && treeFixture(`buildings-14-${match[1]}-${match[2]}.pbf`);
+    if (file && fs.existsSync(file)) {
+      return route.fulfill({
+        path: file,
+        contentType: "application/vnd.mapbox-vector-tile",
+        headers: CORS,
+      });
+    }
+    return route.fallback();
+  });
+}
+
+/** Record every request the Trees section could send: the city's records and the canopy heights. */
+export function watchTreeSectionRequests(page: Page): string[] {
+  const requests: string[] = [];
+  page.on("request", (request) => {
+    const url = request.url();
+    if (CITY_TREE_URLS.some((pattern) => pattern.test(url)) || CANOPY_WINDOW_URL.test(url)) {
+      requests.push(url);
+    }
   });
   return requests;
 }
