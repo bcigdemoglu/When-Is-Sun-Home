@@ -200,6 +200,13 @@ describe("buildTreeReport, at 2124 NE 36th Ave", () => {
     expect(report.block).toEqual(failed);
   });
 
+  it("waits for the street trees before measuring the backyard", () => {
+    // The lot and the heights are in, the street trees are not: which side of
+    // the house faces the street is not known yet, so no "not available".
+    const report = buildTreeReport(inputs({ blockTrees: loading }));
+    expect(report.backyard).toEqual(loading);
+  });
+
   it("waits while the lot is being looked up", () => {
     const report = buildTreeReport(inputs({ lot: loading }));
     expect(report.front).toEqual(loading);

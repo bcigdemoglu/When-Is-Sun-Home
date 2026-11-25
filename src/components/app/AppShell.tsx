@@ -20,7 +20,7 @@ import { useMapUi } from "@/components/map/mapUi";
 import { SaveButton } from "@/components/places/SaveButton";
 import { SavedPlaces } from "@/components/places/SavedPlaces";
 import { SunSummaryHeader } from "@/components/report/SummaryHeader";
-import { SunReport } from "@/components/report/SunReport";
+import { SunReport, type ReportSection } from "@/components/report/SunReport";
 import type { BuildingDataStatus } from "@/components/report/types";
 import { SearchExperience } from "@/components/search/SearchExperience";
 import type { PlaceSelection } from "@/components/search/types";
@@ -65,6 +65,7 @@ import { REPORT_TABS_HEIGHT, ReportTabs } from "./ReportTabs";
 import type { Detent } from "./sheetGeometry";
 import { StartExtras, StartIntro } from "./StartPanel";
 import { toastPlacement, type SheetRest } from "./toastPlacement";
+import { useSectionLink } from "./useSectionLink";
 
 /**
  * The report (a tall column of charts) is the most expensive thing to redraw.
@@ -272,6 +273,22 @@ function Workspace() {
     sheetRef.current?.snapTo("peek");
   }, [lat, lng]);
 
+  // A section link (`/?…#trees`): the report opens scrolled to that section —
+  // on phones with the sheet at full. Runs once, after the snap to peek above.
+  const isDesktopRef = useRef(isDesktop);
+  useEffect(() => {
+    isDesktopRef.current = isDesktop;
+  }, [isDesktop]);
+  const canJumpToSection = useCallback(
+    () => isDesktopRef.current || sheetRef.current?.isMeasured() === true,
+    [],
+  );
+  useSectionLink({
+    hasPlace: place !== null,
+    canJump: canJumpToSection,
+    settled: analysis ? analysis.isSettled : false,
+  });
+
   const focusSearch = () => openSearch(searchRef.current);
   const onSelect = (selection: PlaceSelection) => {
     openSelection(selection);
@@ -436,6 +453,20 @@ function Workspace() {
       buildingsStatus={analysis.buildings.status}
     />
   );
+  // Each section's own share button: a link that opens the report at it.
+  const renderSectionShare = useCallback(
+    (section: ReportSection) =>
+      place && (
+        <ShareButton
+          place={place}
+          label={placeName}
+          summary={summary}
+          section={section}
+          variant="icon-sm"
+        />
+      ),
+    [place, placeName, summary],
+  );
   const sunReport = report && (
     <ErrorBoundary fallback={reportFailed}>
       <SunReport
@@ -453,6 +484,7 @@ function Workspace() {
         terrain={report.terrainStatus}
         pinOnBuilding={report.pinOnBuilding}
         onSelectDateTime={onSelectDateTime}
+        renderSectionShare={renderSectionShare}
       />
     </ErrorBoundary>
   );

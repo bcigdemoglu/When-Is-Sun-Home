@@ -25,6 +25,11 @@ import {
 export interface BottomSheetHandle {
   /** Move the sheet to a detent (animated unless reduced motion is on). */
   snapTo(detent: Detent): void;
+  /**
+   * Whether the current sheet has been measured and shown. Until then it puts
+   * itself back at peek, so nothing should scroll it yet.
+   */
+  isMeasured(): boolean;
 }
 
 /** What the sheet shows. A new `key` is a new sheet: it opens at peek again. */
@@ -250,7 +255,7 @@ export function BottomSheet({
       scroller.scrollTop = top;
     }
   };
-  useImperativeHandle(ref, () => ({ snapTo }));
+  useImperativeHandle(ref, () => ({ snapTo, isMeasured: () => latest.current.measured }));
 
   const style = sheet
     ? ({

@@ -4,6 +4,7 @@ import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "re
 import { formatClock, formatDate } from "@/components/shared/format";
 import { useHour12 } from "@/components/shared/useHour12";
 import { Button } from "@/components/ui/Button";
+import { withSectionHash, type ReportSection } from "@/components/report/sections";
 import { CheckIcon, CloseIcon } from "@/components/ui/icons";
 import type { Place, PlaceSummary } from "@/lib/types";
 import { pickSettings, useSettings } from "@/state";
@@ -23,6 +24,8 @@ interface SharePopoverProps {
   place: Place;
   label: string;
   summary: PlaceSummary | null;
+  /** Link to this section of the report (`#slug`) rather than to the whole of it. */
+  section?: ReportSection;
   /** `restoreFocus` is false when the user clicked somewhere else. */
   onClose(options: { restoreFocus: boolean }): void;
 }
@@ -50,7 +53,14 @@ const FOCUSABLE =
  * Popover API exists (so no stacking context of the app can cover it) and as
  * a fixed, high z-index box elsewhere.
  */
-export function SharePopover({ getAnchor, place, label, summary, onClose }: SharePopoverProps) {
+export function SharePopover({
+  getAnchor,
+  place,
+  label,
+  summary,
+  section,
+  onClose,
+}: SharePopoverProps) {
   const panelRef = useRef<HTMLDivElement>(null);
   const urlRef = useRef<HTMLInputElement>(null);
   const titleId = useId();
@@ -74,7 +84,13 @@ export function SharePopover({ getAnchor, place, label, summary, onClose }: Shar
   const [copyState, setCopyState] = useState<"idle" | "copied" | "failed">("idle");
   const copyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const base = typeof window === "undefined" ? "/" : window.location.href;
+  // The section's hash, or none at all: a hash the page was opened with
+  // (an earlier section link) never travels on.
+  const base = withSectionHash(
+    typeof window === "undefined" ? "/" : window.location.href,
+    section ? section.slug : null,
+  );
+  const title = section ? `Share the ${section.label} section` : "Share this report";
   const link = { settings, place, label, includeDateTime, base, now: openedAt };
   const url = shareLink({ ...link, summary });
   // The phone that scans the code opens the app itself; it needs no preview
@@ -206,7 +222,7 @@ export function SharePopover({ getAnchor, place, label, summary, onClose }: Shar
     >
       <div className="flex items-center justify-between gap-2">
         <h2 id={titleId} className="text-base leading-[22px] font-semibold">
-          Share this report
+          {title}
         </h2>
         <Button
           variant="ghost"

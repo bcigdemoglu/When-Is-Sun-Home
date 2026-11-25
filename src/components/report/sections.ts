@@ -22,15 +22,48 @@ export interface ReportSection {
   id: ReportSectionId;
   /** Short label for a tab. */
   label: string;
+  /**
+   * The section's name in a link: `/?…#trees` opens the report at that
+   * section (see `sectionFromHash`). Lowercase, stable — shared links carry it.
+   */
+  slug: string;
 }
 
 export const REPORT_SECTIONS: readonly ReportSection[] = [
   // Sun hours first: how much sun, month by month, is what people come for.
-  { id: REPORT_SECTION_IDS.sunHours, label: "Sun hours" },
-  { id: REPORT_SECTION_IDS.today, label: "Today" },
-  { id: REPORT_SECTION_IDS.year, label: "Year" },
-  { id: REPORT_SECTION_IDS.skyline, label: "Skyline" },
+  { id: REPORT_SECTION_IDS.sunHours, label: "Sun hours", slug: "sun-hours" },
+  { id: REPORT_SECTION_IDS.today, label: "Today", slug: "today" },
+  { id: REPORT_SECTION_IDS.year, label: "Year", slug: "year" },
+  { id: REPORT_SECTION_IDS.skyline, label: "Skyline", slug: "skyline" },
   // Information only: trees are never part of the sun hours.
-  { id: REPORT_SECTION_IDS.trees, label: "Trees" },
-  { id: REPORT_SECTION_IDS.about, label: "About" },
+  { id: REPORT_SECTION_IDS.trees, label: "Trees", slug: "trees" },
+  { id: REPORT_SECTION_IDS.about, label: "About", slug: "about" },
 ];
+
+/**
+ * The section a URL hash names (`"#trees"`, `"trees"`, `"#Sun-Hours"`), or
+ * null for an empty or unknown hash. Case-insensitive; a leading `#` is optional.
+ */
+export function sectionFromHash(hash: string | null | undefined): ReportSection | null {
+  if (typeof hash !== "string") return null;
+  let slug = hash.trim().replace(/^#/, "");
+  try {
+    slug = decodeURIComponent(slug);
+  } catch {
+    // a stray "%": compare it as it is
+  }
+  slug = slug.trim().toLowerCase();
+  if (slug === "") return null;
+  return REPORT_SECTIONS.find((section) => section.slug === slug) ?? null;
+}
+
+/**
+ * `href` with its hash replaced by `#slug`, or with no hash at all for null.
+ * Works on absolute and relative links alike; everything before the hash is
+ * left exactly as it was.
+ */
+export function withSectionHash(href: string, slug: string | null): string {
+  const hashAt = href.indexOf("#");
+  const base = hashAt >= 0 ? href.slice(0, hashAt) : href;
+  return slug ? `${base}#${slug}` : base;
+}

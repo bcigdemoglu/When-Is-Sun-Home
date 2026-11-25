@@ -2,10 +2,12 @@
 
 import { useCallback, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { withSectionHash } from "@/components/report/sections";
 import { Button } from "@/components/ui/Button";
 import { ShareIcon } from "@/components/ui/icons";
 import { showToast } from "@/components/ui/toast";
-import { pickSettings, shareText, useSettings } from "@/state";
+import { pickSettings, useSettings } from "@/state";
+import { sectionShareText } from "./sectionShare";
 import { canShareNatively, copyText, isAbortError } from "./shareActions";
 import { isLiveView, shareLink } from "./shareLink";
 import { SharePopover } from "./SharePopover";
@@ -21,9 +23,21 @@ import type { ShareButtonProps } from "./types";
  *   reason the link is copied instead ("Link copied").
  * - Everywhere else: a popover next to the button with the link, a Copy
  *   button, a QR code and a preview of the link card.
+ *
+ * With a `section` the link ends in that section's hash (`#trees`), which
+ * opens the report scrolled to it; without one any hash of the page is left
+ * out, so a section link that was opened never leaks into a later share.
  */
-export function ShareButton({ place, label, summary, variant, className = "" }: ShareButtonProps) {
+export function ShareButton({
+  place,
+  label,
+  summary,
+  variant,
+  section,
+  className = "",
+}: ShareButtonProps) {
   const [open, setOpen] = useState(false);
+  const small = variant === "icon-sm";
   const wrapperRef = useRef<HTMLSpanElement>(null);
 
   const getButton = useCallback(
@@ -49,9 +63,9 @@ export function ShareButton({ place, label, summary, variant, className = "" }: 
       summary,
       // No sheet of ours to ask in: pin the day and time exactly when the user has.
       includeDateTime: !isLiveView(settings),
-      base: window.location.href,
+      base: withSectionHash(window.location.href, section ? section.slug : null),
     });
-    return { ...shareText(label, summary), url };
+    return { ...sectionShareText(section, label, summary), url };
   };
 
   const shareNatively = async (data: ShareData & { url: string }) => {
@@ -81,15 +95,21 @@ export function ShareButton({ place, label, summary, variant, className = "" }: 
     // so `className` lays the button out as if it were the direct child.
     <span ref={wrapperRef} className="contents">
       <Button
-        variant="tonal"
-        iconOnly={variant === "icon"}
-        className={className}
-        aria-label="Share this report"
+        variant={small ? "ghost" : "tonal"}
+        size={small ? "xs" : "md"}
+        iconOnly={variant !== "pill"}
+        className={
+          small
+            ? // Ghost (text-ink-2): 32 px to look at, 44 px to hit, no taller than its title line.
+              `relative -my-[5px] before:absolute before:-inset-1.5 ${className}`
+            : className
+        }
+        aria-label={section ? `Share the ${section.label} section` : "Share this report"}
         aria-haspopup="dialog"
         aria-expanded={open}
         onClick={onClick}
       >
-        <ShareIcon />
+        <ShareIcon width={small ? 18 : 20} height={small ? 18 : 20} />
         {variant === "pill" && "Share"}
       </Button>
       {open &&
@@ -99,6 +119,7 @@ export function ShareButton({ place, label, summary, variant, className = "" }: 
             place={place}
             label={label}
             summary={summary}
+            section={section}
             onClose={closePopover}
           />,
           document.body,

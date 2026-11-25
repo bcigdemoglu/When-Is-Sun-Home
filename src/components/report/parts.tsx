@@ -6,6 +6,7 @@ import { createContext, useContext, useId, type CSSProperties, type ReactNode } 
 
 import { SunState, type SunStateCode } from "@/lib/types";
 
+import { REPORT_SECTIONS, type ReportSection } from "./sections";
 import { stateMeta } from "./states";
 
 // ─── Context ───────────────────────────────────────────────────────────────
@@ -15,6 +16,8 @@ export interface ReportContextValue {
   hour12: boolean;
   /** `id` of the shared SVG hatch pattern (out-of-view texture). */
   hatchId: string;
+  /** The shell's control to share one section (see `SunReportProps.renderSectionShare`). */
+  renderSectionShare?: (section: ReportSection) => ReactNode;
 }
 
 export const ReportContext = createContext<ReportContextValue>({
@@ -194,6 +197,47 @@ export function LineKey({ color, width = 2 }: { color: string; width?: number })
 
 // ─── Card anatomy ──────────────────────────────────────────────────────────
 
+/**
+ * The shell's share control for the section with this element `id`, to sit
+ * right after the section's title; nothing for an id that is not one of
+ * `REPORT_SECTIONS`, or when the shell offers no such control.
+ */
+export function SectionShare({ id }: { id: string | undefined }) {
+  const { renderSectionShare } = useReport();
+  const section = id ? REPORT_SECTIONS.find((candidate) => candidate.id === id) : undefined;
+  if (!section || !renderSectionShare) return null;
+  return <>{renderSectionShare(section)}</>;
+}
+
+/**
+ * A section's title row: the `<h2>` with the section's share control right
+ * after the text, and `aside` (a switch, a date…) on the right.
+ */
+export function SectionTitle({
+  id,
+  headingId,
+  title,
+  aside,
+}: {
+  /** The section element's id (see `REPORT_SECTIONS`). */
+  id?: string;
+  headingId: string;
+  title: ReactNode;
+  aside?: ReactNode;
+}) {
+  return (
+    <header className="flex min-h-[22px] items-center justify-between gap-3">
+      <div className="flex min-w-0 items-center gap-1">
+        <h2 id={headingId} className="min-w-0 text-base/[22px] font-semibold text-ink">
+          {title}
+        </h2>
+        <SectionShare id={id} />
+      </div>
+      {aside && <div className="shrink-0 text-xs font-medium text-ink-2">{aside}</div>}
+    </header>
+  );
+}
+
 /** Small caps label above a figure. */
 export function Eyebrow({ children, className = "" }: { children: ReactNode; className?: string }) {
   return (
@@ -252,12 +296,7 @@ export function ReportCard({
       aria-busy={busy}
       className="report-section rounded-[20px] border border-line bg-surface p-4"
     >
-      <header className="flex min-h-[22px] items-center justify-between gap-3">
-        <h2 id={headingId} className="text-base/[22px] font-semibold text-ink">
-          {title}
-        </h2>
-        {aside && <div className="shrink-0 text-xs font-medium text-ink-2">{aside}</div>}
-      </header>
+      <SectionTitle id={id} headingId={headingId} title={title} aside={aside} />
       {value !== undefined && (
         <p className="mt-1 min-h-7 truncate text-2xl/7 font-semibold tracking-[-0.01em] text-ink tabular-nums">
           {value}
