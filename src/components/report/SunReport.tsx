@@ -16,7 +16,13 @@ import { TreesCard } from "./TreesCard";
 import type { SunReportProps } from "./types";
 import { YearHeatmap } from "./YearHeatmap";
 
-export { REPORT_SECTION_IDS, REPORT_SECTIONS, type ReportSection } from "./sections";
+export {
+  REPORT_SECTION_IDS,
+  REPORT_SECTIONS,
+  sectionFromHash,
+  withSectionHash,
+  type ReportSection,
+} from "./sections";
 
 /**
  * The sun report: how much direct sun a spot gets, when, and why.
@@ -51,10 +57,14 @@ export function SunReport({
   terrain = "idle",
   pinOnBuilding,
   onSelectDateTime,
+  renderSectionShare,
 }: SunReportProps) {
   const hour12 = useHour12();
   const hatchId = `hatch-${useId().replace(/[^a-zA-Z0-9]/g, "")}`;
-  const context = useMemo(() => ({ hour12, hatchId }), [hour12, hatchId]);
+  const context = useMemo(
+    () => ({ hour12, hatchId, renderSectionShare }),
+    [hour12, hatchId, renderSectionShare],
+  );
 
   // Derived once per analysis; scrubbing the time of day never re-runs this.
   const lat = place.lat;

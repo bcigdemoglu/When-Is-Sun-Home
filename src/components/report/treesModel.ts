@@ -271,10 +271,18 @@ export function buildTreeReport(inputs: TreeInputs): TreeReport {
       else if (inputs.nearGrid.state === "error") backyard = failed;
       else if (grid) {
         const frontTrees = front.state === "ready" ? front.value.trees : [];
-        backyard = ready({
-          lotSqFt: lot.areaSqFt,
-          canopy: lotCanopy(grid, lot, streetSide(frontTrees, inputs.blockTrees, address, place)),
-        });
+        // Which side faces the street comes from the street trees: while they are
+        // on their way the backyard waits, rather than say the side is unknown.
+        const streetPending =
+          front.state === "loading" ||
+          (frontTrees.length === 0 && !!address && inputs.blockTrees.state === "loading");
+        if (streetPending) backyard = loading;
+        else {
+          backyard = ready({
+            lotSqFt: lot.areaSqFt,
+            canopy: lotCanopy(grid, lot, streetSide(frontTrees, inputs.blockTrees, address, place)),
+          });
+        }
       } else backyard = ready({ lotSqFt: lot.areaSqFt, canopy: null });
     }
   }

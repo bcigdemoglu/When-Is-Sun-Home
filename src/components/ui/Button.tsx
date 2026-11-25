@@ -7,8 +7,12 @@ import type { ButtonHTMLAttributes, ReactNode, Ref } from "react";
  * - "ghost":   text only, until hovered.
  */
 type Variant = "primary" | "tonal" | "outline" | "ghost";
-/** Height in px: 44 (default), 56 (the start screen's two big actions), 36 (dense rows). */
-type Size = "md" | "lg" | "sm";
+/**
+ * Height in px: 44 (default), 56 (the start screen's two big actions), 36
+ * (dense rows), 32 (an icon tucked into a title row — give it a 44 px hit
+ * area of its own, e.g. `relative before:absolute before:-inset-1.5`).
+ */
+type Size = "md" | "lg" | "sm" | "xs";
 
 interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   ref?: Ref<HTMLButtonElement>;
@@ -27,6 +31,7 @@ const VARIANTS: Record<Variant, string> = {
 };
 
 const SIZES: Record<Size, { box: string; icon: string; pad: string }> = {
+  xs: { box: "h-8 text-[13px]", icon: "w-8", pad: "px-2.5" },
   sm: { box: "h-9 text-[13px]", icon: "w-9", pad: "px-3" },
   md: { box: "h-11 text-sm", icon: "w-11", pad: "px-4" },
   lg: { box: "h-14 text-base", icon: "w-14", pad: "px-6" },

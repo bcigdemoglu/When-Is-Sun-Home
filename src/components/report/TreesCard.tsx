@@ -9,7 +9,7 @@ import type { StreetTreeSummary } from "@/lib/trees/metrics";
 import type { Place } from "@/lib/types";
 
 import { formatCount } from "./format";
-import { SkeletonText } from "./parts";
+import { SectionTitle, SkeletonText } from "./parts";
 import { REPORT_SECTION_IDS } from "./sections";
 import {
   CANOPY_HEIGHT_LABELS,
@@ -88,9 +88,7 @@ export function TreesCard({ place }: TreesCardProps) {
       aria-labelledby={headingId}
       className="report-section rounded-[20px] border border-line bg-surface p-4"
     >
-      <h2 id={headingId} className="text-base/[22px] font-semibold text-ink">
-        Trees
-      </h2>
+      <SectionTitle id={REPORT_SECTION_IDS.trees} headingId={headingId} title="Trees" />
       {region === "elsewhere" ? (
         <p className="mt-1 text-[15px]/[22px] text-ink-2">{OUTSIDE_OREGON_TEXT}</p>
       ) : (

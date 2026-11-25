@@ -1,3 +1,5 @@
+import type { ReactNode } from "react";
+
 import type {
   DayAnalysis,
   HorizonProfile,
@@ -7,6 +9,8 @@ import type {
   SunYearGrid,
   YearAnalysis,
 } from "@/lib/types";
+
+import type { ReportSection } from "./sections";
 
 /** Which part of the report a date/time selection came from. */
 export type SelectionOrigin = "heatmap" | "today" | "days" | "months" | "table";
@@ -50,6 +54,12 @@ export interface SunReportProps {
   pinOnBuilding: boolean;
   /** Jump the app to a date (and optionally a time) — e.g. clicking the heatmap. */
   onSelectDateTime: (date: string, minuteOfDay?: number, origin?: SelectionOrigin) => void;
+  /**
+   * A control to share one section (a link that opens the report there),
+   * drawn right after that section's title. The report knows nothing about
+   * sharing: the shell renders whatever it likes, or leaves this out.
+   */
+  renderSectionShare?: (section: ReportSection) => ReactNode;
 }
 
 /**

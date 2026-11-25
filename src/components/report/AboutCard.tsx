@@ -3,7 +3,7 @@ import { useId, useState, type ReactNode } from "react";
 import type { Observer } from "@/lib/types";
 
 import { formatCount } from "./format";
-import { Glyph } from "./parts";
+import { Glyph, SectionTitle } from "./parts";
 import { REPORT_SECTION_IDS } from "./sections";
 import type { BuildingDataStatus, SunReportProps } from "./types";
 
@@ -100,9 +100,11 @@ export function AboutCard({
       aria-labelledby={headingId}
       className="report-section rounded-[20px] border border-line bg-surface p-4"
     >
-      <h2 id={headingId} className="text-base/[22px] font-semibold text-ink">
-        About these numbers
-      </h2>
+      <SectionTitle
+        id={REPORT_SECTION_IDS.about}
+        headingId={headingId}
+        title="About these numbers"
+      />
       <p className="mt-1 text-[15px]/[22px] text-ink-2">
         These are estimates from building and terrain height data. Trees, fences, clouds and new
         construction aren{"’"}t included, so real sun can be lower. Best used to compare places,

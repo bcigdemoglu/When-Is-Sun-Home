@@ -3,6 +3,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testi
 import { encode } from "uqr";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { useToasts } from "@/components/ui/toast";
+import { REPORT_SECTIONS } from "@/components/report/sections";
 import type { Place, PlaceSummary } from "@/lib/types";
 import { searchParamsToSettings, searchParamsToSummary, useSettings } from "@/state";
 import { ShareButton } from "./ShareButton";
@@ -132,9 +133,10 @@ describe("native share (Web Share API + touch)", () => {
     expect(data.text).toBe(
       "Pacific Ave backyard: 6.5 h of direct sun on an average day (12.7 h in May, none in January). See the full year:",
     );
-    // path and hash of the page are kept, its old query is not
+    // the page's path is kept; its old query and its hash are not (the hash
+    // names a section, and this is the whole report)
     expect(data.url).toMatch(/^http:\/\/localhost(:\d+)?\/\?lat=/);
-    expect(data.url).toMatch(/#report$/);
+    expect(data.url).not.toContain("#");
     expect(data.url).not.toContain("old=1");
 
     const params = paramsOf(data.url ?? "");
@@ -291,7 +293,7 @@ describe("popover (desktop)", () => {
     expect(params.get("d")).toBe("2026-06-21");
     expect(params.get("t")).toBe("1540");
     expect(params.get("s")).toBe(S);
-    expect(field.value).toMatch(/#report$/);
+    expect(field.value).not.toContain("#");
 
     fireEvent.focus(field);
     expect(field.selectionStart).toBe(0);
@@ -516,5 +518,113 @@ describe("popover (desktop)", () => {
     expect(dialog.style.top).toBe("152px"); // 144 + 8 gap
     expect(dialog.style.left).toBe("40px");
     expect(dialog.dataset.side).toBe("below");
+  });
+});
+
+// ─── One section of the report ─────────────────────────────────────────────
+
+describe("section share", () => {
+  const trees = REPORT_SECTIONS.find((section) => section.slug === "trees")!;
+  const sunHours = REPORT_SECTIONS.find((section) => section.slug === "sun-hours")!;
+
+  function renderSectionButton(section = trees): HTMLElement {
+    render(
+      <ShareButton
+        place={PLACE}
+        label={LABEL}
+        summary={SUMMARY}
+        variant="icon-sm"
+        section={section}
+      />,
+    );
+    return screen.getByRole("button", { name: `Share the ${section.label} section` });
+  }
+
+  test("a quiet icon named for its section", () => {
+    const button = renderSectionButton();
+    expect(button).toHaveTextContent("");
+    expect(button.querySelector("svg")).not.toBeNull();
+    expect(button).toHaveAccessibleName("Share the Trees section");
+    expect(button).toHaveAttribute("aria-haspopup", "dialog");
+    // ghost, 32 px, with a 44 px hit area that does not make the title row taller
+    expect(button).toHaveClass("bg-transparent", "text-ink-2", "h-8", "w-8", "-my-[5px]");
+    expect(button.className).toContain("before:-inset-1.5");
+  });
+
+  describe("native share", () => {
+    beforeEach(() => {
+      coarsePointer = true;
+    });
+
+    test("the link ends in the section's hash, replacing the page's own", async () => {
+      await click(renderSectionButton());
+      const data = share.mock.calls[0][0];
+      expect(data.url).toMatch(/^http:\/\/localhost(:\d+)?\/\?lat=.*#trees$/);
+      expect(data.url).not.toContain("#report");
+      // the same settings and numbers as the report's own link
+      const params = paramsOf(data.url ?? "");
+      expect(params.get("n")).toBe(LABEL);
+      expect(params.get("d")).toBe("2026-06-21");
+      expect(params.get("s")).toBe(S);
+    });
+
+    test("Trees has its own words", async () => {
+      await click(renderSectionButton());
+      expect(share.mock.calls[0][0]).toMatchObject({
+        title: `Trees at ${LABEL}`,
+        text: `Street trees, backyard canopy and the trees around ${LABEL}:`,
+      });
+    });
+
+    test("a sun section shares the sun words", async () => {
+      await click(renderSectionButton(sunHours));
+      const data = share.mock.calls[0][0];
+      expect(data.title).toBe("Pacific Ave backyard: 6.5 h of direct sun a day");
+      expect(data.url).toMatch(/#sun-hours$/);
+    });
+
+    test("when sharing fails the copied link is the section link", async () => {
+      share.mockRejectedValue(new Error("boom"));
+      await click(renderSectionButton());
+      await waitFor(() => expect(toastMessages()).toEqual(["Link copied"]));
+      expect(writeText.mock.calls[0][0]).toMatch(/#trees$/);
+    });
+  });
+
+  describe("popover", () => {
+    test("link, QR code and title are for the section", async () => {
+      await click(renderSectionButton());
+      expect(share).not.toHaveBeenCalled();
+      const dialog = screen.getByRole("dialog", { name: "Share the Trees section" });
+      expect(dialog).toBeInTheDocument();
+      expect(urlField().value).toMatch(/\?lat=.*#trees$/);
+      expect(paramsOf(urlField().value).get("s")).toBe(S);
+      const modules = Number(
+        screen.getByRole("img", { name: /QR code/ }).getAttribute("data-modules"),
+      );
+      const qrLink = urlField().value.replace(`&s=${S}`, "");
+      expect(qrLink).toMatch(/#trees$/);
+      expect(modules).toBe(encode(qrLink, { ecc: "L", border: 0 }).size);
+      // the preview card is the report's own
+      expect(screen.getByTestId("share-preview")).toHaveTextContent(LABEL);
+    });
+
+    test("the copied link is the section link", async () => {
+      await click(renderSectionButton());
+      await click(screen.getByRole("button", { name: "Copy link" }));
+      expect(writeText.mock.calls[0][0]).toBe(urlField().value);
+      expect(writeText.mock.calls[0][0]).toMatch(/#trees$/);
+    });
+  });
+
+  test("after a section link was opened, the main button shares no hash", async () => {
+    window.history.replaceState(null, "", "/?lat=1#trees");
+    coarsePointer = true;
+    await click(renderButton());
+    expect(share.mock.calls[0][0].url).not.toContain("#");
+    cleanup();
+    coarsePointer = false;
+    await click(renderButton());
+    expect(urlField().value).not.toContain("#");
   });
 });

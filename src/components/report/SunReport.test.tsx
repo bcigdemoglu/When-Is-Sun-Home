@@ -8,7 +8,7 @@ import { SunState, type SunInstant } from "@/lib/types";
 
 import { drawHeatmapBase } from "./heatmapCanvas";
 import { SunSummaryHeader } from "./SummaryHeader";
-import { REPORT_SECTIONS, SunReport } from "./SunReport";
+import { REPORT_SECTIONS, SunReport, type ReportSection } from "./SunReport";
 import { syntheticDay, syntheticHorizon, syntheticYear, YARD } from "./testing";
 import type { SunReportProps } from "./types";
 
@@ -160,6 +160,49 @@ describe("section anchors", () => {
       expect(ids).toEqual(REPORT_SECTIONS.map((section) => section.id));
       cleanup();
     }
+  });
+});
+
+describe("section share slot", () => {
+  const renderSectionShare = (section: ReportSection) => (
+    <button type="button" data-testid="section-share">
+      Share {section.slug}
+    </button>
+  );
+
+  it("puts the shell's control right after every section's title, and only there", () => {
+    const spy = vi.fn(renderSectionShare);
+    const { container } = render(<SunReport {...props()} renderSectionShare={spy} />);
+    expect(screen.getAllByTestId("section-share")).toHaveLength(REPORT_SECTIONS.length);
+    for (const section of REPORT_SECTIONS) {
+      const element = container.querySelector<HTMLElement>(`#${section.id}`)!;
+      const heading = within(element).getAllByRole("heading", { level: 2 })[0];
+      const control = within(element).getByRole("button", { name: `Share ${section.slug}` });
+      // the next element after the <h2>, in the same title row
+      expect(heading.nextElementSibling).toBe(control);
+      expect(heading.closest("header")).toBe(control.closest("header"));
+    }
+    expect([...new Set(spy.mock.calls.map(([section]) => section.slug))].sort()).toEqual(
+      REPORT_SECTIONS.map((section) => section.slug).sort(),
+    );
+    // cards that are not jump targets get none
+    expect(within(card("Seasons")).queryByTestId("section-share")).toBeNull();
+    expect(within(card(/Direct sun · average day/i)).queryByTestId("section-share")).toBeNull();
+  });
+
+  it("keeps the card's aside on the right of the row", () => {
+    render(<SunReport {...props()} renderSectionShare={renderSectionShare} />);
+    const header = screen.getByRole("button", { name: "Share sun-hours" }).closest("header")!;
+    expect(within(header).getByRole("radiogroup", { name: "Show sun hours by" })).toBeTruthy();
+    expect(header.lastElementChild).toContainElement(
+      within(header).getByRole("radiogroup", { name: "Show sun hours by" }),
+    );
+  });
+
+  it("renders nothing extra without one", () => {
+    render(<SunReport {...props()} />);
+    expect(screen.queryByTestId("section-share")).toBeNull();
+    expect(screen.queryByRole("button", { name: /^Share/ })).toBeNull();
   });
 });
 
