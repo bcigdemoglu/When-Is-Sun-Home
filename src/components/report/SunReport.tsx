@@ -12,6 +12,7 @@ import { SeasonsCard } from "./SeasonsCard";
 import { SkylineChart } from "./SkylineChart";
 import { SunHoursCard } from "./SunHoursCard";
 import { TodayCard } from "./TodayCard";
+import { TreesCard } from "./TreesCard";
 import type { SunReportProps } from "./types";
 import { YearHeatmap } from "./YearHeatmap";
 
@@ -23,7 +24,8 @@ export { REPORT_SECTION_IDS, REPORT_SECTIONS, type ReportSection } from "./secti
  * Purely presentational, and laid out for a phone-width column (a bottom
  * sheet, or a 440 px side panel). Cards, top to bottom: the average day with a
  * verdict, the selected day, the seasons, the year heat map, sun hours by
- * month / by day, the skyline, and a note on method. The cards listed in
+ * month / by day, the skyline, the trees (information only, never part of
+ * the numbers; fetched only once scrolled to), and a note on method. The cards listed in
  * `REPORT_SECTIONS` carry stable ids for jump tabs.
  *
  * Every analysis prop may be `null` (still computing): cards keep their
@@ -114,6 +116,7 @@ export function SunReport({
           date={date}
           instant={instant}
         />
+        <TreesCard place={place} />
         <AboutCard
           buildings={buildings}
           terrain={terrain}

@@ -19,7 +19,11 @@ import { canDecodePng } from "@/lib/terrain/png";
 import { fetchPicture, type ImageryLoadOptions } from "./imagery";
 import { frameInBuildingTile, type Rgba, type TreePalette } from "./treeRaster";
 import {
+  runCanopyJob,
   runTreeTileJob,
+  type CanopyGrid,
+  type CanopyJob,
+  type CanopyResult,
   type TreeTileJob,
   type TreeTilePixels,
   type TreeTileResult,
@@ -74,7 +78,8 @@ export function readTreePalette(
 // ─── The worker ────────────────────────────────────────────────────────────
 
 interface Waiting {
-  resolve(pixels: TreeTilePixels): void;
+  /** A successful answer (a failed one rejects). */
+  resolve(result: TreeTileResult | CanopyResult): void;
   reject(error: Error): void;
 }
 
@@ -98,16 +103,13 @@ function treeWorker(): Worker | null {
       type: "module",
       name: "tree-tiles",
     });
-    started.onmessage = (event: MessageEvent<TreeTileResult>) => {
+    started.onmessage = (event: MessageEvent<TreeTileResult | CanopyResult>) => {
       const result = event.data;
       const job = waiting.get(result.id);
       if (!job) return;
       waiting.delete(result.id);
-      if (result.ok) {
-        job.resolve({ size: result.size, pixels: new Uint8ClampedArray(result.pixels) });
-      } else {
-        job.reject(new Error(result.message));
-      }
+      if (result.ok) job.resolve(result);
+      else job.reject(new Error(result.message));
     };
     // It could not start (an old browser, a blocked script): from now on the page does the work.
     started.onerror = () => giveUpOnWorker("The tree tile worker failed");
@@ -118,13 +120,48 @@ function treeWorker(): Worker | null {
   return worker;
 }
 
-function render(job: TreeTileJob): Promise<TreeTilePixels> {
+/** Hand a job to the worker; resolves with its (successful) answer. */
+function inWorker(
+  target: Worker,
+  job: TreeTileJob | CanopyJob,
+  transfer: Transferable[],
+): Promise<TreeTileResult | CanopyResult> {
+  return new Promise((resolve, reject) => {
+    waiting.set(job.id, { resolve, reject });
+    target.postMessage(job, transfer);
+  });
+}
+
+async function render(job: TreeTileJob): Promise<TreeTilePixels> {
   const target = treeWorker();
   if (!target) return runTreeTileJob(job);
-  return new Promise<TreeTilePixels>((resolve, reject) => {
-    waiting.set(job.id, { resolve, reject });
-    target.postMessage(job, [job.heights, job.buildings]);
-  });
+  const result = await inWorker(target, job, [job.heights, job.buildings]);
+  if (!result.ok || !("pixels" in result)) throw new Error("The tree tile worker gave no picture");
+  return { size: result.size, pixels: new Uint8ClampedArray(result.pixels) };
+}
+
+/** A fresh job number, shared by every kind of job the worker runs. */
+export function nextTreeJobId(): number {
+  return nextJobId++;
+}
+
+/**
+ * Measure a canopy window (see `treeCanopy.ts`) off the main thread — in the
+ * page itself only where there can be no worker.
+ */
+export async function measureCanopy(job: CanopyJob): Promise<CanopyGrid> {
+  const target = treeWorker();
+  if (!target) return runCanopyJob(job);
+  const transfer = [job.heights, ...job.buildings.map((tile) => tile.data)];
+  const result = await inWorker(target, job, transfer);
+  if (!result.ok || !("ground" in result)) throw new Error("The tree worker gave no canopy");
+  return {
+    window: job.window,
+    ground: new Uint8Array(result.ground),
+    feet: new Uint8Array(result.feet),
+    labels: result.labels ? new Int32Array(result.labels) : null,
+    cover: result.cover,
+  };
 }
 
 // ─── One tile ──────────────────────────────────────────────────────────────

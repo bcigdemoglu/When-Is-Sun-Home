@@ -16,6 +16,8 @@ export class ReportPage extends PageObject {
   readonly sunHours = this.page.getByRole("region", { name: "Sun hours" });
   readonly skyline = this.page.getByRole("region", { name: "What blocks the sun" });
   readonly about = this.page.getByRole("region", { name: "About these numbers" });
+  /** Information only (never part of the sun hours); found by its jump-target id. */
+  readonly trees = this.page.locator("#report-trees");
 
   // ── Year heat map ────────────────────────────────────────────────────────
   /** The focusable chart (arrow keys move the selection). */
@@ -42,7 +44,7 @@ export class ReportPage extends PageObject {
   /** The card's value line: "12.5 h a day in June" / "9 h 47 m on Thu, Apr 2". */
   readonly sunHoursValue = this.sunHours.locator("p").first();
 
-  /** A jump tab ("Today", "Year", "Sun hours", "Skyline", "About"). */
+  /** A jump tab ("Today", "Year", "Sun hours", "Skyline", "Trees", "About"). */
   tab(name: string): Locator {
     return this.tabs.getByRole("button", { name, exact: true });
   }

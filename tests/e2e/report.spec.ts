@@ -27,6 +27,7 @@ test.describe("Sun report", () => {
       "Seasons",
       "Through the year",
       "What blocks the sun",
+      "Trees",
       "About these numbers",
     ]);
 
@@ -35,6 +36,7 @@ test.describe("Sun report", () => {
       "Today",
       "Year",
       "Skyline",
+      "Trees",
       "About",
     ]);
     // Each tab brings its card on screen and marks itself as the current one.

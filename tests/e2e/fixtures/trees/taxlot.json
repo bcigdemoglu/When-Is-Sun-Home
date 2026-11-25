@@ -1,0 +1,26 @@
+{
+  "displayFieldName": "STATE_ID",
+  "fieldAliases": { "SITEADDR": "SITEADDR", "A_T_SQFT": "A_T_SQFT" },
+  "geometryType": "esriGeometryPolygon",
+  "spatialReference": { "wkid": 4326, "latestWkid": 4326 },
+  "fields": [
+    { "name": "SITEADDR", "type": "esriFieldTypeString", "alias": "SITEADDR", "length": 37 },
+    { "name": "A_T_SQFT", "type": "esriFieldTypeDouble", "alias": "A_T_SQFT" }
+  ],
+  "features": [
+    {
+      "attributes": { "SITEADDR": "2124 NE 36TH AVE ", "A_T_SQFT": 4950 },
+      "geometry": {
+        "rings": [
+          [
+            [-122.62591550072771, 45.538276145634164],
+            [-122.62552400684206, 45.538276834618415],
+            [-122.62552367087211, 45.538139717784425],
+            [-122.62591472907486, 45.53813898789979],
+            [-122.62591550072771, 45.538276145634164]
+          ]
+        ]
+      }
+    }
+  ]
+}

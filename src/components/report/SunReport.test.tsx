@@ -1,5 +1,7 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { cleanup, fireEvent, render as renderInDom, screen, within } from "@testing-library/react";
+import type { ReactElement, ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { SunState, type SunInstant } from "@/lib/types";
@@ -9,6 +11,15 @@ import { SunSummaryHeader } from "./SummaryHeader";
 import { REPORT_SECTIONS, SunReport } from "./SunReport";
 import { syntheticDay, syntheticHorizon, syntheticYear, YARD } from "./testing";
 import type { SunReportProps } from "./types";
+
+/** The report's Trees section asks through TanStack Query (lazily: nothing is fetched here). */
+function render(ui: ReactElement) {
+  const client = new QueryClient();
+  const wrapper = ({ children }: { children: ReactNode }) => (
+    <QueryClientProvider client={client}>{children}</QueryClientProvider>
+  );
+  return renderInDom(ui, { wrapper });
+}
 
 // jsdom has no canvas: the drawing module is the one place that needs one.
 vi.mock("./heatmapCanvas", () => ({
@@ -136,9 +147,10 @@ describe("section anchors", () => {
       "Today",
       "Year",
       "Skyline",
+      "Trees",
       "About",
     ]);
-    expect(new Set(REPORT_SECTIONS.map((section) => section.id)).size).toBe(5);
+    expect(new Set(REPORT_SECTIONS.map((section) => section.id)).size).toBe(6);
   });
 
   it("renders one section per id, in that order, loading or not", () => {

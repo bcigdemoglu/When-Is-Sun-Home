@@ -139,6 +139,10 @@ export interface MonthDetail extends TypicalSunTimes {
   longLabel: string;
   avgSunHours: number;
   avgDaylightHours: number;
+  /** Average daylight hours a day with the sun up and in view but behind a building or a hill. */
+  avgShadedHours: number;
+  /** Average daylight hours a day with the sun outside a window's view (0 for a yard). */
+  avgOutOfViewHours: number;
   /** avgSunHours / avgDaylightHours, 0 when the month has no daylight. */
   sunFraction: number;
   totalSunHours: number;
@@ -151,12 +155,16 @@ export function monthDetails(year: YearAnalysis): MonthDetail[] {
     const days = year.days.slice(span.startDay, span.startDay + span.dayCount);
     const avgSunHours = summary?.avgSunHours ?? 0;
     const avgDaylightHours = summary?.avgDaylightHours ?? 0;
+    const split = daylightSplit(days);
+    const perDay = days.length > 0 ? 1 / days.length : 0;
     return {
       month: span.month,
       label: MONTHS_SHORT[span.month],
       longLabel: MONTHS_LONG[span.month],
       avgSunHours,
       avgDaylightHours,
+      avgShadedHours: split.blockedHours * perDay,
+      avgOutOfViewHours: split.outOfViewHours * perDay,
       sunFraction: avgDaylightHours > 0 ? avgSunHours / avgDaylightHours : 0,
       totalSunHours: summary?.totalSunHours ?? 0,
       ...typicalSunTimes(days),

@@ -127,8 +127,8 @@ export function SunHoursCard({ year, model, day, date, onSelectDateTime }: SunHo
       detail={detail}
       footnote={
         view === "months"
-          ? "Average hours of direct sun per day in each month, against that month’s daylight. Tap a month to go to it."
-          : "Hours of direct sun on every day of the year, against the hours of daylight. Tap to go to a day."
+          ? "Average hours of direct sun and of shade per day in each month, out of that month’s daylight. Tap a month to go to it."
+          : "Hours of direct sun and of shade on every day of the year, against the hours of daylight. Tap to go to a day."
       }
       footnoteLines={2}
       busy={!ready}
@@ -175,16 +175,32 @@ export function SunHoursCard({ year, model, day, date, onSelectDateTime }: SunHo
             <li className="flex items-center gap-1.5">
               <span
                 aria-hidden="true"
-                className="inline-block h-3 w-2.5 rounded-t-[3px] bg-surface-2 ring-1 ring-line ring-inset"
+                className="inline-block h-3 w-2.5 rounded-t-[3px] bg-state-blocked"
               />
-              Possible daylight
+              Shaded
             </li>
+            {model?.details.some((month) => month.avgOutOfViewHours > 0.05) && (
+              <li className="flex items-center gap-1.5">
+                <span
+                  aria-hidden="true"
+                  className="inline-block h-3 w-2.5 rounded-t-[3px] bg-state-out"
+                />
+                Outside the window’s view
+              </li>
+            )}
           </>
         ) : (
           <>
             <li className="flex items-center gap-1.5">
               <LineKey color="var(--report-sun-line)" />
               Direct sun
+            </li>
+            <li className="flex items-center gap-1.5">
+              <span
+                aria-hidden="true"
+                className="inline-block h-2.5 w-3 rounded-[2px] bg-state-blocked opacity-60"
+              />
+              Shaded
             </li>
             <li className="flex items-center gap-1.5">
               <LineKey color="var(--ink-3)" width={1.25} />
@@ -248,13 +264,16 @@ function MonthBars({
           const selected = month.month === selectedMonth;
           const sunShare = month.avgSunHours / max;
           const daylightShare = month.avgDaylightHours / max;
+          // Stacked from the ground up: sun, then shade, then (a window) out of view.
+          const shadedShare = Math.min(daylightShare, sunShare + month.avgShadedHours / max);
+          const outShare = Math.min(daylightShare, shadedShare + month.avgOutOfViewHours / max);
           return (
             <button
               key={month.month}
               type="button"
               className="group flex min-w-0 flex-1 cursor-pointer flex-col items-center rounded-md px-px focus-visible:outline-2 focus-visible:outline-accent"
               aria-pressed={selected}
-              aria-label={`${month.longLabel}: ${formatHours(month.avgSunHours)} hours of direct sun per day, out of ${formatHours(month.avgDaylightHours)} hours of daylight`}
+              aria-label={`${month.longLabel}: ${formatHours(month.avgSunHours)} hours of direct sun per day, out of ${formatHours(month.avgDaylightHours)} hours of daylight; ${formatHours(month.avgShadedHours)} hours in shade`}
               onClick={() =>
                 onSelectDateTime(dateInMonth(date, year.year, month.month), undefined, "months")
               }
@@ -276,12 +295,23 @@ function MonthBars({
                   className="absolute bottom-0 left-1/2 w-[70%] max-w-6 -translate-x-1/2 rounded-t-[4px] bg-surface-2 ring-1 ring-line ring-inset"
                   style={{ height: `${daylightShare * 100}%` }}
                 />
+                {month.avgOutOfViewHours > 0 && (
+                  <span
+                    className="absolute bottom-0 left-1/2 w-[70%] max-w-6 -translate-x-1/2 rounded-t-[4px] bg-state-out"
+                    style={{ height: `${outShare * 100}%` }}
+                  />
+                )}
+                <span
+                  data-testid="month-shade"
+                  className="absolute bottom-0 left-1/2 w-[70%] max-w-6 -translate-x-1/2 rounded-t-[4px] bg-state-blocked"
+                  style={{ height: `${shadedShare * 100}%` }}
+                />
                 <span
                   className="report-sun-edge absolute bottom-0 left-1/2 w-[70%] max-w-6 -translate-x-1/2 rounded-t-[4px] bg-state-sun"
                   style={{ height: `${sunShare * 100}%` }}
                 />
                 <span
-                  className={`absolute left-1/2 -translate-x-1/2 text-[11px] leading-none text-ink tabular-nums ${
+                  className={`absolute left-1/2 -translate-x-1/2 rounded-[3px] bg-surface px-[3px] py-px text-[11px] leading-none text-ink tabular-nums ${
                     selected ? "font-bold" : "font-medium"
                   }`}
                   style={{ bottom: `calc(${sunShare * 100}% + 3px)` }}
@@ -328,6 +358,12 @@ function MonthBars({
               {formatHours(activeMonth.avgDaylightHours)} h
             </strong>{" "}
             daylight ({formatPercent(activeMonth.sunFraction)} in sun)
+          </div>
+          <div className="tabular-nums">
+            <strong className="font-semibold text-ink">
+              {formatHours(activeMonth.avgShadedHours)} h
+            </strong>{" "}
+            shaded
           </div>
           {activeMonth.firstMinute !== null && activeMonth.lastMinute !== null && (
             <div className="mt-1 tabular-nums">
@@ -383,14 +419,21 @@ function DayLine({
     const base = plotY + plotHeight;
     let sun = "";
     let daylight = "";
+    let shadeTop = "";
+    let shadeBottom = "";
     year.days.forEach((day, i) => {
       const x = xOf(i).toFixed(1);
-      sun += `${i === 0 ? "M" : "L"}${x} ${yOf(day.sunMinutes / 60).toFixed(1)}`;
+      const sunY = yOf(day.sunMinutes / 60).toFixed(1);
+      sun += `${i === 0 ? "M" : "L"}${x} ${sunY}`;
       daylight += `${i === 0 ? "M" : "L"}${x} ${yOf(day.daylightMinutes / 60).toFixed(1)}`;
+      shadeTop += `${i === 0 ? "M" : "L"}${x} ${yOf((day.sunMinutes + day.blockedMinutes) / 60).toFixed(1)}`;
+      shadeBottom = `L${x} ${sunY}${shadeBottom}`;
     });
     const last = year.dayCount - 1;
     const area = `${sun}L${xOf(last).toFixed(1)} ${base}L${xOf(0).toFixed(1)} ${base}Z`;
-    return { max, sun, daylight, area };
+    // The band from the sun line up to sun + shade: the daylight lost to buildings and hills.
+    const shade = `${shadeTop}${shadeBottom}Z`;
+    return { max, sun, daylight, area, shade };
   }, [year, plotX, plotY, plotWidth, plotHeight]);
 
   const xOf = (dayIndex: number) => plotX + ((dayIndex + 0.5) / year.dayCount) * plotWidth;
@@ -502,6 +545,7 @@ function DayLine({
         </g>
 
         <path d={chart.area} fill="var(--state-sun)" fillOpacity={0.24} />
+        <path d={chart.shade} fill="var(--state-blocked)" fillOpacity={0.45} />
         <path
           d={chart.daylight}
           fill="none"
@@ -614,6 +658,18 @@ function DayLine({
                 {formatDuration(hoveredTotals.daylightMinutes)}
               </strong>{" "}
               daylight
+            </span>
+          </div>
+          <div className="flex items-center gap-1.5 tabular-nums">
+            <span
+              aria-hidden="true"
+              className="inline-block h-2.5 w-3 rounded-[2px] bg-state-blocked opacity-60"
+            />
+            <span>
+              <strong className="font-semibold text-ink">
+                {formatDuration(hovered.blockedMinutes)}
+              </strong>{" "}
+              shaded
             </span>
           </div>
         </ChartTooltip>

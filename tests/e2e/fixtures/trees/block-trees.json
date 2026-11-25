@@ -1,0 +1,97 @@
+{
+  "displayFieldName": "NEIGHBORHOOD",
+  "fieldAliases": {
+    "OBJECTID": "OBJECTID",
+    "Neighborhood": "NEIGHBORHOOD",
+    "Address": "ADDRESS",
+    "Date_Inventoried": "DATE INVENTORIED",
+    "SPECIES": "SPECIES",
+    "MATURE_SIZE": "MATURE SIZE",
+    "FUNCTIONAL_TYPE": "FUNCTIONAL TYPE",
+    "DIAMETER": "DIAMETER",
+    "Condition": "CONDITION",
+    "Site_Type": "SITE TYPE",
+    "Site_Size": "SITE SIZE",
+    "Site_Width": "SITE WIDTH",
+    "Wires": "WIRES",
+    "SITE_IMPROVEMENT": "SITE IMPROVEMENT"
+  },
+  "geometryType": "esriGeometryPoint",
+  "spatialReference": { "wkid": 4326, "latestWkid": 4326 },
+  "fields": [
+    { "name": "OBJECTID", "type": "esriFieldTypeOID", "alias": "OBJECTID" },
+    {
+      "name": "Neighborhood",
+      "type": "esriFieldTypeString",
+      "alias": "NEIGHBORHOOD",
+      "length": 100
+    },
+    { "name": "Address", "type": "esriFieldTypeString", "alias": "ADDRESS", "length": 255 },
+    {
+      "name": "Date_Inventoried",
+      "type": "esriFieldTypeDate",
+      "alias": "DATE INVENTORIED",
+      "length": 8
+    },
+    { "name": "SPECIES", "type": "esriFieldTypeString", "alias": "SPECIES", "length": 255 },
+    { "name": "MATURE_SIZE", "type": "esriFieldTypeString", "alias": "MATURE SIZE", "length": 255 },
+    {
+      "name": "FUNCTIONAL_TYPE",
+      "type": "esriFieldTypeString",
+      "alias": "FUNCTIONAL TYPE",
+      "length": 25
+    },
+    { "name": "DIAMETER", "type": "esriFieldTypeSingle", "alias": "DIAMETER" },
+    { "name": "Condition", "type": "esriFieldTypeString", "alias": "CONDITION", "length": 25 },
+    { "name": "Site_Type", "type": "esriFieldTypeString", "alias": "SITE TYPE", "length": 50 },
+    { "name": "Site_Size", "type": "esriFieldTypeString", "alias": "SITE SIZE", "length": 25 },
+    { "name": "Site_Width", "type": "esriFieldTypeSingle", "alias": "SITE WIDTH" },
+    { "name": "Wires", "type": "esriFieldTypeString", "alias": "WIRES", "length": 50 },
+    {
+      "name": "SITE_IMPROVEMENT",
+      "type": "esriFieldTypeString",
+      "alias": "SITE IMPROVEMENT",
+      "length": 50
+    }
+  ],
+  "features": [
+    {
+      "attributes": {
+        "OBJECTID": 170447,
+        "Neighborhood": "GRANT PARK",
+        "Address": "2124 NE 36TH AVE, PORTLAND, OR, 97212",
+        "Date_Inventoried": 1719273600000,
+        "SPECIES": "Acer platanoides - Norway maple",
+        "MATURE_SIZE": "Medium",
+        "FUNCTIONAL_TYPE": "Broadleaf deciduous",
+        "DIAMETER": 27.700000762939453,
+        "Condition": "Good",
+        "Site_Type": "Strip",
+        "Site_Size": "Medium",
+        "Site_Width": 6,
+        "Wires": "High voltage",
+        "SITE_IMPROVEMENT": "Improved"
+      },
+      "geometry": { "x": -122.62595218792389, "y": 45.538234666252066 }
+    },
+    {
+      "attributes": {
+        "OBJECTID": 170836,
+        "Neighborhood": "GRANT PARK",
+        "Address": "2124 NE 36TH AVE, PORTLAND, OR, 97212",
+        "Date_Inventoried": 1719273600000,
+        "SPECIES": "Acer platanoides - Norway maple",
+        "MATURE_SIZE": "Medium",
+        "FUNCTIONAL_TYPE": "Broadleaf deciduous",
+        "DIAMETER": 30.299999237060547,
+        "Condition": "Fair",
+        "Site_Type": "Strip",
+        "Site_Size": "Large",
+        "Site_Width": 6,
+        "Wires": "Other",
+        "SITE_IMPROVEMENT": "Improved"
+      },
+      "geometry": { "x": -122.62595535987516, "y": 45.538169217698595 }
+    }
+  ]
+}

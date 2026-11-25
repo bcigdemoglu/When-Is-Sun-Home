@@ -1,0 +1,1285 @@
+{
+  "displayFieldName": "",
+  "fieldAliases": {
+    "SPECIES": "SPECIES",
+    "n": "n",
+    "d0": "d0",
+    "d1": "d1",
+    "d2": "d2",
+    "d3": "d3",
+    "dsum": "dsum",
+    "dmax": "dmax"
+  },
+  "fields": [
+    { "name": "SPECIES", "type": "esriFieldTypeString", "alias": "SPECIES", "length": 255 },
+    { "name": "n", "type": "esriFieldTypeInteger", "alias": "n" },
+    { "name": "d0", "type": "esriFieldTypeDouble", "alias": "d0" },
+    { "name": "d1", "type": "esriFieldTypeDouble", "alias": "d1" },
+    { "name": "d2", "type": "esriFieldTypeDouble", "alias": "d2" },
+    { "name": "d3", "type": "esriFieldTypeDouble", "alias": "d3" },
+    { "name": "dsum", "type": "esriFieldTypeDouble", "alias": "dsum" },
+    { "name": "dmax", "type": "esriFieldTypeSingle", "alias": "dmax" }
+  ],
+  "features": [
+    {
+      "attributes": {
+        "SPECIES": "Acer x freemanii - red-silver maple hybrid",
+        "n": 66,
+        "d0": 2,
+        "d1": 18,
+        "d2": 41,
+        "d3": 5,
+        "dsum": 990.1000027656555,
+        "dmax": 48.20000076293945
+      }
+    },
+    {
+      "attributes": {
+        "SPECIES": "Nyssa sylvatica - black tupelo",
+        "n": 13,
+        "d0": 11,
+        "d1": 1,
+        "d2": 1,
+        "d3": 0,
+        "dsum": 49.40000009536743,
+        "dmax": 13.5
+      }
+    },
+    {
+      "attributes": {
+        "SPECIES": "Cornus spp. - dogwood",
+        "n": 30,
+        "d0": 23,
+        "d1": 6,
+        "d2": 1,
+        "d3": 0,
+        "dsum": 115.20000095665455,
+        "dmax": 13.300000190734863
+      }
+    },
+    {
+      "attributes": {
+        "SPECIES": "Acer rubrum - red maple",
+        "n": 18,
+        "d0": 0,
+        "d1": 3,
+        "d2": 13,
+        "d3": 2,
+        "dsum": 313.20000076293945,
+        "dmax": 25.700000762939453
+      }
+    },
+    {
+      "attributes": {
+        "SPECIES": "Clerodendrum spp. - glory bower",
+        "n": 5,
+        "d0": 3,
+        "d1": 2,
+        "d2": 0,
+        "d3": 0,
+        "dsum": 28.99999976158142,
+        "dmax": 7.900000095367432
+      }
+    },
+    {
+      "attributes": {
+        "SPECIES": "Quercus spp. - oak",
+        "n": 5,
+        "d0": 3,
+        "d1": 1,
+        "d2": 1,
+        "d3": 0,
+        "dsum": 28.999999672174454,
+        "dmax": 13
+      }
+    },
+    {
+      "attributes": {
+        "SPECIES": "Zelkova serrata - Japanese zelkova",
+        "n": 12,
+        "d0": 4,
+        "d1": 2,
+        "d2": 6,
+        "d3": 0,
+        "dsum": 128.00000005960464,
+        "dmax": 22
+      }
+    },
+    {
+      "attributes": {
+        "SPECIES": "Liquidambar styraciflua - sweetgum",
+        "n": 9,
+        "d0": 0,
+        "d1": 1,
+        "d2": 2,
+        "d3": 6,
+        "dsum": 260.99999809265137,
+        "dmax": 50.29999923706055
+      }
+    },
+    {
+      "attributes": {
+        "SPECIES": "Prunus (cherry species and cultivars) - cherry",
+        "n": 42,
+        "d0": 4,
+        "d1": 4,
+        "d2": 25,
+        "d3": 9,
+        "dsum": 738.4000043869019,
+        "dmax": 35.400001525878906
+      }
+    },
+    {
+      "attributes": {
+        "SPECIES": "Castanea spp. - chestnut",
+        "n": 1,
+        "d0": 0,
+        "d1": 0,
+        "d2": 1,
+        "d3": 0,
+        "dsum": 14.100000381469727,
+        "dmax": 14.100000381469727
+      }
+    },
+    {
+      "attributes": {
+        "SPECIES": "Juglans regia - English walnut",
+        "n": 14,
+        "d0": 2,
+        "d1": 0,
+        "d2": 10,
+        "d3": 2,
+        "dsum": 255.70000284910202,
+        "dmax": 25.899999618530273
+      }
+    },
+    {
+      "attributes": {
+        "SPECIES": "Syringa reticulata - Japanese tree lilac",
+        "n": 10,
+        "d0": 8,
+        "d1": 2,
+        "d2": 0,
+        "d3": 0,
+        "dsum": 42.49999952316284,
+        "dmax": 8.199999809265137
+      }
+    },
+    {
+      "attributes": {
+        "SPECIES": "Acer griseum - paperbark maple",
+        "n": 47,
+        "d0": 18,
+        "d1": 27,
+        "d2": 2,
+        "d3": 0,
+        "dsum": 313.5000010728836,
+        "dmax": 17
+      }
+    },
+    {
+      "attributes": {
+        "SPECIES": "Acer grandidentatum 'Schmidt' - Rocky Mountain Glow maple",
+        "n": 7,
+        "d0": 1,
+        "d1": 4,
+        "d2": 2,
+        "d3": 0,
+        "dsum": 65,
+        "dmax": 14.899999618530273
+      }
+    },
+    {
+      "attributes": {
+        "SPECIES": "Pyrus calleryana - flowering pear",
+        "n": 71,
+        "d0": 1,
+        "d1": 6,
+        "d2": 64,
+        "d3": 0,
+        "dsum": 1076.3000016212463,
+        "dmax": 20.799999237060547
+      }
+    },
+    {
+      "attributes": {
+        "SPECIES": "Magnolia spp. - magnolia",
+        "n": 17,
+        "d0": 14,
+        "d1": 2,
+        "d2": 1,
+        "d3": 0,
+        "dsum": 86.59999930858612,
+        "dmax": 17.299999237060547
+      }
+    },
+    {
+      "attributes": {
+        "SPECIES": "Juglans nigra - black walnut",
+        "n": 4,
+        "d0": 0,
+        "d1": 0,
+        "d2": 1,
+        "d3": 3,
+        "dsum": 106,
+        "dmax": 28.799999237060547
+      }
+    },
+    {
+      "attributes": {
+        "SPECIES": "Acer palmatum - Japanese maple",
+        "n": 18,
+        "d0": 1,
+        "d1": 11,
+        "d2": 5,
+        "d3": 1,
+        "dsum": 201.89999890327454,
+        "dmax": 29
+      }
+    },
+    {
+      "attributes": {
+        "SPECIES": "Liriodendron tulipifera - tulip tree",
+        "n": 7,
+        "d0": 0,
+        "d1": 0,
+        "d2": 2,
+        "d3": 5,
+        "dsum": 262.3000030517578,
+        "dmax": 61.5
+      }
+    },
+    {
+      "attributes": {
+        "SPECIES": "Rhamnus purshiana - cascara buckthorn",
+        "n": 3,
+        "d0": 3,
+        "d1": 0,
+        "d2": 0,
+        "d3": 0,
+        "dsum": 7.099999904632568,
+        "dmax": 2.5999999046325684
+      }
+    },
+    {
+      "attributes": {
+        "SPECIES": "Acer saccharinum - silver maple",
+        "n": 14,
+        "d0": 0,
+        "d1": 0,
+        "d2": 1,
+        "d3": 13,
+        "dsum": 563.5000019073486,
+        "dmax": 53.5
+      }
+    },
+    {
+      "attributes": {
+        "SPECIES": "Acer platanoides - Norway maple",
+        "n": 93,
+        "d0": 1,
+        "d1": 10,
+        "d2": 45,
+        "d3": 37,
+        "dsum": 2007.00000333786,
+        "dmax": 41.70000076293945
+      }
+    },
+    {
+      "attributes": {
+        "SPECIES": "Tilia spp. - linden or basswood",
+        "n": 8,
+        "d0": 1,
+        "d1": 2,
+        "d2": 1,
+        "d3": 4,
+        "dsum": 162.0000005736947,
+        "dmax": 40
+      }
+    },
+    {
+      "attributes": {
+        "SPECIES": "Cornus florida - eastern dogwood",
+        "n": 23,
+        "d0": 3,
+        "d1": 12,
+        "d2": 8,
+        "d3": 0,
+        "dsum": 244.2000002861023,
+        "dmax": 23
+      }
+    },
+    {
+      "attributes": {
+        "SPECIES": "Prunus cerasifera - flowering plum",
+        "n": 22,
+        "d0": 2,
+        "d1": 8,
+        "d2": 12,
+        "d3": 0,
+        "dsum": 277.99999952316284,
+        "dmax": 23.899999618530273
+      }
+    },
+    {
+      "attributes": {
+        "SPECIES": "Fraxinus excelsior - European ash",
+        "n": 9,
+        "d0": 0,
+        "d1": 1,
+        "d2": 8,
+        "d3": 0,
+        "dsum": 137.50000095367432,
+        "dmax": 20.200000762939453
+      }
+    },
+    {
+      "attributes": {
+        "SPECIES": "Parrotia persica - Persian ironwood",
+        "n": 20,
+        "d0": 17,
+        "d1": 3,
+        "d2": 0,
+        "d3": 0,
+        "dsum": 67.1000007390976,
+        "dmax": 9
+      }
+    },
+    {
+      "attributes": {
+        "SPECIES": "Lagerstroemia spp. - crape myrtle",
+        "n": 11,
+        "d0": 11,
+        "d1": 0,
+        "d2": 0,
+        "d3": 0,
+        "dsum": 37.300000071525574,
+        "dmax": 5.099999904632568
+      }
+    },
+    {
+      "attributes": {
+        "SPECIES": "Abies spp. - fir",
+        "n": 1,
+        "d0": 1,
+        "d1": 0,
+        "d2": 0,
+        "d3": 0,
+        "dsum": 2.0999999046325684,
+        "dmax": 2.0999999046325684
+      }
+    },
+    {
+      "attributes": {
+        "SPECIES": "Ginkgo biloba - ginkgo",
+        "n": 13,
+        "d0": 12,
+        "d1": 0,
+        "d2": 1,
+        "d3": 0,
+        "dsum": 52.799999952316284,
+        "dmax": 23
+      }
+    },
+    {
+      "attributes": {
+        "SPECIES": "Albizia julibrissin - silk tree",
+        "n": 1,
+        "d0": 0,
+        "d1": 0,
+        "d2": 1,
+        "d3": 0,
+        "dsum": 21.700000762939453,
+        "dmax": 21.700000762939453
+      }
+    },
+    {
+      "attributes": {
+        "SPECIES": "Styrax japonicus - Japanese snowbell",
+        "n": 24,
+        "d0": 8,
+        "d1": 16,
+        "d2": 0,
+        "d3": 0,
+        "dsum": 158.90000069141388,
+        "dmax": 11
+      }
+    },
+    {
+      "attributes": {
+        "SPECIES": "Fagus spp. - beech",
+        "n": 2,
+        "d0": 0,
+        "d1": 1,
+        "d2": 1,
+        "d3": 0,
+        "dsum": 23.100000381469727,
+        "dmax": 12.5
+      }
+    },
+    {
+      "attributes": {
+        "SPECIES": "Fraxinus spp. - ash",
+        "n": 10,
+        "d0": 0,
+        "d1": 1,
+        "d2": 8,
+        "d3": 1,
+        "dsum": 175.60000133514404,
+        "dmax": 24.200000762939453
+      }
+    },
+    {
+      "attributes": {
+        "SPECIES": "Cornus kousa - kousa dogwood",
+        "n": 10,
+        "d0": 8,
+        "d1": 2,
+        "d2": 0,
+        "d3": 0,
+        "dsum": 38.10000032186508,
+        "dmax": 7.400000095367432
+      }
+    },
+    {
+      "attributes": {
+        "SPECIES": "Crataegus x lavalleei - Lavalle hawthorn",
+        "n": 5,
+        "d0": 1,
+        "d1": 2,
+        "d2": 2,
+        "d3": 0,
+        "dsum": 52.400001525878906,
+        "dmax": 17.200000762939453
+      }
+    },
+    {
+      "attributes": {
+        "SPECIES": "Acer circinatum - vine maple",
+        "n": 3,
+        "d0": 3,
+        "d1": 0,
+        "d2": 0,
+        "d3": 0,
+        "dsum": 10.600000023841858,
+        "dmax": 5
+      }
+    },
+    {
+      "attributes": {
+        "SPECIES": "Quercus garryana - Oregon white oak",
+        "n": 5,
+        "d0": 1,
+        "d1": 4,
+        "d2": 0,
+        "d3": 0,
+        "dsum": 32.80000054836273,
+        "dmax": 9.600000381469727
+      }
+    },
+    {
+      "attributes": {
+        "SPECIES": "Koelreuteria paniculata - goldenrain tree",
+        "n": 6,
+        "d0": 0,
+        "d1": 4,
+        "d2": 2,
+        "d3": 0,
+        "dsum": 68.80000114440918,
+        "dmax": 17.700000762939453
+      }
+    },
+    {
+      "attributes": {
+        "SPECIES": "Quercus rubra - northern red oak",
+        "n": 7,
+        "d0": 0,
+        "d1": 0,
+        "d2": 2,
+        "d3": 5,
+        "dsum": 205.10000038146973,
+        "dmax": 47.70000076293945
+      }
+    },
+    {
+      "attributes": {
+        "SPECIES": "Fraxinus angustifolia - narrowleaf ash",
+        "n": 15,
+        "d0": 0,
+        "d1": 0,
+        "d2": 8,
+        "d3": 7,
+        "dsum": 345.49999809265137,
+        "dmax": 30.299999237060547
+      }
+    },
+    {
+      "attributes": {
+        "SPECIES": "Malus spp. - ornamental crabapple",
+        "n": 20,
+        "d0": 14,
+        "d1": 6,
+        "d2": 0,
+        "d3": 0,
+        "dsum": 117.09999942779541,
+        "dmax": 11.300000190734863
+      }
+    },
+    {
+      "attributes": {
+        "SPECIES": "Acer miyabei - miyabe maple",
+        "n": 2,
+        "d0": 0,
+        "d1": 1,
+        "d2": 1,
+        "d3": 0,
+        "dsum": 21.399999618530273,
+        "dmax": 13.899999618530273
+      }
+    },
+    {
+      "attributes": {
+        "SPECIES": "Quercus hypoleucoides - silverleaf oak",
+        "n": 2,
+        "d0": 2,
+        "d1": 0,
+        "d2": 0,
+        "d3": 0,
+        "dsum": 4.299999952316284,
+        "dmax": 2.200000047683716
+      }
+    },
+    {
+      "attributes": {
+        "SPECIES": "Cercis spp. - redbud",
+        "n": 11,
+        "d0": 3,
+        "d1": 4,
+        "d2": 4,
+        "d3": 0,
+        "dsum": 99.89999971538782,
+        "dmax": 17.799999237060547
+      }
+    },
+    {
+      "attributes": {
+        "SPECIES": "Catalpa spp. - catalpa",
+        "n": 3,
+        "d0": 2,
+        "d1": 1,
+        "d2": 0,
+        "d3": 0,
+        "dsum": 12.399999618530273,
+        "dmax": 11.399999618530273
+      }
+    },
+    {
+      "attributes": {
+        "SPECIES": "Acer saccharum - sugar maple",
+        "n": 2,
+        "d0": 0,
+        "d1": 0,
+        "d2": 1,
+        "d3": 1,
+        "dsum": 47,
+        "dmax": 25.5
+      }
+    },
+    {
+      "attributes": {
+        "SPECIES": "Calocedrus decurrens - incense cedar",
+        "n": 3,
+        "d0": 2,
+        "d1": 0,
+        "d2": 0,
+        "d3": 1,
+        "dsum": 33.49999922513962,
+        "dmax": 31.299999237060547
+      }
+    },
+    {
+      "attributes": {
+        "SPECIES": "Acer macrophyllum - bigleaf maple",
+        "n": 3,
+        "d0": 0,
+        "d1": 1,
+        "d2": 2,
+        "d3": 0,
+        "dsum": 33.19999980926514,
+        "dmax": 13.699999809265137
+      }
+    },
+    {
+      "attributes": {
+        "SPECIES": "Thuja plicata - western redcedar",
+        "n": 7,
+        "d0": 0,
+        "d1": 1,
+        "d2": 3,
+        "d3": 3,
+        "dsum": 180.4000015258789,
+        "dmax": 47.70000076293945
+      }
+    },
+    {
+      "attributes": {
+        "SPECIES": "Acer pseudoplatanus - sycamore maple",
+        "n": 8,
+        "d0": 1,
+        "d1": 2,
+        "d2": 2,
+        "d3": 3,
+        "dsum": 131.30000019073486,
+        "dmax": 29
+      }
+    },
+    {
+      "attributes": {
+        "SPECIES": "Celtis spp. - hackberry",
+        "n": 1,
+        "d0": 0,
+        "d1": 1,
+        "d2": 0,
+        "d3": 0,
+        "dsum": 11.699999809265137,
+        "dmax": 11.699999809265137
+      }
+    },
+    {
+      "attributes": {
+        "SPECIES": "Ulmus spp. - elm",
+        "n": 9,
+        "d0": 3,
+        "d1": 2,
+        "d2": 1,
+        "d3": 3,
+        "dsum": 183.00000202655792,
+        "dmax": 63.400001525878906
+      }
+    },
+    {
+      "attributes": {
+        "SPECIES": "Stewartia spp. - stewartia",
+        "n": 3,
+        "d0": 1,
+        "d1": 2,
+        "d2": 0,
+        "d3": 0,
+        "dsum": 19.300000190734863,
+        "dmax": 7.800000190734863
+      }
+    },
+    {
+      "attributes": {
+        "SPECIES": "Crataegus spp. - hawthorn",
+        "n": 5,
+        "d0": 0,
+        "d1": 5,
+        "d2": 0,
+        "d3": 0,
+        "dsum": 46.499999046325684,
+        "dmax": 10.699999809265137
+      }
+    },
+    {
+      "attributes": {
+        "SPECIES": "Chionanthus retusus - Chinese fringe tree",
+        "n": 1,
+        "d0": 1,
+        "d1": 0,
+        "d2": 0,
+        "d3": 0,
+        "dsum": 1.600000023841858,
+        "dmax": 1.600000023841858
+      }
+    },
+    {
+      "attributes": {
+        "SPECIES": "Fraxinus americana - white ash",
+        "n": 4,
+        "d0": 1,
+        "d1": 2,
+        "d2": 1,
+        "d3": 0,
+        "dsum": 48.100000858306885,
+        "dmax": 23.100000381469727
+      }
+    },
+    {
+      "attributes": {
+        "SPECIES": "Quercus alba - eastern white oak",
+        "n": 1,
+        "d0": 0,
+        "d1": 1,
+        "d2": 0,
+        "d3": 0,
+        "dsum": 7.800000190734863,
+        "dmax": 7.800000190734863
+      }
+    },
+    {
+      "attributes": {
+        "SPECIES": "Stewartia pseudocamellia - Japanese stewartia",
+        "n": 2,
+        "d0": 2,
+        "d1": 0,
+        "d2": 0,
+        "d3": 0,
+        "dsum": 8.900000095367432,
+        "dmax": 4.599999904632568
+      }
+    },
+    {
+      "attributes": {
+        "SPECIES": "Carpinus spp. - hornbeam",
+        "n": 11,
+        "d0": 8,
+        "d1": 2,
+        "d2": 1,
+        "d3": 0,
+        "dsum": 57.40000009536743,
+        "dmax": 15.300000190734863
+      }
+    },
+    {
+      "attributes": {
+        "SPECIES": "Fraxinus pennsylvanica - green ash",
+        "n": 5,
+        "d0": 0,
+        "d1": 1,
+        "d2": 4,
+        "d3": 0,
+        "dsum": 62.89999961853027,
+        "dmax": 13.899999618530273
+      }
+    },
+    {
+      "attributes": {
+        "SPECIES": "Cercidiphyllum japonicum - katsura",
+        "n": 41,
+        "d0": 8,
+        "d1": 14,
+        "d2": 14,
+        "d3": 5,
+        "dsum": 508.7000017762184,
+        "dmax": 31.399999618530273
+      }
+    },
+    {
+      "attributes": {
+        "SPECIES": "Pinus spp. - pine",
+        "n": 2,
+        "d0": 0,
+        "d1": 1,
+        "d2": 0,
+        "d3": 1,
+        "dsum": 34.5,
+        "dmax": 26
+      }
+    },
+    {
+      "attributes": {
+        "SPECIES": "Cotinus spp. - smoketree",
+        "n": 2,
+        "d0": 0,
+        "d1": 1,
+        "d2": 1,
+        "d3": 0,
+        "dsum": 23.40000057220459,
+        "dmax": 12.100000381469727
+      }
+    },
+    {
+      "attributes": {
+        "SPECIES": "Prunus dulcis syn. Prunus amygdalus - almond",
+        "n": 1,
+        "d0": 0,
+        "d1": 1,
+        "d2": 0,
+        "d3": 0,
+        "dsum": 9.899999618530273,
+        "dmax": 9.899999618530273
+      }
+    },
+    {
+      "attributes": {
+        "SPECIES": "Betula pendula - European white birch",
+        "n": 13,
+        "d0": 0,
+        "d1": 0,
+        "d2": 11,
+        "d3": 2,
+        "dsum": 277.90000343322754,
+        "dmax": 29.5
+      }
+    },
+    {
+      "attributes": {
+        "SPECIES": "Acer tataricum ssp. Ginnala - Amur maple",
+        "n": 5,
+        "d0": 2,
+        "d1": 1,
+        "d2": 2,
+        "d3": 0,
+        "dsum": 41.90000057220459,
+        "dmax": 12.800000190734863
+      }
+    },
+    {
+      "attributes": {
+        "SPECIES": "Malus domestica - apple (MADO)",
+        "n": 6,
+        "d0": 2,
+        "d1": 3,
+        "d2": 1,
+        "d3": 0,
+        "dsum": 45.200000405311584,
+        "dmax": 13.100000381469727
+      }
+    },
+    {
+      "attributes": {
+        "SPECIES": "Fagus sylvatica - European beech",
+        "n": 6,
+        "d0": 3,
+        "d1": 0,
+        "d2": 3,
+        "d3": 0,
+        "dsum": 61.3999999165535,
+        "dmax": 21.5
+      }
+    },
+    {
+      "attributes": {
+        "SPECIES": "Picea spp. - spruce",
+        "n": 3,
+        "d0": 1,
+        "d1": 0,
+        "d2": 2,
+        "d3": 0,
+        "dsum": 45.80000019073486,
+        "dmax": 21.5
+      }
+    },
+    {
+      "attributes": {
+        "SPECIES": "Gleditsia spp. - honey locust",
+        "n": 4,
+        "d0": 2,
+        "d1": 0,
+        "d2": 2,
+        "d3": 0,
+        "dsum": 32.19999980926514,
+        "dmax": 12.5
+      }
+    },
+    {
+      "attributes": {
+        "SPECIES": "Acer buergerianum - trident maple",
+        "n": 2,
+        "d0": 1,
+        "d1": 1,
+        "d2": 0,
+        "d3": 0,
+        "dsum": 13.90000033378601,
+        "dmax": 11.600000381469727
+      }
+    },
+    {
+      "attributes": {
+        "SPECIES": "Acer spp. - maple",
+        "n": 1,
+        "d0": 1,
+        "d1": 0,
+        "d2": 0,
+        "d3": 0,
+        "dsum": 2.299999952316284,
+        "dmax": 2.299999952316284
+      }
+    },
+    {
+      "attributes": {
+        "SPECIES": "Pinus nigra - Austrian pine",
+        "n": 1,
+        "d0": 0,
+        "d1": 0,
+        "d2": 1,
+        "d3": 0,
+        "dsum": 23.399999618530273,
+        "dmax": 23.399999618530273
+      }
+    },
+    {
+      "attributes": {
+        "SPECIES": "Pyrus spp. - pear",
+        "n": 4,
+        "d0": 2,
+        "d1": 2,
+        "d2": 0,
+        "d3": 0,
+        "dsum": 21.300000429153442,
+        "dmax": 8.100000381469727
+      }
+    },
+    {
+      "attributes": {
+        "SPECIES": "Ficus carica - common fig",
+        "n": 3,
+        "d0": 0,
+        "d1": 3,
+        "d2": 0,
+        "d3": 0,
+        "dsum": 22.199999809265137,
+        "dmax": 9.5
+      }
+    },
+    {
+      "attributes": {
+        "SPECIES": "Acer campestre - hedge maple",
+        "n": 4,
+        "d0": 0,
+        "d1": 0,
+        "d2": 4,
+        "d3": 0,
+        "dsum": 63.19999980926514,
+        "dmax": 17
+      }
+    },
+    {
+      "attributes": {
+        "SPECIES": "Betula papyrifera - paper birch",
+        "n": 2,
+        "d0": 0,
+        "d1": 1,
+        "d2": 1,
+        "d3": 0,
+        "dsum": 26.90000057220459,
+        "dmax": 18.200000762939453
+      }
+    },
+    {
+      "attributes": {
+        "SPECIES": "Pseudotsuga menziesii - Douglas-fir",
+        "n": 2,
+        "d0": 0,
+        "d1": 0,
+        "d2": 0,
+        "d3": 2,
+        "dsum": 65.89999771118164,
+        "dmax": 37.599998474121094
+      }
+    },
+    {
+      "attributes": {
+        "SPECIES": "Quercus coccinea - scarlet oak",
+        "n": 1,
+        "d0": 0,
+        "d1": 0,
+        "d2": 1,
+        "d3": 0,
+        "dsum": 12,
+        "dmax": 12
+      }
+    },
+    {
+      "attributes": {
+        "SPECIES": "Quercus macrocarpa - bur oak",
+        "n": 2,
+        "d0": 1,
+        "d1": 0,
+        "d2": 1,
+        "d3": 0,
+        "dsum": 17.299999713897705,
+        "dmax": 12.899999618530273
+      }
+    },
+    {
+      "attributes": {
+        "SPECIES": "Davidia involucrata - dove tree",
+        "n": 2,
+        "d0": 2,
+        "d1": 0,
+        "d2": 0,
+        "d3": 0,
+        "dsum": 4.5000001192092896,
+        "dmax": 3.4000000953674316
+      }
+    },
+    {
+      "attributes": {
+        "SPECIES": "Prunus serrulata - Japanese flowering cherry",
+        "n": 15,
+        "d0": 0,
+        "d1": 1,
+        "d2": 9,
+        "d3": 5,
+        "dsum": 335.5,
+        "dmax": 36.400001525878906
+      }
+    },
+    {
+      "attributes": {
+        "SPECIES": "Pyrus communis - European pear",
+        "n": 3,
+        "d0": 3,
+        "d1": 0,
+        "d2": 0,
+        "d3": 0,
+        "dsum": 12.299999952316284,
+        "dmax": 4.900000095367432
+      }
+    },
+    {
+      "attributes": {
+        "SPECIES": "Tilia tomentosa - silver linden",
+        "n": 1,
+        "d0": 0,
+        "d1": 1,
+        "d2": 0,
+        "d3": 0,
+        "dsum": 6,
+        "dmax": 6
+      }
+    },
+    {
+      "attributes": {
+        "SPECIES": "Crataegus phaenopyrum - Washington hawthorn",
+        "n": 2,
+        "d0": 0,
+        "d1": 2,
+        "d2": 0,
+        "d3": 0,
+        "dsum": 16.09999990463257,
+        "dmax": 8.199999809265137
+      }
+    },
+    {
+      "attributes": {
+        "SPECIES": "Magnolia grandiflora - southern magnolia",
+        "n": 4,
+        "d0": 3,
+        "d1": 0,
+        "d2": 1,
+        "d3": 0,
+        "dsum": 28.90000057220459,
+        "dmax": 16.200000762939453
+      }
+    },
+    {
+      "attributes": {
+        "SPECIES": "Unknown",
+        "n": 6,
+        "d0": 2,
+        "d1": 1,
+        "d2": 2,
+        "d3": 1,
+        "dsum": 75.29999887943268,
+        "dmax": 25.799999237060547
+      }
+    },
+    {
+      "attributes": {
+        "SPECIES": "Umbellularia californica - Oregon myrtle",
+        "n": 3,
+        "d0": 2,
+        "d1": 0,
+        "d2": 1,
+        "d3": 0,
+        "dsum": 30.699999809265137,
+        "dmax": 20.399999618530273
+      }
+    },
+    {
+      "attributes": {
+        "SPECIES": "Carpinus betulus - European hornbeam",
+        "n": 1,
+        "d0": 1,
+        "d1": 0,
+        "d2": 0,
+        "d3": 0,
+        "dsum": 2.5999999046325684,
+        "dmax": 2.5999999046325684
+      }
+    },
+    {
+      "attributes": {
+        "SPECIES": "Aesculus spp. - horsechestnuts, buckeyes",
+        "n": 2,
+        "d0": 0,
+        "d1": 0,
+        "d2": 2,
+        "d3": 0,
+        "dsum": 40.89999961853027,
+        "dmax": 20.899999618530273
+      }
+    },
+    {
+      "attributes": {
+        "SPECIES": "Prunus lusitanica - Portuguese laurel",
+        "n": 1,
+        "d0": 0,
+        "d1": 0,
+        "d2": 0,
+        "d3": 1,
+        "dsum": 26.5,
+        "dmax": 26.5
+      }
+    },
+    {
+      "attributes": {
+        "SPECIES": "Abies concolor - white fir",
+        "n": 1,
+        "d0": 0,
+        "d1": 0,
+        "d2": 1,
+        "d3": 0,
+        "dsum": 23.299999237060547,
+        "dmax": 23.299999237060547
+      }
+    },
+    {
+      "attributes": {
+        "SPECIES": "Carpinus caroliniana - American hornbeam",
+        "n": 2,
+        "d0": 2,
+        "d1": 0,
+        "d2": 0,
+        "d3": 0,
+        "dsum": 4,
+        "dmax": 2
+      }
+    },
+    {
+      "attributes": {
+        "SPECIES": "Populus tremuloides - quaking aspen",
+        "n": 2,
+        "d0": 1,
+        "d1": 1,
+        "d2": 0,
+        "d3": 0,
+        "dsum": 12.400000095367432,
+        "dmax": 9.5
+      }
+    },
+    {
+      "attributes": {
+        "SPECIES": "Carpinus japonica - Japanese hornbeam",
+        "n": 1,
+        "d0": 0,
+        "d1": 1,
+        "d2": 0,
+        "d3": 0,
+        "dsum": 8.699999809265137,
+        "dmax": 8.699999809265137
+      }
+    },
+    {
+      "attributes": {
+        "SPECIES": "Tilia cordata - littleleaf linden",
+        "n": 2,
+        "d0": 0,
+        "d1": 0,
+        "d2": 2,
+        "d3": 0,
+        "dsum": 32.89999961853027,
+        "dmax": 17.399999618530273
+      }
+    },
+    {
+      "attributes": {
+        "SPECIES": "Amelanchier spp. - serviceberry",
+        "n": 1,
+        "d0": 0,
+        "d1": 1,
+        "d2": 0,
+        "d3": 0,
+        "dsum": 6.199999809265137,
+        "dmax": 6.199999809265137
+      }
+    },
+    {
+      "attributes": {
+        "SPECIES": "Platanus x acerifolia - London plane tree",
+        "n": 1,
+        "d0": 1,
+        "d1": 0,
+        "d2": 0,
+        "d3": 0,
+        "dsum": 1.7000000476837158,
+        "dmax": 1.7000000476837158
+      }
+    },
+    {
+      "attributes": {
+        "SPECIES": "Crataegus monogyna - English hawthorn",
+        "n": 1,
+        "d0": 0,
+        "d1": 0,
+        "d2": 1,
+        "d3": 0,
+        "dsum": 16.399999618530273,
+        "dmax": 16.399999618530273
+      }
+    },
+    {
+      "attributes": {
+        "SPECIES": "Acer negundo - box elder",
+        "n": 2,
+        "d0": 0,
+        "d1": 0,
+        "d2": 2,
+        "d3": 0,
+        "dsum": 25.600000381469727,
+        "dmax": 13
+      }
+    },
+    {
+      "attributes": {
+        "SPECIES": "Cladrastis spp. - yellowwood",
+        "n": 1,
+        "d0": 1,
+        "d1": 0,
+        "d2": 0,
+        "d3": 0,
+        "dsum": 5,
+        "dmax": 5
+      }
+    },
+    {
+      "attributes": {
+        "SPECIES": "Pinus sylvestris - Scots pine",
+        "n": 1,
+        "d0": 0,
+        "d1": 0,
+        "d2": 1,
+        "d3": 0,
+        "dsum": 16.100000381469727,
+        "dmax": 16.100000381469727
+      }
+    },
+    {
+      "attributes": {
+        "SPECIES": "Ulmus parvifolia - Chinese lacebark elm",
+        "n": 2,
+        "d0": 0,
+        "d1": 2,
+        "d2": 0,
+        "d3": 0,
+        "dsum": 12.800000190734863,
+        "dmax": 6.400000095367432
+      }
+    },
+    {
+      "attributes": {
+        "SPECIES": "Ulmus pumila - Siberian elm",
+        "n": 1,
+        "d0": 0,
+        "d1": 0,
+        "d2": 0,
+        "d3": 1,
+        "dsum": 42.900001525878906,
+        "dmax": 42.900001525878906
+      }
+    }
+  ]
+}

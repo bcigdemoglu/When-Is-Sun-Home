@@ -125,15 +125,35 @@ export function frameInBuildingTile(
 /**
  * Mark (with 1) every pixel whose centre lies inside a footprint: a
  * `size`×`size` picture, row by row from the top. Courtyards stay unmarked.
+ *
+ * With `labels`, it marks that picture instead, each footprint with its own
+ * number: `firstLabel` for the first, then counting up (to tell buildings
+ * apart: which one is the house).
  */
 export function rasterizeFootprints(
   footprints: readonly FootprintRings[],
   size: number,
   frame: PixelFrame,
-): Uint8Array {
-  const mask = new Uint8Array(size * size);
+): Uint8Array;
+export function rasterizeFootprints(
+  footprints: readonly FootprintRings[],
+  size: number,
+  frame: PixelFrame,
+  labels: Int32Array,
+  firstLabel: number,
+): Int32Array;
+export function rasterizeFootprints(
+  footprints: readonly FootprintRings[],
+  size: number,
+  frame: PixelFrame,
+  labels?: Int32Array,
+  firstLabel = 1,
+): Uint8Array | Int32Array {
+  const mask = labels ?? new Uint8Array(size * size);
   const crossings: number[] = [];
-  for (const rings of footprints) {
+  for (let f = 0; f < footprints.length; f++) {
+    const rings = footprints[f];
+    const value = labels ? firstLabel + f : 1;
     let minY = Infinity;
     let maxY = -Infinity;
     let minX = Infinity;
@@ -171,7 +191,7 @@ export function rasterizeFootprints(
       for (let k = 0; k + 1 < crossings.length; k += 2) {
         const from = Math.max(0, Math.ceil(crossings[k] - 0.5));
         const to = Math.min(size - 1, Math.ceil(crossings[k + 1] - 0.5) - 1);
-        for (let column = from; column <= to; column++) mask[row * size + column] = 1;
+        for (let column = from; column <= to; column++) mask[row * size + column] = value;
       }
     }
   }

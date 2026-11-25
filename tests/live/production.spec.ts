@@ -248,6 +248,45 @@ test("in Oregon the Trees layer draws the state's measured tree heights", async 
   await expect(page.getByText(/but not trees/).first()).toBeAttached();
 });
 
+test("in Portland the Trees tab shows the street trees recorded in front of a house", async ({
+  page,
+  isMobile,
+}) => {
+  // The City of Portland's open-data server (www.portlandmaps.com): public,
+  // no key. When it does not answer, the tab says so quietly and this check
+  // skips — only what the APP does is judged then.
+  const CITY =
+    /^https:\/\/www\.portlandmaps\.com\/od\/rest\/services\/COP_OpenData_Environment\/MapServer\/1415\/query\?/;
+  const errors = collectPageErrors(page);
+  const cityAnswer = page
+    .waitForResponse((response) => CITY.test(response.url()) && response.ok(), { timeout: 45_000 })
+    .catch(() => null);
+
+  // 2124 NE 36th Ave, Portland.
+  await page.goto("/?lat=45.53822&lng=-122.62575");
+  await expect(page.getByText(/of direct sun/).first()).toBeVisible();
+  const trees = page.locator("#report-trees");
+  const tab = page
+    .getByRole("navigation", { name: "Report sections" })
+    .getByRole("button", { name: "Trees", exact: true });
+  if (isMobile) {
+    // Raise the sheet so the report can be read, then jump.
+    const expand = page.getByRole("button", { name: "Expand the sheet" });
+    await expand.tap();
+    await expand.tap({ timeout: 3_000 }).catch(() => {});
+  }
+  await tab.click();
+  await expect(trees.getByRole("heading", { level: 2, name: "Trees" })).toBeVisible();
+  await expect(trees).toContainText("Trees are not part of the sun hours in this report.");
+
+  const answer = await cityAnswer;
+  expect(errors).toEqual([]);
+  test.skip(answer === null, "the City of Portland's server did not answer in time");
+  const front = trees.getByRole("region", { name: "In front, on the street", exact: true });
+  await expect(front).toContainText(/Norway maple|No street tree recorded/, { timeout: 30_000 });
+  await expect(front).not.toContainText("Couldn’t load");
+});
+
 test("a shared link shows the answer in its preview", async ({ request }) => {
   const summary = "1.1t1i401u9.00011p3a3j3h3i3f2e0d0000.2p2z3a3n3x423z3q3f322s2m";
   const page = await request.get(`${PLACE}&n=Pacific+Ave+backyard&s=${summary}`, {
